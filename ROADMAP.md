@@ -1,0 +1,70 @@
+# Local Agent Town - Roadmap
+
+**Current phase:** prototype  
+**Owner:** Kayden and local coding agents
+
+This is the active work plan. Keep it forward-looking and proof-oriented.
+
+## Current State
+
+The project has a local Python desktop slice: a Pygame town viewer, ten autonomous NPCs, selectable inspection state, suggestion input, Kenney sprites/emotes, event feed, and unit-tested simulation core.
+
+Important drift or uncertainty:
+
+- Pygame was not installed globally when the project was created; local `.venv` setup is required.
+- LLM-backed planning is implemented as an optional local OpenAI-compatible adapter. It is disabled unless `AGENT_TOWN_LLM_MODEL` is set.
+- Persistence is not implemented yet.
+
+## Current Goal
+
+Stabilize the first local LLM-backed desktop prototype while keeping the non-LLM town loop reliable.
+
+Done when:
+
+- core and LLM adapter tests pass;
+- the Pygame smoke test opens, draws assets briefly, and exits;
+- workbench validation passes.
+
+## Next Tasks
+
+1. **Manual LM Studio/Ollama tuning pass** - run Gemma 4 E4B-it, Qwen3.5-4B, and Phi-4-mini-instruct locally and record which model gives the best speed/personality balance. Proof: manual notes with model status and responsiveness.
+2. **Save and replay** - persist ticks, memories, events, and relationship state to SQLite. Proof: create, load, and replay a short simulation in tests.
+3. **Deeper objects and places** - add usable objects and location-specific tasks. Proof: deterministic simulation tests and viewer smoke test.
+
+## Blocked Or Deferred
+
+Do not start these until their prerequisite is met.
+
+| Item | Blocked on | Why it matters |
+|---|---|---|
+| Hosted AI providers | explicit user approval | Avoids accidental paid or network-dependent behavior |
+| Multiplayer or remote viewing | explicit product direction change | Current requirement is local and not web based |
+| Large map editor | stable core loop | Editing tools are less useful before agent behavior is interesting |
+
+## Backlog
+
+- Add event feed and time controls.
+- Add places with objects and tasks.
+- Add agent-to-agent message summaries.
+- Add screenshots or GIF capture for quick review.
+
+## Release Checks
+
+Verification commands live in `RUNBOOK.md` Test And Build.
+
+Project-specific release and checkpoint checks:
+
+- Confirm no `.venv`, logs, databases, private exports, or generated dumps are included.
+- Confirm no web server or browser runtime was introduced.
+- Confirm `ROADMAP.md` Verification Log has a current row for durable state changes.
+
+## Verification Log
+
+Append a row when a task changes durable project state. Use actual results, not stale claims.
+
+| Date | Task | Proof | Result | Remaining gap |
+|---|---|---|---|---|
+| 2026-06-26 | Add double-click desktop launcher | `& '.\Launch Local Agent Town.ps1' -SmokeTest`; `.\scripts\validate-workbench.ps1` | pass | `.cmd` wrapper is intended for File Explorer double-click; smoke test verified the PowerShell launch path |
+| 2026-06-26 | Bootstrap prototype and adopt workbench structure | `.\setup.ps1`; `.\.venv\Scripts\python.exe -m unittest discover -s tests`; `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1` | pass | LLM-backed planning and persistence remain deferred |
+| 2026-06-26 | Add optional local LLM planning and Kenney sprite viewer slice | `.\.venv\Scripts\python.exe -m unittest discover -s tests`; `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1` | pass | Manual LM Studio/Ollama model tuning remains next |
+| 2026-06-26 | Prepare main branch publish to GitHub | `gh repo view KaydenClark/Little_Local_World --json nameWithOwner,defaultBranchRef,isPrivate,isArchived,url`; `.\scripts\validate-workbench.ps1` | pass | GitHub push performed after this row |
