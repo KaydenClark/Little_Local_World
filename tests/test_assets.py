@@ -1,6 +1,7 @@
 import unittest
 
 from agent_town.assets import load_kenney_manifest
+from agent_town.app import LOCATION_FOOTPRINTS, TERRAIN_TILE_INDEXES
 
 
 class KenneyAssetTests(unittest.TestCase):
@@ -12,6 +13,23 @@ class KenneyAssetTests(unittest.TestCase):
         self.assertTrue(manifest.characters_path.is_file())
         self.assertTrue(manifest.tiles_path.is_file())
         self.assertTrue(manifest.emotes_path.is_file())
+
+    def test_location_visuals_use_tile_clusters(self):
+        expected_kinds = {"home", "food", "social", "knowledge", "work", "quiet"}
+
+        self.assertEqual(set(LOCATION_FOOTPRINTS), expected_kinds)
+        for kind, footprint in LOCATION_FOOTPRINTS.items():
+            with self.subTest(kind=kind):
+                self.assertGreaterEqual(len(footprint.tiles), 9)
+                self.assertGreaterEqual(len({tile.index for tile in footprint.tiles}), 3)
+                self.assertTrue(any(tile.role == "floor" for tile in footprint.tiles))
+                self.assertTrue(any(tile.role == "prop" for tile in footprint.tiles))
+                self.assertGreater(footprint.label_offset_y, 0)
+
+    def test_terrain_palette_uses_multiple_tile_types(self):
+        self.assertGreaterEqual(len(TERRAIN_TILE_INDEXES["grass"]), 4)
+        self.assertGreaterEqual(len(TERRAIN_TILE_INDEXES["field"]), 4)
+        self.assertGreaterEqual(len(TERRAIN_TILE_INDEXES["water"]), 4)
 
 
 if __name__ == "__main__":
