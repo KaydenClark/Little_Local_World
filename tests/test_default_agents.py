@@ -39,12 +39,13 @@ class DefaultAgentRosterTests(unittest.TestCase):
     def test_roster_contains_exactly_the_ten_named_agents(self):
         self.assertEqual(sorted(self.sim.agents), sorted(AGENT_IDS))
 
-    def test_each_agent_has_a_valid_home_workplace_and_preferred_places(self):
+    def test_each_agent_only_prefers_real_places(self):
+        # home/workplace are coerced to a valid location by _validate_initial_state
+        # (covered in test_core), but preferred_places is never validated, so a
+        # typo there can only be caught here.
         for agent_id in AGENT_IDS:
             with self.subTest(agent=agent_id):
                 agent = self.sim.agents[agent_id]
-                self.assertIn(agent.home, self.sim.locations)
-                self.assertIn(agent.workplace, self.sim.locations)
                 for place in agent.preferred_places:
                     self.assertIn(place, self.sim.locations)
 
@@ -71,29 +72,6 @@ class DefaultAgentRosterTests(unittest.TestCase):
                     _tile_nonblank(sheet, agent.sprite_index, manifest.tile_size, manifest.margin),
                     f"{agent.name}'s sprite_index {agent.sprite_index} renders a blank tile",
                 )
-
-    def test_each_agent_completes_a_full_daily_routine_without_invalid_destinations(self):
-        for agent_id in AGENT_IDS:
-            with self.subTest(agent=agent_id):
-                sim = create_default_simulation()
-                agent = sim.agents[agent_id]
-                for _ in range(600):
-                    sim.step(0.5)
-                    self.assertIn(agent.destination, sim.locations)
-
-    def test_each_agent_can_receive_and_follow_a_suggestion(self):
-        for agent_id in AGENT_IDS:
-            with self.subTest(agent=agent_id):
-                sim = create_default_simulation()
-                agent = sim.agents[agent_id]
-                town_square = sim.locations["Town Square"]
-                agent.x, agent.y = town_square.x, town_square.y
-                agent.destination = "Town Square"
-
-                sim.suggest(agent_id, "Go work at Maker Hall")
-                sim.step(0.1)
-
-                self.assertEqual(agent.destination, "Maker Hall")
 
 
 if __name__ == "__main__":

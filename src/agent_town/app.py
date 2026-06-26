@@ -44,6 +44,18 @@ LOCATION_TILE_INDEX = {
     "quiet": 213,
 }
 
+# Visual road network drawn between buildings. Every endpoint must be a real
+# location name from the simulation, or _draw_paths raises a KeyError at runtime.
+WALKING_PATHS = (
+    ("Town Square", "North Apartments"),
+    ("Town Square", "South Row Homes"),
+    ("Town Square", "Greenhouse Cafe"),
+    ("Town Square", "Archive Library"),
+    ("Town Square", "Maker Hall"),
+    ("Town Square", "Riverside Park"),
+    ("Riverside Park", "Clinic Garden"),
+)
+
 
 @dataclass
 class Camera:
@@ -260,16 +272,7 @@ class App:
         self._draw_paths()
 
     def _draw_paths(self) -> None:
-        paths = [
-            ("Town Square", "North Apartments"),
-            ("Town Square", "South Row Homes"),
-            ("Town Square", "Greenhouse Cafe"),
-            ("Town Square", "Archive Library"),
-            ("Town Square", "Maker Hall"),
-            ("Town Square", "Riverside Park"),
-            ("Riverside Park", "Clinic Garden"),
-        ]
-        for start_name, end_name in paths:
+        for start_name, end_name in WALKING_PATHS:
             start = self.sim.locations[start_name]
             end = self.sim.locations[end_name]
             pygame.draw.line(
