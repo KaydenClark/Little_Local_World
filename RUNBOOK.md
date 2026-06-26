@@ -36,16 +36,18 @@ Optional local model variables:
 
 | Variable | Purpose | Secret | Example or notes |
 |---|---|---|---|
-| `AGENT_TOWN_LLM_MODEL` | Enables local LLM planning when set | no | `gemma-4-e4b-it`, or the exact model id loaded in LM Studio/Ollama |
+| `AGENT_TOWN_LLM_MODEL` | Optional explicit model override | no | `google/gemma-4-e4b`, or the exact model id loaded in LM Studio/Ollama |
 | `AGENT_TOWN_LLM_BASE_URL` | OpenAI-compatible local endpoint | no | `http://localhost:1234/v1` for LM Studio, `http://localhost:11434/v1` for Ollama |
 | `AGENT_TOWN_LLM_TIMEOUT` | Per-request timeout in seconds | no | default `4.0` |
 | `AGENT_TOWN_LLM_MAX_TOKENS` | Max tokens for compact decision JSON | no | default `180` |
+| `AGENT_TOWN_LLM_AUTO_DISCOVER` | Controls startup model discovery when no model is set | no | default `1`; set `0` to keep local model disabled unless `AGENT_TOWN_LLM_MODEL` is set |
 
 Rules:
 
 - Do not commit real `.env` files, tokens, local databases, logs, or private data.
 - Keep future LLM provider credentials local-only.
 - Prefer a visible degraded state over fake external data when a future provider is unavailable.
+- If no model variable is set, the app briefly checks the configured `/models` endpoint and selects the first non-embedding local model it finds.
 
 ## Install
 
@@ -135,9 +137,9 @@ There is no deployment target. The project runs locally through PowerShell.
 | Double-click does nothing visible | Windows did not execute the PowerShell script directly | Open `Launch Local Agent Town.cmd` | Use the `.cmd` launcher, which calls the PowerShell launcher with the right policy |
 | Window does not open | Display or Pygame issue | `.\.venv\Scripts\python.exe -m agent_town --smoke-test` | Reinstall through `.\setup.ps1`; check local graphics environment |
 | Agent does not follow a suggestion | Suggestion did not include a known place or supported keyword | Inspect pending suggestions in the panel | Use place names like `Archive Library` or keywords like `study`, `eat`, `talk`, `rest`, `work` |
-| Local model shows disabled | `AGENT_TOWN_LLM_MODEL` is not set | Inspect the Local Model row | Set the model name exactly as the local server expects it |
+| Local model shows disabled | No model variable was set and startup discovery found no local chat model, or `AGENT_TOWN_LLM_AUTO_DISCOVER=0` | Inspect the Local Model row | Start LM Studio/Ollama before launching, or set `AGENT_TOWN_LLM_MODEL` exactly as the local server expects it |
 | Local model shows offline | LM Studio/Ollama server is not running or URL is wrong | Check `AGENT_TOWN_LLM_BASE_URL` | Start the local server or change the URL |
-| Local model shows invalid reply | Model returned malformed JSON or unknown destination/agent | Inspect the Local Model row | Use a smaller/faster instruct model and keep max tokens low |
+| Local model shows invalid reply | Model returned malformed JSON, unknown destination/agent, or the server rejected the request payload | Inspect the Local Model row | Use a smaller/faster instruct model and keep max tokens low |
 | Workbench validation fails | Required docs missing headings or unresolved placeholders | `.\scripts\validate-workbench.ps1` | Update the named doc and rerun validation |
 
 ## Recovery And Rollback

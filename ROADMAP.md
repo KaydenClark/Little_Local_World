@@ -12,7 +12,7 @@ The project has a local Python desktop slice: a Pygame town viewer, ten autonomo
 Important drift or uncertainty:
 
 - Pygame was not installed globally when the project was created; local `.venv` setup is required.
-- LLM-backed planning is implemented as an optional local OpenAI-compatible adapter. It is disabled unless `AGENT_TOWN_LLM_MODEL` is set.
+- LLM-backed planning is implemented as an optional local OpenAI-compatible adapter. It uses `AGENT_TOWN_LLM_MODEL` when set, otherwise it quickly discovers a local non-embedding model from the configured `/models` endpoint when LM Studio/Ollama is already running.
 - Persistence is not implemented yet.
 
 ## Current Goal
@@ -68,3 +68,4 @@ Append a row when a task changes durable project state. Use actual results, not 
 | 2026-06-26 | Bootstrap prototype and adopt workbench structure | `.\setup.ps1`; `.\.venv\Scripts\python.exe -m unittest discover -s tests`; `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1` | pass | LLM-backed planning and persistence remain deferred |
 | 2026-06-26 | Add optional local LLM planning and Kenney sprite viewer slice | `.\.venv\Scripts\python.exe -m unittest discover -s tests`; `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1` | pass | Manual LM Studio/Ollama model tuning remains next |
 | 2026-06-26 | Prepare main branch publish to GitHub | `gh repo view KaydenClark/Little_Local_World --json nameWithOwner,defaultBranchRef,isPrivate,isArchived,url`; `.\scripts\validate-workbench.ps1` | pass | GitHub push performed after this row |
+| 2026-06-26 | Fix LM Studio local planning startup | `.\.venv\Scripts\python.exe -m unittest discover -s tests`; `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; live `LocalLLMClient.from_env()` request against `http://localhost:1234/v1` auto-selected `google/gemma-4-e4b` | pass | Already-running game windows must be closed and relaunched to pick up the fix |

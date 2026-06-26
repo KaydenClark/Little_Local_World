@@ -1,5 +1,7 @@
+import os
 import time
 import unittest
+from unittest.mock import patch
 
 from agent_town.core import create_default_simulation
 from agent_town.llm import LLMClientError, LLMDecisionScheduler, LocalLLMClient, build_decision_context
@@ -11,7 +13,10 @@ class LocalLLMClientTests(unittest.TestCase):
 
         def fake_post(payload, timeout):
             self.assertEqual(payload["model"], "gemma-4-e4b-it")
-            self.assertEqual(payload["response_format"]["type"], "json_object")
+            self.assertEqual(payload["response_format"]["type"], "json_schema")
+            schema = payload["response_format"]["json_schema"]["schema"]
+            self.assertIn("destination", schema["required"])
+            self.assertIn("intent", schema["required"])
             self.assertLessEqual(payload["max_tokens"], 220)
             return {
                 "choices": [
@@ -41,6 +46,52 @@ class LocalLLMClientTests(unittest.TestCase):
         self.assertEqual(decision.destination, "Archive Library")
         self.assertEqual(decision.relationship_target, "orin")
         self.assertAlmostEqual(decision.relationship_effect, 0.03)
+
+    def test_from_env_discovers_local_chat_model_when_model_is_unset(self):
+        with patch.dict(
+            os.environ,
+            {
+                "AGENT_TOWN_LLM_BASE_URL": "http://localhost:1234/v1",
+                "AGENT_TOWN_LLM_TIMEOUT": "4",
+            },
+            clear=True,
+        ):
+            client = LocalLLMClient.from_env(
+                model_discovery=lambda base_url, timeout: "google/gemma-4-e4b"
+            )
+
+        self.assertTrue(client.enabled)
+        self.assertEqual(client.model, "google/gemma-4-e4b")
+        self.assertEqual(client.base_url, "http://localhost:1234/v1")
+
+    def test_from_env_model_setting_overrides_discovery(self):
+        discovered = []
+
+        def discovery(base_url, timeout):
+            discovered.append(base_url)
+            return "google/gemma-4-e4b"
+
+        with patch.dict(
+            os.environ,
+            {
+                "AGENT_TOWN_LLM_MODEL": "qwen/qwen3.5-9b",
+                "AGENT_TOWN_LLM_BASE_URL": "http://localhost:1234/v1",
+            },
+            clear=True,
+        ):
+            client = LocalLLMClient.from_env(model_discovery=discovery)
+
+        self.assertEqual(client.model, "qwen/qwen3.5-9b")
+        self.assertEqual(discovered, [])
+
+    def test_from_env_stays_disabled_when_discovery_fails(self):
+        def discovery(base_url, timeout):
+            raise LLMClientError("no local server")
+
+        with patch.dict(os.environ, {}, clear=True):
+            client = LocalLLMClient.from_env(model_discovery=discovery)
+
+        self.assertFalse(client.enabled)
 
     def test_adapter_reports_timeout_as_client_error(self):
         def fake_post(payload, timeout):

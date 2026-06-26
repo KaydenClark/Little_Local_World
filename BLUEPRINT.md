@@ -49,7 +49,7 @@ The most important quality bar is:
 | Runtime | Python 3.11 or newer | Verified locally with Python 3.11.6 |
 | Frontend | Pygame desktop window | No browser runtime |
 | Backend | None | Simulation runs in-process |
-| Optional local AI | OpenAI-compatible chat completions adapter | Disabled unless `AGENT_TOWN_LLM_MODEL` is set |
+| Optional local AI | OpenAI-compatible chat completions adapter | Uses `AGENT_TOWN_LLM_MODEL` when set; otherwise quickly discovers a local non-embedding model from `/models` if LM Studio/Ollama is already running |
 | Database or storage | None yet | Persistence deferred |
 | Auth | None | Local-only prototype |
 | Testing | Standard library `unittest` | Tests cover simulation core |
@@ -140,14 +140,14 @@ Rules:
 - Keep the base project local-only.
 - Do not commit `.venv`, logs, databases, private exports, tokens, or generated dumps.
 - Do not enable hosted LLM providers, telemetry, or external persistence without explicit user approval.
-- Local LLM use must remain opt-in through environment variables.
+- Local LLM use must remain local-only. `AGENT_TOWN_LLM_MODEL` overrides discovery, and `AGENT_TOWN_LLM_AUTO_DISCOVER=0` disables startup discovery when the user wants deterministic non-LLM runs.
 
 ## Known Risks
 
 | Risk | Impact | Mitigation or owner |
 |---|---|---|
 | Pygame dependency missing | Viewer cannot launch | Use `setup.ps1`; smoke-test import after install |
-| Local model offline or slow | Agents could appear not to think | Keep deterministic fallback and visible model status |
+| Local model offline, slow, or rejecting request payloads | Agents could appear not to think | Keep deterministic fallback, use JSON Schema structured output, and show visible model status |
 | NPC behavior is still lightweight | Agents can feel repetitive | Add persistence and deeper memory after prototype is stable |
 | No persistence yet | Simulation history is lost on close | Add SQLite after the live viewer loop is proven |
 
