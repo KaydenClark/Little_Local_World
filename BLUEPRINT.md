@@ -1,6 +1,6 @@
 # Local Agent Town - Blueprint
 
-**Last reviewed:** 2026-06-26  
+**Last reviewed:** 2026-06-27
 **Status:** active  
 **Source root:** `E:\GPTCode\local-agent-town`
 
@@ -50,7 +50,7 @@ The most important quality bar is:
 | Frontend | Pygame desktop window | No browser runtime |
 | Backend | None | Simulation runs in-process |
 | Optional local AI | OpenAI-compatible chat completions adapter | Uses `AGENT_TOWN_LLM_MODEL` when set; otherwise quickly discovers a local non-embedding model from `/models` if LM Studio/Ollama is already running |
-| Database or storage | None yet | Persistence deferred |
+| Database or storage | SQLite snapshot helper | Library-level save/load for simulation state and replay events |
 | Auth | None | Local-only prototype |
 | Testing | Standard library `unittest` | Tests cover simulation core |
 | Deployment or runtime | Local PowerShell scripts | `setup.ps1` and `run.ps1` |
@@ -60,6 +60,7 @@ Architecture constraints:
 - Keep simulation logic in `src\agent_town\core.py` testable without Pygame.
 - Keep rendering and input in `src\agent_town\app.py`.
 - Keep local model calls in `src\agent_town\llm.py`; never block the Pygame loop on model output.
+- Keep serializable world state, replay events, planner contracts, pathfinding seams, and model profiles outside the Pygame renderer.
 - Do not add web server or browser UI unless the user reverses the non-web requirement.
 - Treat LLM integration as an adapter layer, not as a replacement for deterministic core state transitions.
 
@@ -86,6 +87,8 @@ E:\GPTCode\local-agent-town\
 |---|---|---|---|
 | Pygame town viewer | Watch NPCs move, pan, zoom, select agents, and suggest ideas | working prototype | `src\agent_town\app.py` |
 | Local LLM scheduler | Stagger occasional local-model planning turns without blocking the viewer | working prototype | `src\agent_town\llm.py` |
+| Snapshot persistence | Save and restore serializable simulation snapshots and replay events | working library helper | `src\agent_town\persistence.py` |
+| Scale benchmark harness | Measure rule-agent tick cost before engine changes | working script | `scripts\benchmark_scale.py` |
 
 ### Commands
 
@@ -96,6 +99,7 @@ E:\GPTCode\local-agent-town\
 | `.\.venv\Scripts\python.exe -m unittest discover -s tests` | Run core tests | yes for behavior changes |
 | `.\.venv\Scripts\python.exe -m agent_town --smoke-test` | Verify viewer imports, opens, draws briefly, and exits | yes for viewer changes |
 | `.\scripts\validate-workbench.ps1` | Validate workbench docs | yes for doc structure changes |
+| `.\.venv\Scripts\python.exe .\scripts\benchmark_scale.py --agents 100 500 1000` | Run rule-agent scale benchmark | yes before engine-scale decisions |
 
 ### Data Model
 
@@ -107,6 +111,11 @@ E:\GPTCode\local-agent-town\
 | `EventEntry` | tick, text | memory only | Short town feed |
 | `DecisionResult` | destination, intent, optional speech, optional memory, optional relationship effect | memory only | Validated output from local LLM planning |
 | `Simulation` | locations, agents, tick, random seed | memory only | Owns simulation step and social interactions |
+| `WorldState` | serializable locations, agents, events, replay events | memory, optional SQLite snapshot | Save/replay boundary |
+| `ReplayEvent` | tick, elapsed, kind, payload | memory, optional SQLite snapshot | Debug/replay event stream |
+| `PlannerRequest` / `PlannerResult` | agent id, world snapshot, context, validated plan fields | memory only | LLM planning boundary |
+| `RenderSnapshot` | serializable world state plus visible/selected ids | memory only | Renderer handoff seam |
+| `ModelProfile` | model name, tier, context, RAM/VRAM estimate, concurrency, notes | memory only | Local/API model benchmark planning |
 
 ## Core Logic And Invariants
 
@@ -120,6 +129,9 @@ Rules:
 - The viewer may show local model state but must not block waiting for model output.
 - Movement, needs, location effects, and conversations must be testable without Pygame.
 - Renderer code may read simulation state but should not duplicate decision logic.
+- LLM contexts must be capped to relevant nearby or high-relationship agents, with omitted counts visible to the planner.
+- The Pygame renderer must use viewport culling, label level-of-detail, and scaled sprite caching before an engine migration is considered.
+- Save/load must serialize simulation state and replay events, not Pygame surfaces or renderer objects.
 
 Do not duplicate this logic in:
 
@@ -149,7 +161,9 @@ Rules:
 | Pygame dependency missing | Viewer cannot launch | Use `setup.ps1`; smoke-test import after install |
 | Local model offline, slow, or rejecting request payloads | Agents could appear not to think | Keep deterministic fallback, use JSON Schema structured output, and show visible model status |
 | NPC behavior is still lightweight | Agents can feel repetitive | Add persistence and deeper memory after prototype is stable |
-| No persistence yet | Simulation history is lost on close | Add SQLite after the live viewer loop is proven |
+| Pygame render scale | Large visible crowds can exceed frame budget | Culling, label LOD, scaled sprite cache, and benchmark proof before engine migration |
+| Prompt/context bloat | More agents could create giant local-model prompts | Cap planner context to relevant agents and record omitted counts |
+| Persistence has no user-facing controls yet | Save/load is available to tests and helpers, not the viewer UI | Add UI or CLI only after the snapshot contract is stable |
 
 ## Design Decisions
 
@@ -160,6 +174,7 @@ Rules:
 | Workbench docs adopted | User requested `KaydenClark/LLM_Workbench` project structure | 2026-06-26 user request |
 | OpenAI-compatible local model adapter | Supports LM Studio and Ollama without hosted services or provider lock-in | 2026-06-26 implementation |
 | Kenney CC0 sprites bundled from local zips | Improves watchability while keeping original zip files untouched | 2026-06-26 implementation |
+| Partial scale-up without engine migration | Benchmarks, snapshots, replay events, bounded planner context, and render guardrails reduce migration risk while keeping Pygame | 2026-06-27 implementation |
 
 ## Health Criteria
 

@@ -1,6 +1,6 @@
 # Local Agent Town - Runbook
 
-**Last reviewed:** 2026-06-26  
+**Last reviewed:** 2026-06-27
 **Runtime owner:** Kayden  
 **Environment:** local desktop
 
@@ -116,14 +116,31 @@ Expected result:
 - Smoke test exits without import or display errors.
 - Workbench validation passes.
 
+Scale benchmark:
+
+```powershell
+.\.venv\Scripts\python.exe .\scripts\benchmark_scale.py --agents 100 500 1000 --iterations 60
+```
+
+Expected result:
+
+- The script prints one row per agent count.
+- `PASS` means the p95 rule-agent tick time is below the current 8ms threshold.
+- `FAIL` means the next scale-up decision needs profiling before adding more systems or switching engines.
+
 ## Data Operations
 
-There are no seed, migration, backup, or restore commands yet.
+SQLite snapshot helpers exist for tests and future tools:
+
+- `agent_town.persistence.save_snapshot(path, sim)` writes serializable simulation state and replay events.
+- `agent_town.persistence.load_snapshot(path, snapshot_id)` reads a `WorldState`.
+- `agent_town.persistence.load_simulation(path, snapshot_id)` restores a `Simulation`.
 
 Safety rules:
 
-- Do not add persistent local databases without updating `BLUEPRINT.md`, `RUNBOOK.md`, and tests.
+- Do not store snapshots in committed paths.
 - Do not store real private data in agent memories unless the user explicitly approves that use.
+- Do not persist Pygame surfaces, raw model prompts, model credentials, or renderer objects.
 
 ## Deployment Or Startup
 

@@ -4,7 +4,7 @@ import unittest
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 
 from agent_town.app import EMOTE_TO_ATLAS_NAME, App, Camera, load_sprite_assets, parse_args
-from agent_town.core import create_default_simulation
+from agent_town.core import Agent, create_default_simulation
 
 
 class CameraTests(unittest.TestCase):
@@ -24,6 +24,16 @@ class CameraTests(unittest.TestCase):
 
         self.assertLess(camera.x, 999999)
         self.assertGreater(camera.y, -999999)
+
+    def test_visible_world_rect_matches_camera_viewport(self):
+        camera = Camera(x=400, y=250, zoom=1.0)
+
+        left, top, right, bottom = camera.visible_world_rect()
+
+        self.assertLess(left, 400)
+        self.assertLess(top, 250)
+        self.assertGreater(right, 400)
+        self.assertGreater(bottom, 250)
 
 
 class SpriteAssetLoadingTests(unittest.TestCase):
@@ -71,6 +81,38 @@ class AppSmokeTests(unittest.TestCase):
                 app._select_next_agent()
                 seen.add(app.selected_id)
             self.assertEqual(seen, set(app.sim.agents))
+        finally:
+            app.llm_scheduler.shutdown(wait=True)
+
+    def test_visible_agent_query_culls_offscreen_agents(self):
+        sim = create_default_simulation()
+        sim.agents["offscreen"] = Agent(
+            "offscreen",
+            "Offscreen",
+            100000,
+            100000,
+            (255, 255, 255),
+            ("test",),
+            destination="Town Square",
+            home="North Apartments",
+            workplace="Maker Hall",
+        )
+        app = App(sim, smoke_test=True)
+        try:
+            visible_ids = {agent.id for agent in app._visible_agents()}
+            self.assertNotIn("offscreen", visible_ids)
+            self.assertIn(app.selected_id, visible_ids)
+        finally:
+            app.llm_scheduler.shutdown(wait=True)
+
+    def test_scaled_sprite_cache_reuses_scaled_surfaces(self):
+        app = App(create_default_simulation(), smoke_test=True)
+        try:
+            self.assertEqual(app.scaled_sprite_cache_size, 0)
+            self.assertTrue(app._draw_tile_sprite(app.assets.characters, 0, 10, 10, 24))
+            self.assertEqual(app.scaled_sprite_cache_size, 1)
+            self.assertTrue(app._draw_tile_sprite(app.assets.characters, 0, 20, 20, 24))
+            self.assertEqual(app.scaled_sprite_cache_size, 1)
         finally:
             app.llm_scheduler.shutdown(wait=True)
 

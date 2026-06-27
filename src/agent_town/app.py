@@ -18,6 +18,9 @@ SCREEN_HEIGHT = 800
 PANEL_WIDTH = 330
 MIN_ZOOM = 0.35
 MAX_ZOOM = 2.25
+AGENT_LABEL_MIN_ZOOM = 0.58
+MAX_AGENT_LABELS = 80
+SPRITE_CACHE_LIMIT = 512
 BACKGROUND = (10, 10, 10)
 WORLD_BG = (25, 25, 25)
 GRID = (71, 71, 71)
@@ -61,6 +64,16 @@ class Camera:
         return (
             (x - (SCREEN_WIDTH - PANEL_WIDTH) / 2) / self.zoom + self.x,
             (y - SCREEN_HEIGHT / 2) / self.zoom + self.y,
+        )
+
+    def visible_world_rect(self, *, padding: float = 0.0) -> tuple[float, float, float, float]:
+        left, top = self.screen_to_world(0, 0)
+        right, bottom = self.screen_to_world(SCREEN_WIDTH - PANEL_WIDTH, SCREEN_HEIGHT)
+        return (
+            min(left, right) - padding,
+            min(top, bottom) - padding,
+            max(left, right) + padding,
+            max(top, bottom) + padding,
         )
 
     def clamp(self) -> None:
@@ -128,8 +141,13 @@ class App:
         self.selected_id = next(iter(sim.agents))
         self.input_active = False
         self.input_text = ""
+        self._scaled_sprite_cache: dict[tuple[int, int, int], pygame.Surface] = {}
         llm_client = LocalLLMClient(model=None) if smoke_test else LocalLLMClient.from_env()
         self.llm_scheduler = LLMDecisionScheduler(llm_client)
+
+    @property
+    def scaled_sprite_cache_size(self) -> int:
+        return len(self._scaled_sprite_cache)
 
     def run(self) -> None:
         frames = 0
@@ -222,7 +240,7 @@ class App:
         self.camera.clamp()
 
     def _agent_at_screen(self, pos: tuple[int, int]) -> Agent | None:
-        for agent in self.sim.agents.values():
+        for agent in self._visible_agents(padding=24):
             sx, sy = self.camera.world_to_screen(agent.x, agent.y)
             if (sx - pos[0]) ** 2 + (sy - pos[1]) ** 2 <= 18**2:
                 return agent
@@ -248,11 +266,16 @@ class App:
         pygame.draw.rect(self.screen, (83, 97, 88), (*top_left, *size), width=2, border_radius=4)
 
         grid_step = 160
-        for x in range(0, WORLD_WIDTH + 1, grid_step):
+        left, top, right, bottom = self.camera.visible_world_rect(padding=grid_step)
+        start_x = max(0, int(left // grid_step) * grid_step)
+        end_x = min(WORLD_WIDTH, int(right // grid_step + 1) * grid_step)
+        start_y = max(0, int(top // grid_step) * grid_step)
+        end_y = min(WORLD_HEIGHT, int(bottom // grid_step + 1) * grid_step)
+        for x in range(start_x, end_x + 1, grid_step):
             start = self.camera.world_to_screen(x, 0)
             end = self.camera.world_to_screen(x, WORLD_HEIGHT)
             pygame.draw.line(self.screen, GRID, start, end, 1)
-        for y in range(0, WORLD_HEIGHT + 1, grid_step):
+        for y in range(start_y, end_y + 1, grid_step):
             start = self.camera.world_to_screen(0, y)
             end = self.camera.world_to_screen(WORLD_WIDTH, y)
             pygame.draw.line(self.screen, GRID, start, end, 1)
@@ -281,7 +304,7 @@ class App:
             )
 
     def _draw_locations(self) -> None:
-        for location in self.sim.locations.values():
+        for location in self._visible_locations(padding=120):
             sx, sy = self.camera.world_to_screen(location.x, location.y)
             radius = max(10, int(location.radius * self.camera.zoom))
             color = self._location_color(location)
@@ -297,7 +320,9 @@ class App:
             self._draw_text(location.name, sx - radius, sy + radius + 6, self.small_font, MUTED)
 
     def _draw_agents(self) -> None:
-        for agent in self.sim.agents.values():
+        visible_agents = self._visible_agents(padding=80)
+        show_labels = self.camera.zoom >= AGENT_LABEL_MIN_ZOOM and len(visible_agents) <= MAX_AGENT_LABELS
+        for agent in visible_agents:
             sx, sy = self.camera.world_to_screen(agent.x, agent.y)
             selected = agent.id == self.selected_id
             if selected:
@@ -313,7 +338,8 @@ class App:
             if not drew_sprite:
                 pygame.draw.circle(self.screen, agent.color, (sx, sy), 12)
                 pygame.draw.circle(self.screen, (13, 18, 22), (sx, sy), 12, width=2)
-            self._draw_text(agent.name, sx - 16, sy - 34, self.small_font, TEXT)
+            if selected or show_labels:
+                self._draw_text(agent.name, sx - 16, sy - 34, self.small_font, TEXT)
             self._draw_agent_emote(agent, sx, sy)
             if selected:
                 destination = self.sim.locations[agent.destination]
@@ -424,9 +450,34 @@ class App:
         if rect.right > sheet.get_width() or rect.bottom > sheet.get_height():
             return False
         sprite = sheet.subsurface(rect)
-        scaled = pygame.transform.scale(sprite, (size, size))
+        cache_key = (id(sheet), index, size)
+        scaled = self._scaled_sprite_cache.get(cache_key)
+        if scaled is None:
+            if len(self._scaled_sprite_cache) >= SPRITE_CACHE_LIMIT:
+                self._scaled_sprite_cache.clear()
+            scaled = pygame.transform.scale(sprite, (size, size))
+            self._scaled_sprite_cache[cache_key] = scaled
         self.screen.blit(scaled, (center_x - size // 2, center_y - size // 2))
         return True
+
+    def _visible_agents(self, *, padding: float = 0.0) -> list[Agent]:
+        left, top, right, bottom = self.camera.visible_world_rect(padding=padding)
+        visible = [
+            agent
+            for agent in self.sim.agents.values()
+            if left <= agent.x <= right and top <= agent.y <= bottom
+        ]
+        if self.selected_id in self.sim.agents and all(agent.id != self.selected_id for agent in visible):
+            visible.append(self.sim.agents[self.selected_id])
+        return visible
+
+    def _visible_locations(self, *, padding: float = 0.0) -> list[Location]:
+        left, top, right, bottom = self.camera.visible_world_rect(padding=padding)
+        return [
+            location
+            for location in self.sim.locations.values()
+            if left <= location.x <= right and top <= location.y <= bottom
+        ]
 
     def _draw_agent_emote(self, agent: Agent, sx: int, sy: int) -> None:
         if not agent.emote or self.assets.emotes is None or self.assets.emote_rects is None:

@@ -3,6 +3,7 @@ from __future__ import annotations
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 import json
+from math import hypot
 import os
 import socket
 import time
@@ -306,22 +307,23 @@ class LLMDecisionScheduler:
         return True
 
 
-def build_decision_context(sim: Simulation, agent_id: str) -> dict[str, Any]:
+def build_decision_context(
+    sim: Simulation,
+    agent_id: str,
+    *,
+    max_other_agents: int = 8,
+    max_recent_events: int = 6,
+    max_memories: int = 5,
+) -> dict[str, Any]:
     if agent_id not in sim.agents:
         raise KeyError(f"Unknown agent: {agent_id}")
 
     agent = sim.agents[agent_id]
-    other_agents = [
-        {
-            "id": other.id,
-            "name": other.name,
-            "location": sim.agent_location_name(other),
-            "relationship": agent.relationships.get(other.id, 0.3),
-            "relationship_label": sim.relationship_label(agent, other.id),
-        }
-        for other in sim.agents.values()
-        if other.id != agent.id
-    ]
+    other_agents, omitted_other_agents = _rank_other_agents(
+        sim,
+        agent,
+        max_other_agents=max_other_agents,
+    )
     return {
         "tick": sim.tick,
         "elapsed": round(sim.elapsed, 1),
@@ -343,12 +345,51 @@ def build_decision_context(sim: Simulation, agent_id: str) -> dict[str, Any]:
                 "social": round(agent.social, 2),
                 "curiosity": round(agent.curiosity, 2),
             },
-            "recent_memories": [memory.text for memory in agent.memories[-5:]],
+            "recent_memories": _tail_texts([memory.text for memory in agent.memories], max_memories),
             "pending_suggestions": agent.suggestions[-2:],
         },
         "other_agents": other_agents,
-        "recent_events": [event.text for event in sim.events[-6:]],
+        "omitted_other_agents": omitted_other_agents,
+        "recent_events": _tail_texts([event.text for event in sim.events], max_recent_events),
     }
+
+
+def _rank_other_agents(
+    sim: Simulation,
+    agent: Agent,
+    *,
+    max_other_agents: int,
+) -> tuple[list[dict[str, Any]], int]:
+    limit = max(0, int(max_other_agents))
+    agent_location = sim.agent_location_name(agent)
+    ranked: list[tuple[tuple[int, float, float, str], dict[str, Any]]] = []
+    for other in sim.agents.values():
+        if other.id == agent.id:
+            continue
+        other_location = sim.agent_location_name(other)
+        relationship = agent.relationships.get(other.id, 0.3)
+        distance = hypot(agent.x - other.x, agent.y - other.y)
+        row = {
+            "id": other.id,
+            "name": other.name,
+            "location": other_location,
+            "relationship": round(relationship, 3),
+            "relationship_label": sim.relationship_label(agent, other.id),
+            "distance": round(distance, 1),
+        }
+        priority = 0 if relationship >= 0.75 else 1 if other_location == agent_location else 2
+        ranked.append(((priority, -relationship, distance, other.id), row))
+
+    ranked.sort(key=lambda item: item[0])
+    selected = [row for _, row in ranked[:limit]]
+    return selected, max(0, len(ranked) - len(selected))
+
+
+def _tail_texts(values: list[str], limit: int) -> list[str]:
+    count = max(0, int(limit))
+    if count == 0:
+        return []
+    return values[-count:]
 
 
 def parse_decision_response(response: dict[str, Any]) -> DecisionResult:

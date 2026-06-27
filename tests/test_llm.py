@@ -3,7 +3,7 @@ import time
 import unittest
 from unittest.mock import patch
 
-from agent_town.core import create_default_simulation
+from agent_town.core import Agent, create_default_simulation
 from agent_town.llm import LLMClientError, LLMDecisionScheduler, LocalLLMClient, build_decision_context
 
 
@@ -119,6 +119,42 @@ class LocalLLMClientTests(unittest.TestCase):
 
         with self.assertRaisesRegex(LLMClientError, "valid JSON"):
             client.request_decision(build_decision_context(create_default_simulation(), "mira"))
+
+    def test_decision_context_caps_other_agents_by_relevance(self):
+        sim = create_default_simulation()
+        mira = sim.agents["mira"]
+        for index in range(20):
+            sim.agents[f"extra{index}"] = Agent(
+                f"extra{index}",
+                f"Extra {index}",
+                mira.x + index,
+                mira.y + index,
+                (100, 100, 100),
+                ("test",),
+                destination="Town Square",
+                home="North Apartments",
+                workplace="Maker Hall",
+            )
+        sim.agents["far"] = Agent(
+            "far",
+            "Far",
+            2400,
+            1600,
+            (100, 100, 100),
+            ("test",),
+            destination="Maker Hall",
+            home="South Row Homes",
+            workplace="Maker Hall",
+        )
+        sim.agents["mira"].relationships["far"] = 0.95
+
+        context = build_decision_context(sim, "mira", max_other_agents=8)
+
+        self.assertEqual(len(context["other_agents"]), 8)
+        self.assertEqual(context["omitted_other_agents"], len(sim.agents) - 1 - 8)
+        self.assertIn("far", {agent["id"] for agent in context["other_agents"]})
+        for other in context["other_agents"]:
+            self.assertIn("distance", other)
 
 
 class LLMDecisionSchedulerTests(unittest.TestCase):

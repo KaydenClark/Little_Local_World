@@ -4,6 +4,15 @@ from dataclasses import dataclass, field
 from math import hypot
 import random
 
+from .contracts import (
+    AgentState,
+    EventState,
+    LocationState,
+    MemoryState,
+    ReplayEvent,
+    WorldState,
+)
+
 
 WORLD_WIDTH = 2400
 WORLD_HEIGHT = 1600
@@ -92,6 +101,26 @@ class Agent:
             self.decision_cooldown = 0.0
 
 
+class SpatialIndex:
+    def __init__(self, agents: list[Agent], *, cell_size: float = 128.0) -> None:
+        self.cell_size = max(1.0, cell_size)
+        self.cells: dict[tuple[int, int], list[Agent]] = {}
+        for agent in agents:
+            self.cells.setdefault(self._cell_for(agent.x, agent.y), []).append(agent)
+
+    def nearby(self, agent: Agent, radius: float) -> list[Agent]:
+        cell_x, cell_y = self._cell_for(agent.x, agent.y)
+        span = int(radius // self.cell_size) + 1
+        nearby_agents: list[Agent] = []
+        for x in range(cell_x - span, cell_x + span + 1):
+            for y in range(cell_y - span, cell_y + span + 1):
+                nearby_agents.extend(self.cells.get((x, y), []))
+        return nearby_agents
+
+    def _cell_for(self, x: float, y: float) -> tuple[int, int]:
+        return int(x // self.cell_size), int(y // self.cell_size)
+
+
 class Simulation:
     def __init__(
         self,
@@ -107,6 +136,8 @@ class Simulation:
         self.elapsed = 0.0
         self.rng = random.Random(seed)
         self.events: list[EventEntry] = []
+        self.event_queue: list[ReplayEvent] = []
+        self.replay_log: list[ReplayEvent] = []
         self.record_event("Town day started.")
 
     def step(self, dt: float) -> None:
@@ -189,6 +220,75 @@ class Simulation:
         self.events.append(EventEntry(tick=self.tick, text=cleaned))
         if len(self.events) > MAX_EVENT_LOG:
             self.events = self.events[-MAX_EVENT_LOG:]
+        self.queue_event("town_feed", {"text": cleaned})
+
+    def queue_event(self, kind: str, payload: dict[str, object]) -> ReplayEvent:
+        event_kind = _clean_text(kind, 80)
+        if not event_kind:
+            raise ValueError("Replay event kind is required")
+        event = ReplayEvent(
+            tick=self.tick,
+            elapsed=round(self.elapsed, 3),
+            kind=event_kind,
+            payload=dict(payload),
+        )
+        self.event_queue.append(event)
+        self.replay_log.append(event)
+        return event
+
+    def drain_events(self) -> tuple[ReplayEvent, ...]:
+        events = tuple(self.event_queue)
+        self.event_queue.clear()
+        return events
+
+    def snapshot(self) -> WorldState:
+        return WorldState(
+            tick=self.tick,
+            elapsed=self.elapsed,
+            locations=tuple(
+                LocationState(
+                    name=location.name,
+                    x=location.x,
+                    y=location.y,
+                    kind=location.kind,
+                    radius=location.radius,
+                )
+                for location in self.locations.values()
+            ),
+            agents=tuple(
+                AgentState(
+                    id=agent.id,
+                    name=agent.name,
+                    x=agent.x,
+                    y=agent.y,
+                    color=agent.color,
+                    traits=agent.traits,
+                    energy=agent.energy,
+                    hunger=agent.hunger,
+                    social=agent.social,
+                    curiosity=agent.curiosity,
+                    activity=agent.activity,
+                    goal=agent.goal,
+                    destination=agent.destination,
+                    decision_cooldown=agent.decision_cooldown,
+                    conversation_cooldown=agent.conversation_cooldown,
+                    memories=tuple(MemoryState(memory.tick, memory.text) for memory in agent.memories),
+                    suggestions=tuple(agent.suggestions),
+                    relationships=tuple(sorted(agent.relationships.items())),
+                    home=agent.home,
+                    workplace=agent.workplace,
+                    preferred_places=agent.preferred_places,
+                    sprite_index=agent.sprite_index,
+                    last_speech=agent.last_speech,
+                    emote=agent.emote,
+                    emote_timer=agent.emote_timer,
+                    last_llm_turn=agent.last_llm_turn,
+                )
+                for agent in self.agents.values()
+            ),
+            events=tuple(EventState(event.tick, event.text) for event in self.events),
+            replay_events=tuple(self.replay_log),
+        )
 
     def agent_location_name(self, agent: Agent) -> str:
         closest = min(
@@ -351,16 +451,25 @@ class Simulation:
         return None
 
     def _resolve_social_interactions(self) -> None:
-        agents = list(self.agents.values())
-        for index, first in enumerate(agents):
+        agents = [agent for agent in self.agents.values() if agent.conversation_cooldown == 0]
+        location_names = {agent.id: self.agent_location_name(agent) for agent in agents}
+        index = SpatialIndex(agents)
+        started_pairs: set[tuple[str, str]] = set()
+        for first in agents:
             if first.conversation_cooldown > 0:
                 continue
-            for second in agents[index + 1 :]:
+            if location_names[first.id] == "between places":
+                continue
+            for second in index.nearby(first, 115):
+                if second.id == first.id:
+                    continue
+                pair = tuple(sorted((first.id, second.id)))
+                if pair in started_pairs:
+                    continue
+                started_pairs.add(pair)
                 if second.conversation_cooldown > 0:
                     continue
-                if self.agent_location_name(first) == "between places":
-                    continue
-                if self.agent_location_name(first) != self.agent_location_name(second):
+                if location_names.get(first.id) != location_names.get(second.id):
                     continue
                 if self._distance(first.x, first.y, second.x, second.y) > 115:
                     continue
@@ -585,3 +694,54 @@ def create_default_simulation() -> Simulation:
         ),
     ]
     return Simulation(locations, agents)
+
+
+def simulation_from_state(state: WorldState, *, seed: int = 7) -> Simulation:
+    locations = [
+        Location(
+            name=location.name,
+            x=location.x,
+            y=location.y,
+            kind=location.kind,
+            radius=location.radius,
+        )
+        for location in state.locations
+    ]
+    agents = [
+        Agent(
+            id=agent.id,
+            name=agent.name,
+            x=agent.x,
+            y=agent.y,
+            color=agent.color,
+            traits=agent.traits,
+            energy=agent.energy,
+            hunger=agent.hunger,
+            social=agent.social,
+            curiosity=agent.curiosity,
+            activity=agent.activity,
+            goal=agent.goal,
+            destination=agent.destination,
+            decision_cooldown=agent.decision_cooldown,
+            conversation_cooldown=agent.conversation_cooldown,
+            memories=[MemoryEntry(memory.tick, memory.text) for memory in agent.memories],
+            suggestions=list(agent.suggestions),
+            relationships=dict(agent.relationships),
+            home=agent.home,
+            workplace=agent.workplace,
+            preferred_places=agent.preferred_places,
+            sprite_index=agent.sprite_index,
+            last_speech=agent.last_speech,
+            emote=agent.emote,
+            emote_timer=agent.emote_timer,
+            last_llm_turn=agent.last_llm_turn,
+        )
+        for agent in state.agents
+    ]
+    sim = Simulation(locations, agents, seed=seed)
+    sim.tick = state.tick
+    sim.elapsed = state.elapsed
+    sim.events = [EventEntry(event.tick, event.text) for event in state.events]
+    sim.event_queue = []
+    sim.replay_log = list(state.replay_events)
+    return sim
