@@ -1,0 +1,80 @@
+import unittest
+
+from agent_town import governor
+from agent_town.core import (
+    ACTION_ASSIGN_PAWN,
+    ACTION_SET_SCHEDULE,
+    Building,
+    FactionState,
+    Good,
+    GovernorAction,
+    JobRef,
+    Pawn,
+    Recipe,
+)
+
+
+def wood_recipe():
+    return Recipe({Good.LOGS: 1}, {Good.PLANKS: 1}, 4.0, "woodcutting")
+
+
+def town():
+    state = FactionState()
+    state.buildings["saw1"] = Building(
+        id="saw1", kind="Sawmill", x=0, y=0, recipe=wood_recipe(), job_slots=1
+    )
+    state.pawns["ace"] = Pawn(id="ace", name="Ace", skills={"woodcutting": 8}, mood=0.7)
+    state.pawns["ben"] = Pawn(id="ben", name="Ben", skills={"woodcutting": 2}, mood=0.7)
+    return state
+
+
+class FallbackGovernorTests(unittest.TestCase):
+    def test_assigns_best_skill_pawn_to_open_slot(self):
+        actions = governor.FallbackGovernor().decide(governor.build_context(town()))
+        assigns = [a for a in actions if a.kind == ACTION_ASSIGN_PAWN]
+        self.assertEqual(len(assigns), 1)
+        self.assertEqual(assigns[0].pawn_id, "ace")
+        self.assertEqual(assigns[0].building_id, "saw1")
+        self.assertEqual(assigns[0].role, "woodcutting")
+
+    def test_reschedules_unhappy_pawn(self):
+        state = town()
+        state.pawns["ben"].mood = 0.2  # breaking
+        actions = governor.FallbackGovernor().decide(governor.build_context(state))
+        scheds = [a for a in actions if a.kind == ACTION_SET_SCHEDULE]
+        self.assertTrue(any(a.group == "ben" and a.template == "rest" for a in scheds))
+
+
+class ApplyActionsTests(unittest.TestCase):
+    def test_apply_assign_then_reject_full_building(self):
+        state = town()
+        ok = GovernorAction.assign_pawn("ace", "saw1", "woodcutting")
+        self.assertEqual(governor.apply_actions(state, [ok]), [ok])
+        self.assertIn("ace", state.buildings["saw1"].staffed_by)
+        self.assertEqual(state.pawns["ace"].assignment, JobRef("saw1", "woodcutting"))
+        self.assertFalse(
+            governor.validate_action(state, GovernorAction.assign_pawn("ben", "saw1", "woodcutting"))
+        )
+
+    def test_apply_set_schedule_all(self):
+        state = town()
+        applied = governor.apply_actions(state, [GovernorAction.set_schedule("all", "night")])
+        self.assertEqual(len(applied), 1)
+        self.assertTrue(all(p.schedule == "night" for p in state.pawns.values()))
+
+    def test_invalid_action_is_skipped(self):
+        state = town()
+        bad = GovernorAction.assign_pawn("ghost", "saw1", "woodcutting")
+        self.assertEqual(governor.apply_actions(state, [bad]), [])
+
+
+class ContextTests(unittest.TestCase):
+    def test_context_has_summary_roster_buildings_exceptions(self):
+        ctx = governor.build_context(town())
+        for key in ("faction", "roster", "buildings", "exceptions"):
+            self.assertIn(key, ctx)
+        self.assertEqual(ctx["faction"]["population"], 2)
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -1,6 +1,6 @@
-"""Phase 0 proof: the frozen colony contract imports, instantiates, and the
-cross-track seam is callable. The behavioural stubs honestly raise
-NotImplementedError until their owning track lands them.
+"""Colony contract proof: frozen core shapes import, instantiate, and the
+cross-track seam is callable. Behaviour not yet landed by its owning track still
+raises NotImplementedError honestly.
 
 Headless - no Pygame.
 """
@@ -129,22 +129,23 @@ class SkeletonTests(unittest.TestCase):
                 importlib.import_module(f"agent_town.{name}")
 
     def test_unimplemented_stubs_raise(self):
-        from agent_town import economy, governor, pawns, schedule
+        # Track B (pawns/mood/schedule/governor) is implemented; the remaining
+        # honest stubs are Track A (world/economy/buildings/construction).
+        from agent_town import buildings, construction, economy, world
 
         state = core.FactionState()
-        pawn = core.Pawn(id="p", name="P")
         with self.assertRaises(NotImplementedError):
             core.Stockpile().has(core.Good.LOGS, 1)
         with self.assertRaises(NotImplementedError):
             economy.daily_tax_income(state)
         with self.assertRaises(NotImplementedError):
-            pawns.decay_needs(pawn, 1.0)
+            world.generate_map(8, 8)
         with self.assertRaises(NotImplementedError):
-            schedule.advance_clock(state)
+            buildings.building_def("Sawmill")
         with self.assertRaises(NotImplementedError):
-            governor.build_context(state)
-        with self.assertRaises(NotImplementedError):
-            governor.FallbackGovernor().decide({})
+            construction.goods_satisfied(
+                core.ConstructionSite(id="c", building_kind="Sawmill", x=0, y=0)
+            )
 
 
 if __name__ == "__main__":

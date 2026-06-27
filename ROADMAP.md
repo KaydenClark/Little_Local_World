@@ -14,9 +14,15 @@ single-faction, LLM-governed colony builder. The authoritative build plan is
 Phase 0 is complete: the frozen colony contract lives in `core.py` (Good,
 GridMap, ResourceNode, Stockpile, Recipe, Building, ConstructionSite, Pawn,
 JobRef, ScheduleTemplate, FactionState, ColonyException, GovernorAction), eight
-stubbed colony modules exist (world, economy, buildings, construction, pawns,
-mood, schedule, governor), and the `effective_work` cross-track seam is defined
-in `mood.py` (returns a 1.0 placeholder until milestone B2).
+colony modules exist (world, economy, buildings, construction, pawns, mood,
+schedule, governor), and the `effective_work` cross-track seam is defined in
+`mood.py` (returns a 1.0 placeholder until milestone B2).
+
+Track B is complete (B1 to B4): schedule templates and clock rollover in
+`schedule.py`; need decay/restoration and the break state machine in `pawns.py`;
+the real `effective_work` seam plus trait/want mood modifiers in `mood.py`; and
+the exception queue, context builders, action validation/application, and the
+deterministic `FallbackGovernor` in `governor.py`.
 
 Important drift or uncertainty:
 
@@ -24,9 +30,13 @@ Important drift or uncertainty:
   the current `app.py`, `persistence.py`, `spatial.py`) is intentionally kept
   importable and green so the existing Pygame viewer keeps working. It is
   retired when the viewer is rewritten to render colony state at milestone I3.
-- Track A (world/economy/buildings/construction) and Track B (pawns/mood/
-  schedule/governor) behavioural bodies are still stubs raising
-  NotImplementedError.
+- Track A (world/economy/buildings/construction) behavioural bodies are still
+  stubs raising NotImplementedError. Integration I1 (wiring `effective_work`
+  into real production and running the fallback governor for N days) is blocked
+  on Track A landing.
+- The fallback governor emits `place_building`, but applying it builds a
+  construction site, which is Track A; `apply_actions` validates and emits it
+  and leaves realisation to the engine at integration.
 - Local LLM planning remains an optional local OpenAI-compatible adapter in
   `llm.py`, to be extended into the LLM governor at milestone I2.
 
@@ -101,3 +111,5 @@ Append a row when a task changes durable project state. Use actual results, not 
 | 2026-06-27 | Implement scale boundary slice | `.\.venv\Scripts\python.exe -m unittest discover -s tests`; `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; `.\.venv\Scripts\python.exe .\scripts\benchmark_scaling.py --agents 100 500 1000` | pass | Benchmark result: 1,000 synthetic agents measured 4.862 ms core step, 2.420 ms LLM context build, and 13.744 ms dummy draw frame; viewer save/load UI remains future work |
 | 2026-06-27 | Merge current `main` test coverage into scale boundary branch | `.\.venv\Scripts\python.exe -m unittest discover -s tests`; `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; `.\.venv\Scripts\python.exe .\scripts\benchmark_scaling.py --agents 100 500 1000` | pass | Latest merged benchmark result: 1,000 synthetic agents measured 4.617 ms core step, 2.399 ms LLM context build, and 12.477 ms dummy draw frame |
 | 2026-06-27 | Phase 0: freeze colony-builder contract and stub module skeletons | `.\.venv\Scripts\python.exe -m unittest discover -s tests`; `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1` | pass | Added the frozen colony contract to `core.py`, eight stubbed colony modules (world, economy, buildings, construction, pawns, mood, schedule, governor), and contract tests (65 tests, was 55). Behavioural bodies are stubbed for Track A and Track B; the `effective_work` seam returns a 1.0 placeholder. Legacy social-sim kept importable until the viewer is rewritten at milestone I3 |
+| 2026-06-27 | Track B B1: pawn needs, schedules, clock, and base mood | `.\.venv\Scripts\python.exe -m unittest tests.test_track_b_b1`; `.\.venv\Scripts\python.exe -m unittest tests.test_colony_contract tests.test_track_b_b1`; `.\.venv\Scripts\python.exe -m unittest discover -s tests`; `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1` | pass | Added 11 B1 tests. Implemented default/night/rest schedules, clock rollover, build-1 need decay/restoration, schedule-block restoration, and base mood from need satisfaction. B2 effective-work factors, B3 breaks/exceptions, and B4 governor remain pending |
+| 2026-06-27 | Track B B2 to B4: effective_work, breaks/exceptions, fallback governor | `.\.venv\Scripts\python.exe -m unittest discover -s tests`; `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1` | pass | Added 18 tests (94 total, was 76). Implemented the real `effective_work` seam (skill/mood/trait/schedule factors), trait/want mood modifiers, the break state machine, the governor exception queue, faction/roster/buildings context, action validate/apply, and the deterministic `FallbackGovernor`. Repointed the contract stub test at the remaining Track A stubs. Remaining gap: `place_building` is emitted but realised by Track A construction at integration I1 |
