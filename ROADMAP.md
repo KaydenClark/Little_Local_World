@@ -1,6 +1,6 @@
 # Little Local World - Roadmap
 
-**Current phase:** Track A2 one production chain
+**Current phase:** Track A3 construction
 **Owner:** Kayden and local coding agents
 
 This is the active work plan. Keep it forward-looking and proof-oriented.
@@ -16,6 +16,7 @@ Verified live state:
 - Phase 0 now adds the colony-builder frozen contract in `src/agent_town/core.py`.
 - Skeleton modules now exist for `world`, `economy`, `buildings`, `construction`, `pawns`, `mood`, `schedule`, and `governor`.
 - Track A1 now implements stockpile `add/remove/has`, grid map creation, map validation, and deterministic starter resource nodes.
+- Track A2 now implements Forester and Sawmill building definitions plus deterministic headless logs-to-planks production with temporary staffing through `Building.staffed_by`.
 - Remaining Track A and Track B behavior is intentionally explicit stubs until each milestone implements it.
 
 Important drift or uncertainty:
@@ -27,26 +28,25 @@ Important drift or uncertainty:
 
 ## Current Goal
 
-Build the first deterministic production chain on top of the Track A1 map and stockpile primitives.
+Build the first construction flow on top of the Track A1 stockpile and Track A2 wood-chain primitives.
 
 Done when:
 
-- Forester produces logs into the stockpile;
-- Sawmill consumes logs and produces planks;
-- the chain runs headless with temporary staffing;
-- targeted production tests pass;
+- construction sites accept partial delivery from the stockpile;
+- insufficient stock leaves site and stockpile state unchanged;
+- delivered materials plus work flip a site into a built building;
+- targeted construction tests pass;
 - the full test suite, smoke test, and workbench validation pass.
 
 ## Next Tasks
 
-1. **Track A2: one production chain** - implement Forester to logs and Sawmill to planks with temporary staffing. Proof: seeded headless run produces planks and tests assert counts.
-2. **Track A3: construction** - implement `ConstructionSite` delivery and work completion. Proof: tests for partial delivery, insufficient goods, and built completion.
-3. **Track A4: multi-chain plus tax** - add food and stone chains, daily coin from mood/population/tax, and coin-gated building placement. Proof: tests for income scaling and build blocked by low coin.
-4. **Track B1: pawns, needs, schedule, mood** - implement needs decay/restoration, schedule templates, and base mood. Proof: day-cycle tests.
-5. **Track B2: effective work** - implement the skill, mood, trait, and schedule formula behind `effective_work`. Proof: table-driven tests.
-6. **Track B3: traits, wants, breaks, exceptions** - implement break state and exception queue. Proof: starved or overworked pawn breaks and emits the right exception.
-7. **Track B4: context and fallback Governor** - implement summary context and greedy fallback decisions. Proof: fallback assigns by best skill and reschedules unhappy pawns.
-8. **Integration I1-I3** - wire pawns to production, add LLM Governor after fallback works, then render new state in Pygame. Proof: fallback keeps twelve pawns alive over N days, LLM run logs decisions, viewer smoke test opens and exits.
+1. **Track A3: construction** - implement `ConstructionSite` delivery and work completion. Proof: tests for partial delivery, insufficient goods, and built completion.
+2. **Track A4: multi-chain plus tax** - add food and stone chains, daily coin from mood/population/tax, and coin-gated building placement. Proof: tests for income scaling and build blocked by low coin.
+3. **Track B1: pawns, needs, schedule, mood** - implement needs decay/restoration, schedule templates, and base mood. Proof: day-cycle tests.
+4. **Track B2: effective work** - implement the skill, mood, trait, and schedule formula behind `effective_work`. Proof: table-driven tests.
+5. **Track B3: traits, wants, breaks, exceptions** - implement break state and exception queue. Proof: starved or overworked pawn breaks and emits the right exception.
+6. **Track B4: context and fallback Governor** - implement summary context and greedy fallback decisions. Proof: fallback assigns by best skill and reschedules unhappy pawns.
+7. **Integration I1-I3** - wire pawns to production, add LLM Governor after fallback works, then render new state in Pygame. Proof: fallback keeps twelve pawns alive over N days, LLM run logs decisions, viewer smoke test opens and exits.
 
 ## Blocked Or Deferred
 
@@ -95,3 +95,4 @@ Append a row when a task changes durable project state. Use actual results, not 
 | 2026-06-27 | Partially scale architecture while keeping Pygame | `.\.venv\Scripts\python.exe -m unittest discover -s tests`; `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\.venv\Scripts\python.exe .\scripts\benchmark_scale.py --agents 100 500 1000 --iterations 10`; `.\scripts\validate-workbench.ps1` | pass | Full render benchmarks, LM Studio model-memory pass, and viewer save/load controls remain next |
 | 2026-06-27 | Phase 0 colony-builder contract freeze | `./.venv/bin/python -m unittest tests.test_colony_contract`; `./.venv/bin/python -m unittest discover -s tests`; `./.venv/bin/python -m agent_town --smoke-test`; `pwsh -File scripts/validate-workbench.ps1` | pass | Track A and Track B behavior remains intentionally stubbed; commit-to-main handoff not performed from this branch |
 | 2026-06-27 | Track A1 map, nodes, and stockpile | `./.venv/bin/python -m unittest tests.test_world_a1 tests.test_colony_contract`; `./.venv/bin/python -m unittest discover -s tests`; `./.venv/bin/python -m agent_town --smoke-test`; `pwsh -File scripts/validate-workbench.ps1`; `git diff --check` | pass | Track A2 production chain remains next |
+| 2026-06-27 | Track A2 one wood production chain | `./.venv/bin/python -m unittest tests.test_economy_a2 tests.test_world_a1 tests.test_colony_contract`; `./.venv/bin/python -m unittest discover -s tests`; `./.venv/bin/python -m agent_town --smoke-test`; `pwsh -File scripts/validate-workbench.ps1`; `git diff --check` | pass | Track A3 construction remains next |
