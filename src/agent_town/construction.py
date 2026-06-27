@@ -6,6 +6,30 @@ from .core import ConstructionSite, FactionState, Good
 
 CONSTRUCTION_REQUIRED = {Good.PLANKS: 4, Good.STONE: 2}
 CONSTRUCTION_WORK_UNITS = 4.0
+BUILDING_COSTS = {
+    "Forester": 4,
+    "Sawmill": 8,
+    "Farm": 4,
+    "Mill": 8,
+    "Bakery": 10,
+    "Quarry": 6,
+}
+
+
+def building_cost(building_kind: str) -> int:
+    building = create_building(building_kind, 0, 0)
+    return BUILDING_COSTS[building.kind]
+
+
+def place_building(state: FactionState, building_kind: str, x: int, y: int) -> ConstructionSite:
+    cost = building_cost(building_kind)
+    if state.coin < cost:
+        raise ValueError(f"Insufficient coin: need {cost}, have {state.coin}")
+
+    site = create_construction_site(building_kind, x, y)
+    state.coin -= cost
+    state.construction_sites.append(site)
+    return site
 
 
 def create_construction_site(building_kind: str, x: int, y: int) -> ConstructionSite:

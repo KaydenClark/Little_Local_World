@@ -3,11 +3,31 @@ from __future__ import annotations
 from .core import Building, FactionState, Good, Stockpile
 
 
+TAX_BASE_COIN_PER_PAWN = 10
+
+
 def advance_economy(state: FactionState, dt: float) -> None:
     if dt <= 0:
         return
     for building in state.buildings:
         _advance_building_production(state.stockpile, building, dt)
+
+
+def advance_day(state: FactionState) -> int:
+    income = collect_daily_tax(state)
+    state.day += 1
+    state.time_of_day = 0
+    return income
+
+
+def collect_daily_tax(state: FactionState) -> int:
+    if not state.pawns:
+        return 0
+    average_mood = sum(max(0.0, min(1.0, pawn.mood)) for pawn in state.pawns) / len(state.pawns)
+    tax_rate = max(0.0, state.tax_rate)
+    income = int(len(state.pawns) * average_mood * tax_rate * TAX_BASE_COIN_PER_PAWN)
+    state.coin += income
+    return income
 
 
 def _advance_building_production(stockpile: Stockpile, building: Building, dt: float) -> None:
