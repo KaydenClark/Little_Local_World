@@ -72,6 +72,9 @@ class Agent:
     home: str = "North Apartments"
     workplace: str = "Maker Hall"
     preferred_places: tuple[str, ...] = ()
+    # Index into characters.png (16px tiles, step 17). Only column 0 (index = row * 54)
+    # holds full single-tile character art; other columns are cape/hood/hat fragments
+    # meant to be layered, and row 4 (index 216) is empty. Pick from column 0 only.
     sprite_index: int = 0
     last_speech: str = ""
     emote: str = ""
@@ -495,7 +498,7 @@ def create_default_simulation() -> Simulation:
             home="North Apartments",
             workplace="Archive Library",
             preferred_places=("Archive Library", "Town Square"),
-            sprite_index=4,
+            sprite_index=0,
         ),
         Agent(
             "sol",
@@ -508,7 +511,7 @@ def create_default_simulation() -> Simulation:
             home="South Row Homes",
             workplace="Greenhouse Cafe",
             preferred_places=("Greenhouse Cafe", "Riverside Park"),
-            sprite_index=8,
+            sprite_index=54,
         ),
         Agent(
             "juno",
@@ -521,7 +524,7 @@ def create_default_simulation() -> Simulation:
             home="North Apartments",
             workplace="Clinic Garden",
             preferred_places=("Clinic Garden", "Archive Library"),
-            sprite_index=12,
+            sprite_index=108,
         ),
         Agent(
             "tess",
@@ -534,7 +537,7 @@ def create_default_simulation() -> Simulation:
             home="South Row Homes",
             workplace="Maker Hall",
             preferred_places=("Maker Hall", "Clinic Garden"),
-            sprite_index=16,
+            sprite_index=162,
         ),
         Agent(
             "orin",
@@ -547,7 +550,7 @@ def create_default_simulation() -> Simulation:
             home="North Apartments",
             workplace="Archive Library",
             preferred_places=("Archive Library", "Town Square"),
-            sprite_index=20,
+            sprite_index=270,
         ),
         Agent(
             "vale",
@@ -560,7 +563,7 @@ def create_default_simulation() -> Simulation:
             home="South Row Homes",
             workplace="Maker Hall",
             preferred_places=("Maker Hall", "Greenhouse Cafe"),
-            sprite_index=24,
+            sprite_index=324,
         ),
         Agent(
             "rhea",
@@ -573,7 +576,7 @@ def create_default_simulation() -> Simulation:
             home="South Row Homes",
             workplace="Greenhouse Cafe",
             preferred_places=("Greenhouse Cafe", "Town Square"),
-            sprite_index=28,
+            sprite_index=378,
         ),
         Agent(
             "pax",
@@ -586,7 +589,7 @@ def create_default_simulation() -> Simulation:
             home="North Apartments",
             workplace="Riverside Park",
             preferred_places=("Riverside Park", "Clinic Garden"),
-            sprite_index=32,
+            sprite_index=432,
         ),
         Agent(
             "ivo",
@@ -599,7 +602,7 @@ def create_default_simulation() -> Simulation:
             home="South Row Homes",
             workplace="Maker Hall",
             preferred_places=("Maker Hall", "Town Square"),
-            sprite_index=36,
+            sprite_index=486,
         ),
         Agent(
             "nia",
@@ -612,7 +615,7 @@ def create_default_simulation() -> Simulation:
             home="North Apartments",
             workplace="Clinic Garden",
             preferred_places=("Town Square", "Riverside Park"),
-            sprite_index=40,
+            sprite_index=540,
         ),
     ]
     return Simulation(locations, agents)
