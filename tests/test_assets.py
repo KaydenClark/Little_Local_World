@@ -1,7 +1,7 @@
 import unittest
 
 from agent_town.assets import load_kenney_manifest
-from agent_town.app import LOCATION_FOOTPRINTS, TERRAIN_TILE_INDEXES
+from agent_town.app import LOCATION_FOOTPRINTS, SCENERY_STAMPS, TERRAIN_TILE_INDEXES
 
 
 class KenneyAssetTests(unittest.TestCase):
@@ -30,6 +30,17 @@ class KenneyAssetTests(unittest.TestCase):
         self.assertGreaterEqual(len(TERRAIN_TILE_INDEXES["grass"]), 4)
         self.assertGreaterEqual(len(TERRAIN_TILE_INDEXES["field"]), 4)
         self.assertGreaterEqual(len(TERRAIN_TILE_INDEXES["water"]), 4)
+
+    def test_visual_language_has_roofs_and_environment_resources(self):
+        for kind in ("home", "food", "knowledge", "work"):
+            with self.subTest(kind=kind):
+                roles = {tile.role for tile in LOCATION_FOOTPRINTS[kind].tiles}
+                self.assertIn("roof", roles)
+                self.assertIn("wall", roles)
+
+        scenery_roles = {stamp.role for stamp in SCENERY_STAMPS}
+        self.assertGreaterEqual(len(SCENERY_STAMPS), 20)
+        self.assertTrue({"tree", "rock", "resource", "farm"}.issubset(scenery_roles))
 
 
 if __name__ == "__main__":

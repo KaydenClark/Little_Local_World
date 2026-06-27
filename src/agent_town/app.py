@@ -48,9 +48,9 @@ LOCATION_TILE_INDEX = {
 
 @dataclass
 class Camera:
-    x: float = 760
-    y: float = 500
-    zoom: float = 0.72
+    x: float = 1180
+    y: float = 820
+    zoom: float = 0.56
 
     def world_to_screen(self, x: float, y: float) -> tuple[int, int]:
         return (
@@ -98,12 +98,22 @@ class LocationFootprint:
     label_offset_y: int
 
 
+@dataclass(frozen=True)
+class SceneryStamp:
+    x: int
+    y: int
+    index: int
+    role: str
+    size: int = 44
+    shadow: bool = True
+
+
 TERRAIN_TILE_INDEXES = {
     "grass": (5, 62, 5, 62),
-    "field": (7, 7, 64, 64),
+    "field": (7, 64, 6, 63),
     "water": (0, 1, 57, 58, 114, 115, 171, 172),
     "stone": (120, 177, 704, 705),
-    "path": (7, 64, 7, 64),
+    "path": (6, 63, 119, 176),
 }
 
 
@@ -113,6 +123,7 @@ def _room_footprint(
     wall: int,
     prop: int,
     door: int,
+    roof: tuple[int, ...] = (1207, 1208, 1264, 1265),
     width: int = 4,
     height: int = 3,
     extra_props: tuple[tuple[int, int, int], ...] = (),
@@ -127,16 +138,25 @@ def _room_footprint(
             edge = row in (0, height - 1) or column in (0, width - 1)
             role = "wall" if edge else "floor"
             tiles.append(TileStamp(dx, dy, wall if edge else floor, role))
+    for column in range(width):
+        tiles.append(TileStamp(left + column, top - 1, roof[column % len(roof)], "roof"))
     tiles.append(TileStamp(0, top + height - 1, door, "prop"))
     tiles.append(TileStamp(left + width - 2, top + 1, prop, "prop"))
     for dx, dy, index in extra_props:
         tiles.append(TileStamp(dx, dy, index, "prop"))
-    return LocationFootprint(tuple(tiles), label_offset_y=(height + 1) * 18)
+    return LocationFootprint(tuple(tiles), label_offset_y=(height + 2) * 18)
 
 
 LOCATION_FOOTPRINTS = {
-    "home": _room_footprint(floor=694, wall=751, prop=79, door=80),
-    "food": _room_footprint(floor=779, wall=723, prop=317, door=80, extra_props=((-1, 0, 376),)),
+    "home": _room_footprint(floor=694, wall=751, prop=79, door=80, extra_props=((-2, -2, 473), (1, -2, 472))),
+    "food": _room_footprint(
+        floor=779,
+        wall=723,
+        prop=317,
+        door=80,
+        roof=(1142, 1143, 1199, 1200),
+        extra_props=((-1, 0, 376), (-3, 1, 513), (-3, 2, 570), (2, 1, 514), (2, 2, 571)),
+    ),
     "social": LocationFootprint(
         (
             TileStamp(-2, -1, 570, "floor"),
@@ -154,8 +174,22 @@ LOCATION_FOOTPRINTS = {
         ),
         label_offset_y=72,
     ),
-    "knowledge": _room_footprint(floor=753, wall=695, prop=20, door=80, extra_props=((-1, 0, 77),)),
-    "work": _room_footprint(floor=779, wall=723, prop=148, door=80, extra_props=((-1, 0, 149),)),
+    "knowledge": _room_footprint(
+        floor=753,
+        wall=695,
+        prop=20,
+        door=80,
+        roof=(1212, 1213, 1269, 1270),
+        extra_props=((-1, 0, 77), (2, -2, 1125)),
+    ),
+    "work": _room_footprint(
+        floor=779,
+        wall=723,
+        prop=148,
+        door=80,
+        roof=(1207, 1208, 1264, 1265),
+        extra_props=((-1, 0, 149), (2, 0, 659), (-3, 1, 656)),
+    ),
     "quiet": LocationFootprint(
         (
             TileStamp(-2, -1, 570, "floor"),
@@ -177,6 +211,36 @@ LOCATION_FOOTPRINTS = {
 
 VISUAL_TILE_WORLD_SIZE = 54
 PATH_TILE_WORLD_SIZE = 42
+
+SCENERY_STAMPS = (
+    SceneryStamp(330, 260, 586, "tree", 58),
+    SceneryStamp(405, 315, 590, "tree", 54),
+    SceneryStamp(300, 915, 589, "tree", 58),
+    SceneryStamp(515, 1325, 586, "tree", 58),
+    SceneryStamp(1015, 300, 590, "tree", 54),
+    SceneryStamp(1445, 315, 586, "tree", 58),
+    SceneryStamp(2110, 500, 590, "tree", 54),
+    SceneryStamp(2140, 1080, 586, "tree", 58),
+    SceneryStamp(1615, 1400, 590, "tree", 54),
+    SceneryStamp(220, 720, 476, "rock", 42),
+    SceneryStamp(280, 760, 477, "rock", 42),
+    SceneryStamp(1360, 335, 476, "rock", 42),
+    SceneryStamp(1420, 385, 477, "rock", 42),
+    SceneryStamp(2050, 250, 620, "rock", 42),
+    SceneryStamp(2120, 305, 621, "rock", 42),
+    SceneryStamp(1720, 725, 669, "resource", 38),
+    SceneryStamp(1765, 760, 670, "resource", 38),
+    SceneryStamp(1810, 800, 671, "resource", 38),
+    SceneryStamp(690, 970, 513, "farm", 44, False),
+    SceneryStamp(745, 970, 514, "farm", 44, False),
+    SceneryStamp(800, 970, 515, "farm", 44, False),
+    SceneryStamp(690, 1025, 570, "farm", 44, False),
+    SceneryStamp(745, 1025, 571, "farm", 44, False),
+    SceneryStamp(800, 1025, 572, "farm", 44, False),
+    SceneryStamp(690, 1080, 627, "farm", 44, False),
+    SceneryStamp(745, 1080, 628, "farm", 44, False),
+    SceneryStamp(800, 1080, 629, "farm", 44, False),
+)
 
 
 def load_sprite_assets() -> SpriteAssets:
@@ -344,17 +408,7 @@ class App:
         pygame.draw.rect(self.screen, WORLD_BG, (*top_left, *size), border_radius=4)
         pygame.draw.rect(self.screen, (83, 97, 88), (*top_left, *size), width=2, border_radius=4)
         self._draw_terrain_tiles()
-
-        grid_step = 216
-        for x in range(0, WORLD_WIDTH + 1, grid_step):
-            start = self.camera.world_to_screen(x, 0)
-            end = self.camera.world_to_screen(x, WORLD_HEIGHT)
-            pygame.draw.line(self.screen, (45, 52, 47), start, end, 1)
-        for y in range(0, WORLD_HEIGHT + 1, grid_step):
-            start = self.camera.world_to_screen(0, y)
-            end = self.camera.world_to_screen(WORLD_WIDTH, y)
-            pygame.draw.line(self.screen, (45, 52, 47), start, end, 1)
-
+        self._draw_scenery_stamps()
         self._draw_paths()
 
     def _draw_terrain_tiles(self) -> None:
@@ -380,11 +434,23 @@ class App:
     def _terrain_palette_for(self, wx: int, wy: int) -> tuple[int, ...]:
         if wx < 230 and wy < 680:
             return TERRAIN_TILE_INDEXES["water"]
-        if 560 <= wx <= 940 and 980 <= wy <= 1420:
+        if 560 <= wx <= 980 and 900 <= wy <= 1280:
             return TERRAIN_TILE_INDEXES["field"]
         if 1010 <= wx <= 1400 and 620 <= wy <= 940:
             return TERRAIN_TILE_INDEXES["stone"]
         return TERRAIN_TILE_INDEXES["grass"]
+
+    def _draw_scenery_stamps(self) -> None:
+        for stamp in sorted(SCENERY_STAMPS, key=lambda item: item.y):
+            sx, sy = self.camera.world_to_screen(stamp.x, stamp.y)
+            size = max(14, int(stamp.size * self.camera.zoom))
+            if stamp.shadow:
+                pygame.draw.ellipse(
+                    self.screen,
+                    (20, 28, 18),
+                    (sx - size // 3, sy + size // 4, size * 2 // 3, max(4, size // 6)),
+                )
+            self._draw_tile_sprite(self.assets.tiles, "tiles", stamp.index, sx, sy, size)
 
     def _draw_paths(self) -> None:
         paths = [
@@ -443,21 +509,8 @@ class App:
                 continue
 
             tile_size = max(18, int(44 * self.camera.zoom))
-            shadow_tiles = footprint.tiles
-            if shadow_tiles:
-                min_dx = min(tile.dx for tile in shadow_tiles)
-                max_dx = max(tile.dx for tile in shadow_tiles)
-                min_dy = min(tile.dy for tile in shadow_tiles)
-                max_dy = max(tile.dy for tile in shadow_tiles)
-                shadow_rect = pygame.Rect(
-                    sx + min_dx * tile_size - 4,
-                    sy + min_dy * tile_size + 6,
-                    (max_dx - min_dx + 1) * tile_size + 8,
-                    (max_dy - min_dy + 1) * tile_size + 8,
-                )
-                pygame.draw.rect(self.screen, (11, 15, 13), shadow_rect, border_radius=3)
-
-            for tile in sorted(footprint.tiles, key=lambda stamp: (stamp.role == "prop", stamp.dy, stamp.dx)):
+            role_order = {"floor": 0, "wall": 1, "roof": 2, "resource": 3, "prop": 4}
+            for tile in sorted(footprint.tiles, key=lambda stamp: (role_order.get(stamp.role, 5), stamp.dy, stamp.dx)):
                 self._draw_tile_sprite(
                     self.assets.tiles,
                     "tiles",
