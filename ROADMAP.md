@@ -1,6 +1,6 @@
 # Little Local World - Roadmap
 
-**Current phase:** Track A3 construction
+**Current phase:** Track A4 multi-chain plus tax
 **Owner:** Kayden and local coding agents
 
 This is the active work plan. Keep it forward-looking and proof-oriented.
@@ -17,6 +17,7 @@ Verified live state:
 - Skeleton modules now exist for `world`, `economy`, `buildings`, `construction`, `pawns`, `mood`, `schedule`, and `governor`.
 - Track A1 now implements stockpile `add/remove/has`, grid map creation, map validation, and deterministic starter resource nodes.
 - Track A2 now implements Forester and Sawmill building definitions plus deterministic headless logs-to-planks production with temporary staffing through `Building.staffed_by`.
+- Track A3 now implements construction sites with partial delivery, insufficient-goods blocking, work completion, built-building creation, and site removal.
 - Remaining Track A and Track B behavior is intentionally explicit stubs until each milestone implements it.
 
 Important drift or uncertainty:
@@ -28,25 +29,24 @@ Important drift or uncertainty:
 
 ## Current Goal
 
-Build the first construction flow on top of the Track A1 stockpile and Track A2 wood-chain primitives.
+Add the remaining Build 1 production chains and the first happiness-to-tax loop.
 
 Done when:
 
-- construction sites accept partial delivery from the stockpile;
-- insufficient stock leaves site and stockpile state unchanged;
-- delivered materials plus work flip a site into a built building;
-- targeted construction tests pass;
+- Farm, Mill, Bakery, and Quarry production chains run headlessly;
+- daily coin income scales with population, average mood, and tax rate;
+- low coin blocks building placement;
+- targeted multi-chain and tax tests pass;
 - the full test suite, smoke test, and workbench validation pass.
 
 ## Next Tasks
 
-1. **Track A3: construction** - implement `ConstructionSite` delivery and work completion. Proof: tests for partial delivery, insufficient goods, and built completion.
-2. **Track A4: multi-chain plus tax** - add food and stone chains, daily coin from mood/population/tax, and coin-gated building placement. Proof: tests for income scaling and build blocked by low coin.
-3. **Track B1: pawns, needs, schedule, mood** - implement needs decay/restoration, schedule templates, and base mood. Proof: day-cycle tests.
-4. **Track B2: effective work** - implement the skill, mood, trait, and schedule formula behind `effective_work`. Proof: table-driven tests.
-5. **Track B3: traits, wants, breaks, exceptions** - implement break state and exception queue. Proof: starved or overworked pawn breaks and emits the right exception.
-6. **Track B4: context and fallback Governor** - implement summary context and greedy fallback decisions. Proof: fallback assigns by best skill and reschedules unhappy pawns.
-7. **Integration I1-I3** - wire pawns to production, add LLM Governor after fallback works, then render new state in Pygame. Proof: fallback keeps twelve pawns alive over N days, LLM run logs decisions, viewer smoke test opens and exits.
+1. **Track A4: multi-chain plus tax** - add food and stone chains, daily coin from mood/population/tax, and coin-gated building placement. Proof: tests for income scaling and build blocked by low coin.
+2. **Track B1: pawns, needs, schedule, mood** - implement needs decay/restoration, schedule templates, and base mood. Proof: day-cycle tests.
+3. **Track B2: effective work** - implement the skill, mood, trait, and schedule formula behind `effective_work`. Proof: table-driven tests.
+4. **Track B3: traits, wants, breaks, exceptions** - implement break state and exception queue. Proof: starved or overworked pawn breaks and emits the right exception.
+5. **Track B4: context and fallback Governor** - implement summary context and greedy fallback decisions. Proof: fallback assigns by best skill and reschedules unhappy pawns.
+6. **Integration I1-I3** - wire pawns to production, add LLM Governor after fallback works, then render new state in Pygame. Proof: fallback keeps twelve pawns alive over N days, LLM run logs decisions, viewer smoke test opens and exits.
 
 ## Blocked Or Deferred
 
@@ -96,3 +96,4 @@ Append a row when a task changes durable project state. Use actual results, not 
 | 2026-06-27 | Phase 0 colony-builder contract freeze | `./.venv/bin/python -m unittest tests.test_colony_contract`; `./.venv/bin/python -m unittest discover -s tests`; `./.venv/bin/python -m agent_town --smoke-test`; `pwsh -File scripts/validate-workbench.ps1` | pass | Track A and Track B behavior remains intentionally stubbed; commit-to-main handoff not performed from this branch |
 | 2026-06-27 | Track A1 map, nodes, and stockpile | `./.venv/bin/python -m unittest tests.test_world_a1 tests.test_colony_contract`; `./.venv/bin/python -m unittest discover -s tests`; `./.venv/bin/python -m agent_town --smoke-test`; `pwsh -File scripts/validate-workbench.ps1`; `git diff --check` | pass | Track A2 production chain remains next |
 | 2026-06-27 | Track A2 one wood production chain | `./.venv/bin/python -m unittest tests.test_economy_a2 tests.test_world_a1 tests.test_colony_contract`; `./.venv/bin/python -m unittest discover -s tests`; `./.venv/bin/python -m agent_town --smoke-test`; `pwsh -File scripts/validate-workbench.ps1`; `git diff --check` | pass | Track A3 construction remains next |
+| 2026-06-27 | Track A3 construction flow | `./.venv/bin/python -m unittest tests.test_construction_a3 tests.test_economy_a2 tests.test_world_a1 tests.test_colony_contract`; `./.venv/bin/python -m unittest discover -s tests`; `./.venv/bin/python -m agent_town --smoke-test`; `pwsh -File scripts/validate-workbench.ps1`; `git diff --check` | pass | Track A4 multi-chain plus tax remains next |
