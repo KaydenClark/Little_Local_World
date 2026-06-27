@@ -1,37 +1,52 @@
-# Local Agent Town - Roadmap
+# Little Local World - Roadmap
 
-**Current phase:** prototype  
+**Current phase:** Phase 0 contract freeze
 **Owner:** Kayden and local coding agents
 
 This is the active work plan. Keep it forward-looking and proof-oriented.
 
 ## Current State
 
-The project has a local Python desktop slice: a Pygame town viewer, ten autonomous NPCs, selectable inspection state, suggestion input, Kenney sprites/emotes, event feed, SQLite snapshot helpers, replay events, a rule-agent benchmark harness, and unit-tested simulation core.
+The project is pivoting from the earlier local social wander-sim into a single-faction, LLM-governed colony builder.
+
+Verified live state:
+
+- The existing Python package is still named `agent_town`.
+- The old Pygame viewer, social simulation core, optional local LLM adapter, SQLite snapshot helpers, replay events, assets, and tests still exist.
+- Phase 0 now adds the colony-builder frozen contract in `src/agent_town/core.py`.
+- Skeleton modules now exist for `world`, `economy`, `buildings`, `construction`, `pawns`, `mood`, `schedule`, and `governor`.
+- The skeleton behavior is intentionally explicit stubs until Track A and Track B implement it.
 
 Important drift or uncertainty:
 
-- Pygame was not installed globally when the project was created; local `.venv` setup is required.
-- LLM-backed planning is implemented as an optional local OpenAI-compatible adapter. It uses `AGENT_TOWN_LLM_MODEL` when set, otherwise it quickly discovers a local non-embedding model from the configured `/models` endpoint when LM Studio/Ollama is already running.
-- Persistence exists as a library-level SQLite snapshot/replay helper; viewer save/load controls are not implemented yet.
+- `BLUEPRINT.md` now defines the colony-builder target; older README text may still describe the prior social-sim prototype until touched.
+- The live checkout is macOS, while some launcher and setup docs still include Windows PowerShell paths.
+- The existing viewer is not yet wired to the new colony state.
+- The SQLite persistence scaffold remains oriented to the old snapshot model and is dormant for Build 1 unless later work repoints it.
 
 ## Current Goal
 
-Stabilize the first local LLM-backed desktop prototype while keeping the non-LLM town loop reliable and benchmarkable.
+Finish Phase 0 so both future tracks build against the same colony-builder contract.
 
 Done when:
 
-- core and LLM adapter tests pass;
-- the Pygame smoke test opens, draws assets briefly, and exits;
-- the rule-agent benchmark harness runs for the target scale slice;
-- workbench validation passes.
+- `BLUEPRINT.md` states the colony-builder target;
+- `core.py` contains the frozen dataclasses and `effective_work` seam stub;
+- the target modules import headlessly;
+- targeted contract tests pass;
+- the full test suite, smoke test, and workbench validation pass.
 
 ## Next Tasks
 
-1. **Scale benchmark pass** - run rule-agent counts at 100, 500, 1,000, and 5,000, then add render benchmark coverage for visible entities. Proof: benchmark output with p95 timings and pass/fail notes.
-2. **Manual LM Studio/Ollama tuning pass** - run Gemma 4 E4B-it, Qwen3-8B, Phi-4-mini-instruct, and Gemma 4 12B only if memory allows; record speed, RAM/VRAM, context, and responsiveness. Proof: manual notes with model status and responsiveness.
-3. **Viewer save/load controls** - expose SQLite snapshot save/load from the desktop viewer or a small CLI once the snapshot contract has one more use. Proof: create, load, and replay a short simulation through the user-facing path.
-4. **Deeper objects and places** - add usable objects, resources, and location-specific tasks. Proof: deterministic simulation tests and viewer smoke test.
+1. **Track A1: map, nodes, stockpile** - implement `GridMap`, resource nodes, and stockpile `add/remove/has`. Proof: unit tests for valid counts, insufficient goods, and deterministic node setup.
+2. **Track A2: one production chain** - implement Forester to logs and Sawmill to planks with temporary staffing. Proof: seeded headless run produces planks and tests assert counts.
+3. **Track A3: construction** - implement `ConstructionSite` delivery and work completion. Proof: tests for partial delivery, insufficient goods, and built completion.
+4. **Track A4: multi-chain plus tax** - add food and stone chains, daily coin from mood/population/tax, and coin-gated building placement. Proof: tests for income scaling and build blocked by low coin.
+5. **Track B1: pawns, needs, schedule, mood** - implement needs decay/restoration, schedule templates, and base mood. Proof: day-cycle tests.
+6. **Track B2: effective work** - implement the skill, mood, trait, and schedule formula behind `effective_work`. Proof: table-driven tests.
+7. **Track B3: traits, wants, breaks, exceptions** - implement break state and exception queue. Proof: starved or overworked pawn breaks and emits the right exception.
+8. **Track B4: context and fallback Governor** - implement summary context and greedy fallback decisions. Proof: fallback assigns by best skill and reschedules unhappy pawns.
+9. **Integration I1-I3** - wire pawns to production, add LLM Governor after fallback works, then render new state in Pygame. Proof: fallback keeps twelve pawns alive over N days, LLM run logs decisions, viewer smoke test opens and exits.
 
 ## Blocked Or Deferred
 
@@ -40,16 +55,18 @@ Do not start these until their prerequisite is met.
 | Item | Blocked on | Why it matters |
 |---|---|---|
 | Hosted AI providers | explicit user approval | Avoids accidental paid or network-dependent behavior |
-| Multiplayer or remote viewing | explicit product direction change | Current requirement is local and not web based |
-| Large map editor | stable core loop | Editing tools are less useful before agent behavior is interesting |
+| Second faction, contested map, enemies, or combat | Build 2 direction | Build 1 is one town and one faction |
+| Large scale benchmarking or engine migration | working 12-pawn economy | Performance work is premature before core systems exist |
+| Viewer polish | tested economy and Governor loop | Visual polish should not outrun simulation correctness |
+| Persistence repoint | Build 2 or correctness blocker | Existing SQLite scaffold is intentionally dormant for Build 1 |
 
 ## Backlog
 
-- Add places with objects and tasks.
-- Add agent-to-agent message summaries.
-- Add screenshots or GIF capture for quick review.
-- Add render benchmark for 500, 1,000, 5,000, and 10,000 visible entities.
-- Add grid or navmesh pathfinding behind the existing direct pathfinder interface.
+- Seasons: winter changes daylight and raises recreation or comfort pressure.
+- Research: two or three techs that spend coin or prestige for tax, work speed, or building unlocks.
+- Viewer save/load only after the new colony snapshot contract exists.
+- Better visual assets after the economy and Governor are proven.
+- Scale benchmarks after Build 1 works with about twelve pawns.
 
 ## Release Checks
 
@@ -59,6 +76,8 @@ Project-specific release and checkpoint checks:
 
 - Confirm no `.venv`, logs, databases, private exports, or generated dumps are included.
 - Confirm no web server or browser runtime was introduced.
+- Confirm the Governor still emits policy actions only.
+- Confirm core colony tests run headless without Pygame.
 - Confirm `ROADMAP.md` Verification Log has a current row for durable state changes.
 
 ## Verification Log
@@ -74,3 +93,4 @@ Append a row when a task changes durable project state. Use actual results, not 
 | 2026-06-26 | Fix LM Studio local planning startup | `.\.venv\Scripts\python.exe -m unittest discover -s tests`; `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; live `LocalLLMClient.from_env()` request against `http://localhost:1234/v1` auto-selected `google/gemma-4-e4b` | pass | Already-running game windows must be closed and relaunched to pick up the fix |
 | 2026-06-26 | Fix wrong character sprite indices and expand test coverage for agents/buildings/app rendering | `python3 -m unittest discover -s tests` (46 tests, was 17) | pass | `characters.png` column 0 holds full single-tile characters; the old `sprite_index` values (4,8,...,40) pointed into cape/hood/hat layering columns instead, so 9 of 10 agents rendered as clothing fragments and Pax (index 32) rendered fully blank; reassigned all 10 agents to distinct non-blank column-0 indices and added regression tests asserting every agent sprite is non-blank and unique |
 | 2026-06-27 | Partially scale architecture while keeping Pygame | `.\.venv\Scripts\python.exe -m unittest discover -s tests`; `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\.venv\Scripts\python.exe .\scripts\benchmark_scale.py --agents 100 500 1000 --iterations 10`; `.\scripts\validate-workbench.ps1` | pass | Full render benchmarks, LM Studio model-memory pass, and viewer save/load controls remain next |
+| 2026-06-27 | Phase 0 colony-builder contract freeze | `./.venv/bin/python -m unittest tests.test_colony_contract`; `./.venv/bin/python -m unittest discover -s tests`; `./.venv/bin/python -m agent_town --smoke-test`; `pwsh -File scripts/validate-workbench.ps1` | pass | Track A and Track B behavior remains intentionally stubbed; commit-to-main handoff not performed from this branch |

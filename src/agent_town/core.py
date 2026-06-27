@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import Enum
 from math import hypot
 import random
+from typing import Mapping
 
 from .contracts import (
     AgentState,
@@ -17,6 +19,147 @@ from .contracts import (
 WORLD_WIDTH = 2400
 WORLD_HEIGHT = 1600
 MAX_EVENT_LOG = 80
+GOVERNOR_ACTION_TYPES = frozenset(
+    {
+        "assign_pawn",
+        "set_schedule",
+        "place_building",
+        "set_production_target",
+        "set_research",
+    }
+)
+
+
+class Good(Enum):
+    LOGS = "logs"
+    PLANKS = "planks"
+    GRAIN = "grain"
+    FLOUR = "flour"
+    BREAD = "bread"
+    STONE = "stone"
+
+
+@dataclass(frozen=True)
+class GridMap:
+    width: int
+    height: int
+    tiles: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class ResourceNode:
+    kind: Good
+    amount: int
+    x: int
+    y: int
+
+
+@dataclass
+class Stockpile:
+    counts: dict[Good, int] = field(default_factory=dict)
+
+    def add(self, good: Good, amount: int) -> None:
+        raise NotImplementedError("Stockpile.add is implemented in Track A1")
+
+    def remove(self, good: Good, amount: int) -> None:
+        raise NotImplementedError("Stockpile.remove is implemented in Track A1")
+
+    def has(self, required: Mapping[Good, int]) -> bool:
+        raise NotImplementedError("Stockpile.has is implemented in Track A1")
+
+
+@dataclass(frozen=True)
+class Recipe:
+    inputs: dict[Good, int]
+    outputs: dict[Good, int]
+    work_units: float
+    skill: str
+
+
+@dataclass
+class Building:
+    kind: str
+    x: int
+    y: int
+    recipe: Recipe | None = None
+    job_slots: int = 0
+    staffed_by: list[str] = field(default_factory=list)
+    built: bool = False
+    id: str = ""
+
+
+@dataclass
+class ConstructionSite:
+    building_kind: str
+    required: dict[Good, int]
+    delivered: dict[Good, int]
+    work_remaining: float
+    x: int = 0
+    y: int = 0
+
+
+@dataclass(frozen=True)
+class JobRef:
+    building_id: str
+    role: str
+
+
+@dataclass
+class Pawn:
+    id: str
+    name: str
+    skills: dict[str, int]
+    traits: tuple[str, ...]
+    wants: tuple[str, ...]
+    needs: dict[str, float]
+    mood: float
+    schedule: str
+    assignment: JobRef | None
+    x: int
+    y: int
+    state: str
+
+
+@dataclass(frozen=True)
+class ScheduleTemplate:
+    name: str
+    blocks: list[str]
+
+    def __post_init__(self) -> None:
+        if len(self.blocks) != 24:
+            raise ValueError("ScheduleTemplate.blocks must contain 24 hourly blocks")
+
+
+@dataclass
+class FactionState:
+    stockpile: Stockpile
+    coin: int
+    pawns: list[Pawn]
+    buildings: list[Building]
+    construction_sites: list[ConstructionSite]
+    research: str
+    season: str
+    tax_rate: float
+    day: int
+    time_of_day: int
+
+
+@dataclass(frozen=True)
+class Exception:
+    kind: str
+    pawn_id: str | None = None
+    building_id: str | None = None
+    detail: str = ""
+
+
+@dataclass(frozen=True)
+class GovernorAction:
+    action_type: str
+    payload: Mapping[str, object] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if self.action_type not in GOVERNOR_ACTION_TYPES:
+            raise ValueError(f"Unknown governor action: {self.action_type}")
 
 
 def _clean_text(value: str, limit: int) -> str:

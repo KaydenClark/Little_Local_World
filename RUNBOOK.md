@@ -1,30 +1,31 @@
-# Local Agent Town - Runbook
+# Little Local World - Runbook
 
 **Last reviewed:** 2026-06-27
-**Runtime owner:** Kayden  
+**Runtime owner:** Kayden
 **Environment:** local desktop
 
-This file explains how to operate the project.
+This file explains how to operate and verify the project during the colony-builder refactor.
 
 ## Prerequisites
 
-Required tools:
+Required tools on this checkout:
 
-- Windows PowerShell.
 - Python 3.11 or newer.
+- A local virtual environment at `.venv`.
+- Pygame installed inside `.venv`.
+- PowerShell 7 or newer for `scripts/validate-workbench.ps1`.
 
-Required accounts or services:
+Optional local services:
 
-- None for the base prototype.
-- Optional: a local OpenAI-compatible LLM server such as LM Studio or Ollama.
+- A local OpenAI-compatible LLM server such as LM Studio or Ollama.
 
-Required local files:
+Required accounts or hosted services:
 
-- None before setup. `setup.ps1` creates `.venv`.
+- None.
 
 ## Environment Configuration
 
-No `.env` file is required for the base prototype.
+No `.env` file is required for the base deterministic simulation.
 
 Required variables:
 
@@ -36,128 +37,140 @@ Optional local model variables:
 
 | Variable | Purpose | Secret | Example or notes |
 |---|---|---|---|
-| `AGENT_TOWN_LLM_MODEL` | Optional explicit model override | no | `google/gemma-4-e4b`, or the exact model id loaded in LM Studio/Ollama |
+| `AGENT_TOWN_LLM_MODEL` | Optional explicit local model override | no | `google/gemma-4-e4b`, or the exact model id loaded in LM Studio or Ollama |
 | `AGENT_TOWN_LLM_BASE_URL` | OpenAI-compatible local endpoint | no | `http://localhost:1234/v1` for LM Studio, `http://localhost:11434/v1` for Ollama |
 | `AGENT_TOWN_LLM_TIMEOUT` | Per-request timeout in seconds | no | default `4.0` |
 | `AGENT_TOWN_LLM_MAX_TOKENS` | Max tokens for compact decision JSON | no | default `180` |
-| `AGENT_TOWN_LLM_AUTO_DISCOVER` | Controls startup model discovery when no model is set | no | default `1`; set `0` to keep local model disabled unless `AGENT_TOWN_LLM_MODEL` is set |
+| `AGENT_TOWN_LLM_AUTO_DISCOVER` | Controls startup model discovery when no model is set | no | default `1`; set `0` for deterministic non-LLM runs |
 
 Rules:
 
 - Do not commit real `.env` files, tokens, local databases, logs, or private data.
-- Keep future LLM provider credentials local-only.
-- Prefer a visible degraded state over fake external data when a future provider is unavailable.
-- If no model variable is set, the app briefly checks the configured `/models` endpoint and selects the first non-embedding local model it finds.
+- Keep local model use local-only.
+- The LLM layer must fall back to deterministic behavior on unavailable, slow, or invalid model output.
 
 ## Install
+
+On this macOS checkout, verify the existing environment:
+
+```bash
+./.venv/bin/python --version
+./.venv/bin/python -m pip show pygame
+```
+
+If the venv is missing, recreate it with Python 3.11 or newer and install the package in editable mode:
+
+```bash
+python3 -m venv .venv
+./.venv/bin/python -m pip install -e .
+```
+
+Windows launch/setup scripts still exist:
 
 ```powershell
 .\setup.ps1
 ```
 
-Expected result:
-
-- `.venv` exists.
-- The package installs editable into `.venv`.
-- Pygame is available inside `.venv`.
-
 ## Run Locally
+
+Current smoke path:
+
+```bash
+./.venv/bin/python -m agent_town --smoke-test
+```
+
+Interactive desktop viewer:
+
+```bash
+./.venv/bin/agent-town
+```
+
+Windows launcher paths still exist:
 
 ```powershell
 .\run.ps1
 ```
 
-Double-click launcher:
-
 ```text
 Launch Local Agent Town.cmd
 ```
 
-Open:
+Expected current result:
 
-- A local Pygame desktop window titled `Local Agent Town`.
-
-Expected result:
-
-- A town map appears.
-- NPCs move over time.
-- Kenney sprites appear for people, places, and emotes when assets are present.
-- Mouse wheel zooms.
-- `WASD` or arrow keys pan.
-- Clicking an NPC updates the inspection panel.
-- Pressing `/`, typing a suggestion, and pressing `Enter` queues the suggestion for the selected NPC.
-- The inspection panel shows local model state: disabled, idle, thinking, offline, or invalid.
+- The legacy Pygame viewer opens and exits for the smoke test.
+- Existing social-sim viewer behavior remains available until the colony state is wired in integration.
+- The viewer is not yet the source of truth for colony-builder behavior.
 
 ## Test And Build
 
-Workbench validation:
+Targeted Phase 0 contract test:
 
-```powershell
-.\scripts\validate-workbench.ps1
+```bash
+./.venv/bin/python -m unittest tests.test_colony_contract
 ```
 
 Fast check:
 
-```powershell
-.\.venv\Scripts\python.exe -m unittest discover -s tests
+```bash
+./.venv/bin/python -m unittest discover -s tests
+```
+
+Workbench validation:
+
+```bash
+pwsh -File scripts/validate-workbench.ps1
 ```
 
 Full verification:
 
-```powershell
-.\.venv\Scripts\python.exe -m unittest discover -s tests
-.\.venv\Scripts\python.exe -m agent_town --smoke-test
-.\scripts\validate-workbench.ps1
+```bash
+./.venv/bin/python -m unittest discover -s tests
+./.venv/bin/python -m agent_town --smoke-test
+pwsh -File scripts/validate-workbench.ps1
 ```
 
 Expected result:
 
-- Core tests pass.
-- Smoke test exits without import or display errors.
+- Core and contract tests pass.
+- Pygame smoke test exits without import or display errors.
 - Workbench validation passes.
 
-Scale benchmark:
-
-```powershell
-.\.venv\Scripts\python.exe .\scripts\benchmark_scale.py --agents 100 500 1000 --iterations 60
-```
-
-Expected result:
-
-- The script prints one row per agent count.
-- `PASS` means the p95 rule-agent tick time is below the current 8ms threshold.
-- `FAIL` means the next scale-up decision needs profiling before adding more systems or switching engines.
+Scale benchmarks from the old prototype are not a Build 1 priority. Do not use scale benchmark results to justify architecture changes before the 12-pawn economy and Governor loop exist.
 
 ## Data Operations
 
-SQLite snapshot helpers exist for tests and future tools:
+SQLite snapshot helpers still exist for tests and future tools:
 
 - `agent_town.persistence.save_snapshot(path, sim)` writes serializable simulation state and replay events.
 - `agent_town.persistence.load_snapshot(path, snapshot_id)` reads a `WorldState`.
 - `agent_town.persistence.load_simulation(path, snapshot_id)` restores a `Simulation`.
 
+Current rule:
+
+- Treat the old snapshot helper as dormant for Build 1 unless a later task explicitly repoints it to the colony state.
+
 Safety rules:
 
 - Do not store snapshots in committed paths.
-- Do not store real private data in agent memories unless the user explicitly approves that use.
+- Do not store real private data in pawn memories, Governor context, or model logs without explicit approval.
 - Do not persist Pygame surfaces, raw model prompts, model credentials, or renderer objects.
 
 ## Deployment Or Startup
 
-There is no deployment target. The project runs locally through PowerShell.
+There is no deployment target. The project runs locally on the desktop.
+
+Do not add hosted deployment, browser runtime, telemetry, or external persistence without explicit approval.
 
 ## Troubleshooting
 
 | Symptom | Likely cause | Check | Fix |
 |---|---|---|---|
-| `ModuleNotFoundError: pygame` | Setup was not run or wrong Python is being used | `.\.venv\Scripts\python.exe -c "import pygame"` | Run `.\setup.ps1` |
-| Double-click does nothing visible | Windows did not execute the PowerShell script directly | Open `Launch Local Agent Town.cmd` | Use the `.cmd` launcher, which calls the PowerShell launcher with the right policy |
-| Window does not open | Display or Pygame issue | `.\.venv\Scripts\python.exe -m agent_town --smoke-test` | Reinstall through `.\setup.ps1`; check local graphics environment |
-| Agent does not follow a suggestion | Suggestion did not include a known place or supported keyword | Inspect pending suggestions in the panel | Use place names like `Archive Library` or keywords like `study`, `eat`, `talk`, `rest`, `work` |
-| Local model shows disabled | No model variable was set and startup discovery found no local chat model, or `AGENT_TOWN_LLM_AUTO_DISCOVER=0` | Inspect the Local Model row | Start LM Studio/Ollama before launching, or set `AGENT_TOWN_LLM_MODEL` exactly as the local server expects it |
-| Local model shows offline | LM Studio/Ollama server is not running or URL is wrong | Check `AGENT_TOWN_LLM_BASE_URL` | Start the local server or change the URL |
-| Local model shows invalid reply | Model returned malformed JSON, unknown destination/agent, or the server rejected the request payload | Inspect the Local Model row | Use a smaller/faster instruct model and keep max tokens low |
-| Workbench validation fails | Required docs missing headings or unresolved placeholders | `.\scripts\validate-workbench.ps1` | Update the named doc and rerun validation |
+| `ModuleNotFoundError: agent_town` | Running system Python instead of the venv | `./.venv/bin/python --version` | Use `./.venv/bin/python`, or reinstall with `./.venv/bin/python -m pip install -e .` |
+| `ModuleNotFoundError: pygame` | Pygame missing from the active interpreter | `./.venv/bin/python -m pip show pygame` | Install through the venv |
+| Smoke test does not open | Display or Pygame issue | `./.venv/bin/python -m agent_town --smoke-test` | Reinstall dependencies and retry with `SDL_VIDEODRIVER=dummy` |
+| Colony behavior raises `NotImplementedError` | Phase 0 stubs are being called before Track A or Track B is implemented | Read the exception message | Implement the named milestone with a failing test first |
+| Local model shows disabled or offline | No local model is configured or running | Check `AGENT_TOWN_LLM_MODEL` and `AGENT_TOWN_LLM_BASE_URL` | Start LM Studio or Ollama, or leave deterministic fallback active |
+| Workbench validation fails | Required docs missing headings or unresolved placeholders | `pwsh -File scripts/validate-workbench.ps1` | Update the named doc and rerun validation |
 
 ## Recovery And Rollback
 
