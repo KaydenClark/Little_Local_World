@@ -1,6 +1,6 @@
 # Little Local World - Roadmap
 
-**Current phase:** Phase 0 contract freeze
+**Current phase:** Track A2 one production chain
 **Owner:** Kayden and local coding agents
 
 This is the active work plan. Keep it forward-looking and proof-oriented.
@@ -15,7 +15,8 @@ Verified live state:
 - The old Pygame viewer, social simulation core, optional local LLM adapter, SQLite snapshot helpers, replay events, assets, and tests still exist.
 - Phase 0 now adds the colony-builder frozen contract in `src/agent_town/core.py`.
 - Skeleton modules now exist for `world`, `economy`, `buildings`, `construction`, `pawns`, `mood`, `schedule`, and `governor`.
-- The skeleton behavior is intentionally explicit stubs until Track A and Track B implement it.
+- Track A1 now implements stockpile `add/remove/has`, grid map creation, map validation, and deterministic starter resource nodes.
+- Remaining Track A and Track B behavior is intentionally explicit stubs until each milestone implements it.
 
 Important drift or uncertainty:
 
@@ -26,27 +27,26 @@ Important drift or uncertainty:
 
 ## Current Goal
 
-Finish Phase 0 so both future tracks build against the same colony-builder contract.
+Build the first deterministic production chain on top of the Track A1 map and stockpile primitives.
 
 Done when:
 
-- `BLUEPRINT.md` states the colony-builder target;
-- `core.py` contains the frozen dataclasses and `effective_work` seam stub;
-- the target modules import headlessly;
-- targeted contract tests pass;
+- Forester produces logs into the stockpile;
+- Sawmill consumes logs and produces planks;
+- the chain runs headless with temporary staffing;
+- targeted production tests pass;
 - the full test suite, smoke test, and workbench validation pass.
 
 ## Next Tasks
 
-1. **Track A1: map, nodes, stockpile** - implement `GridMap`, resource nodes, and stockpile `add/remove/has`. Proof: unit tests for valid counts, insufficient goods, and deterministic node setup.
-2. **Track A2: one production chain** - implement Forester to logs and Sawmill to planks with temporary staffing. Proof: seeded headless run produces planks and tests assert counts.
-3. **Track A3: construction** - implement `ConstructionSite` delivery and work completion. Proof: tests for partial delivery, insufficient goods, and built completion.
-4. **Track A4: multi-chain plus tax** - add food and stone chains, daily coin from mood/population/tax, and coin-gated building placement. Proof: tests for income scaling and build blocked by low coin.
-5. **Track B1: pawns, needs, schedule, mood** - implement needs decay/restoration, schedule templates, and base mood. Proof: day-cycle tests.
-6. **Track B2: effective work** - implement the skill, mood, trait, and schedule formula behind `effective_work`. Proof: table-driven tests.
-7. **Track B3: traits, wants, breaks, exceptions** - implement break state and exception queue. Proof: starved or overworked pawn breaks and emits the right exception.
-8. **Track B4: context and fallback Governor** - implement summary context and greedy fallback decisions. Proof: fallback assigns by best skill and reschedules unhappy pawns.
-9. **Integration I1-I3** - wire pawns to production, add LLM Governor after fallback works, then render new state in Pygame. Proof: fallback keeps twelve pawns alive over N days, LLM run logs decisions, viewer smoke test opens and exits.
+1. **Track A2: one production chain** - implement Forester to logs and Sawmill to planks with temporary staffing. Proof: seeded headless run produces planks and tests assert counts.
+2. **Track A3: construction** - implement `ConstructionSite` delivery and work completion. Proof: tests for partial delivery, insufficient goods, and built completion.
+3. **Track A4: multi-chain plus tax** - add food and stone chains, daily coin from mood/population/tax, and coin-gated building placement. Proof: tests for income scaling and build blocked by low coin.
+4. **Track B1: pawns, needs, schedule, mood** - implement needs decay/restoration, schedule templates, and base mood. Proof: day-cycle tests.
+5. **Track B2: effective work** - implement the skill, mood, trait, and schedule formula behind `effective_work`. Proof: table-driven tests.
+6. **Track B3: traits, wants, breaks, exceptions** - implement break state and exception queue. Proof: starved or overworked pawn breaks and emits the right exception.
+7. **Track B4: context and fallback Governor** - implement summary context and greedy fallback decisions. Proof: fallback assigns by best skill and reschedules unhappy pawns.
+8. **Integration I1-I3** - wire pawns to production, add LLM Governor after fallback works, then render new state in Pygame. Proof: fallback keeps twelve pawns alive over N days, LLM run logs decisions, viewer smoke test opens and exits.
 
 ## Blocked Or Deferred
 
@@ -94,3 +94,4 @@ Append a row when a task changes durable project state. Use actual results, not 
 | 2026-06-26 | Fix wrong character sprite indices and expand test coverage for agents/buildings/app rendering | `python3 -m unittest discover -s tests` (46 tests, was 17) | pass | `characters.png` column 0 holds full single-tile characters; the old `sprite_index` values (4,8,...,40) pointed into cape/hood/hat layering columns instead, so 9 of 10 agents rendered as clothing fragments and Pax (index 32) rendered fully blank; reassigned all 10 agents to distinct non-blank column-0 indices and added regression tests asserting every agent sprite is non-blank and unique |
 | 2026-06-27 | Partially scale architecture while keeping Pygame | `.\.venv\Scripts\python.exe -m unittest discover -s tests`; `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\.venv\Scripts\python.exe .\scripts\benchmark_scale.py --agents 100 500 1000 --iterations 10`; `.\scripts\validate-workbench.ps1` | pass | Full render benchmarks, LM Studio model-memory pass, and viewer save/load controls remain next |
 | 2026-06-27 | Phase 0 colony-builder contract freeze | `./.venv/bin/python -m unittest tests.test_colony_contract`; `./.venv/bin/python -m unittest discover -s tests`; `./.venv/bin/python -m agent_town --smoke-test`; `pwsh -File scripts/validate-workbench.ps1` | pass | Track A and Track B behavior remains intentionally stubbed; commit-to-main handoff not performed from this branch |
+| 2026-06-27 | Track A1 map, nodes, and stockpile | `./.venv/bin/python -m unittest tests.test_world_a1 tests.test_colony_contract`; `./.venv/bin/python -m unittest discover -s tests`; `./.venv/bin/python -m agent_town --smoke-test`; `pwsh -File scripts/validate-workbench.ps1`; `git diff --check` | pass | Track A2 production chain remains next |

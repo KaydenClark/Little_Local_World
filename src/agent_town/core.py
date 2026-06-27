@@ -45,6 +45,12 @@ class GridMap:
     height: int
     tiles: tuple[str, ...]
 
+    def __post_init__(self) -> None:
+        if self.width <= 0 or self.height <= 0:
+            raise ValueError("GridMap width and height must be positive")
+        if len(self.tiles) != self.width * self.height:
+            raise ValueError("GridMap tiles must match width * height")
+
 
 @dataclass(frozen=True)
 class ResourceNode:
@@ -59,13 +65,36 @@ class Stockpile:
     counts: dict[Good, int] = field(default_factory=dict)
 
     def add(self, good: Good, amount: int) -> None:
-        raise NotImplementedError("Stockpile.add is implemented in Track A1")
+        _validate_good_amount(good, amount)
+        self.counts[good] = self.counts.get(good, 0) + amount
 
     def remove(self, good: Good, amount: int) -> None:
-        raise NotImplementedError("Stockpile.remove is implemented in Track A1")
+        _validate_good_amount(good, amount)
+        available = self.counts.get(good, 0)
+        if available < amount:
+            raise ValueError(f"Insufficient {good.value}: need {amount}, have {available}")
+        remaining = available - amount
+        if remaining:
+            self.counts[good] = remaining
+        else:
+            self.counts.pop(good, None)
 
     def has(self, required: Mapping[Good, int]) -> bool:
-        raise NotImplementedError("Stockpile.has is implemented in Track A1")
+        for good, amount in required.items():
+            if not isinstance(good, Good):
+                raise TypeError("Stockpile goods must use Good enum values")
+            if amount < 0:
+                raise ValueError("Stockpile required amounts must be non-negative")
+            if self.counts.get(good, 0) < amount:
+                return False
+        return True
+
+
+def _validate_good_amount(good: Good, amount: int) -> None:
+    if not isinstance(good, Good):
+        raise TypeError("Stockpile goods must use Good enum values")
+    if amount <= 0:
+        raise ValueError("Stockpile amounts must be positive")
 
 
 @dataclass(frozen=True)

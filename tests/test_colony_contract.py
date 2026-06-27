@@ -70,7 +70,7 @@ class ColonyContractTests(unittest.TestCase):
         )
 
         self.assertEqual(ResourceNode(Good.STONE, 10, 2, 3).kind, Good.STONE)
-        self.assertEqual(GridMap(width=8, height=6, tiles=("grass",)).width, 8)
+        self.assertEqual(GridMap(width=8, height=6, tiles=("grass",) * 48).width, 8)
         self.assertEqual(ScheduleTemplate(name="day", blocks=["work"] * 24).blocks[9], "work")
         self.assertEqual(GovernorException(kind="idle", detail="no open jobs").kind, "idle")
         self.assertEqual(GovernorAction(action_type="assign_pawn", payload={"pawn_id": "pawn-1"}).action_type, "assign_pawn")
@@ -106,15 +106,6 @@ class ColonyContractTests(unittest.TestCase):
             y=0,
             state="idle",
         )
-        stockpile = Stockpile()
-
-        with self.assertRaises(NotImplementedError):
-            stockpile.add(Good.LOGS, 1)
-        with self.assertRaises(NotImplementedError):
-            stockpile.remove(Good.LOGS, 1)
-        with self.assertRaises(NotImplementedError):
-            stockpile.has({Good.LOGS: 1})
-
         mood = importlib.import_module("agent_town.mood")
         with self.assertRaises(NotImplementedError):
             mood.effective_work(pawn, recipe, 9)
