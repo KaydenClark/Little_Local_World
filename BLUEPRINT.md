@@ -1,180 +1,280 @@
 # Local Agent Town - Blueprint
 
 **Last reviewed:** 2026-06-27
-**Status:** active  
+**Status:** active
 **Source root:** `E:\GPTCode\local-agent-town`
 
 ## What This Project Is
 
-Local Agent Town is a Python desktop simulation for watching autonomous NPCs move through a small social world. It is for local experimentation with AI-agent town behavior without a browser app or hosted service.
+Local Agent Town is being refactored from an AI-Town social wander-sim into a
+single-faction, LLM-governed colony builder: a Townsmen-style town economy
+staffed by about a dozen RimWorld-style pawns, run by one Governor agent that
+sets policy and never micro-controls pawns.
 
-Core promise:
+One sentence:
 
-> Run a local watchable town where NPCs move, make lightweight decisions, remember interactions, receive occasional suggestions, and optionally use a local model for richer plans.
+> One Agent governs one town of about 12 Pawns by setting policy (assign,
+> schedule, build, research) while a deterministic engine runs the pawns and
+> economy.
 
 Primary users:
 
-- Kayden, as the local operator and designer of the simulation.
-- Future coding agents extending the simulation, viewer, and LLM planning layer.
+- Kayden, as the local operator and designer of the colony.
+- Future coding agents extending the engine, governor, and viewer.
 
-## Non-Goals
+Authoritative build plan: `Local_little_world_refactor1.md`. This blueprint is
+the stable summary; the refactor plan is the milestone-by-milestone spec.
+
+### In scope (build 1)
+
+- Single faction, one town, one map. No enemy, no PvP.
+- About 12 Pawns with skills, traits, wants, needs, mood, schedule, and mental
+  breaks.
+- A real economy: 2 to 3 production chains, construction, distribution, and a
+  happiness-to-tax loop.
+- One Governor: a deterministic rule-based fallback first, a local LLM
+  (Gemma 4 E4B) as a drop-in second.
+- The Governor reads summaries plus an exception queue, never raw pawn state.
+- The existing Pygame viewer kept working as a smoke test, eventually rendering
+  the new colony state.
+
+### Non-Goals
 
 This project is not trying to:
 
-- become a web app;
-- create a multiplayer game;
-- require hosted infrastructure;
+- become a web app or multiplayer game, or require hosted infrastructure;
 - require paid AI services for the base experience;
-- support direct control of every NPC action as the primary interaction model.
-
-## Current Product Shape
-
-When the project is working, a user can:
-
-- launch a local desktop window;
-- pan and zoom around a small town map;
-- select NPCs and inspect activity, goals, needs, memories, and suggestions;
-- suggest a lightweight idea to the selected NPC;
-- optionally connect LM Studio or Ollama through an OpenAI-compatible local endpoint;
-- run simulation tests without opening the viewer.
-
-The most important quality bar is:
-
-- local reliability first, then richer NPC behavior.
+- add a second faction, contested map, crowns/objectives layer, or military in
+  build 1;
+- add spatial indexing, benchmarks, or performance optimization at 12 pawns;
+- let the Governor micromanage pawns - it issues policy commands only.
 
 ## Architecture
+
+Three layers, built bottom-up. The engine and pawns work and pass tests
+headless before the Governor is wired on top. The fallback Governor is built
+before the LLM Governor.
+
+```text
+Governor agent (LLM or rule-based fallback)
+   reads:  faction summary + roster summary + exception queue
+   emits:  policy commands (assign, schedule, build, research)
+        |
+        v
+Policy layer  ->  Deterministic simulation engine
+                    production, hauling, construction, needs, mood, tax
+        |
+        v
+Pawns (autonomous, need-driven) on a tile map
+```
 
 | Layer | Choice | Source or notes |
 |---|---|---|
 | Runtime | Python 3.11 or newer | Verified locally with Python 3.11.6 |
-| Frontend | Pygame desktop window | No browser runtime |
-| Backend | None | Simulation runs in-process |
-| Optional local AI | OpenAI-compatible chat completions adapter | Uses `AGENT_TOWN_LLM_MODEL` when set; otherwise quickly discovers a local non-embedding model from `/models` if LM Studio/Ollama is already running |
-| Database or storage | SQLite snapshot and event-log helpers | Viewer autosave is not wired yet |
-| Auth | None | Local-only prototype |
-| Testing | Standard library `unittest` | Tests cover simulation core |
-| Deployment or runtime | Local PowerShell scripts | `setup.ps1` and `run.ps1` |
+| Simulation core | Deterministic, Pygame-free dataclasses and pure functions | `src\agent_town` colony modules |
+| Frontend | Pygame desktop window | Smoke test today; renders colony state at integration milestone I3 |
+| Optional local AI | OpenAI-compatible chat completions adapter | Governor backend; falls back to the rule-based governor on any error |
+| Testing | Standard library `unittest`, headless | Per-module tests, no Pygame for the core |
 
-Architecture constraints:
+Architecture constraints (hard):
 
-- Keep simulation logic in `src\agent_town\core.py` testable without Pygame.
-- Keep rendering and input in `src\agent_town\app.py`.
-- Keep local model calls in `src\agent_town\llm.py`; never block the Pygame loop on model output.
-- Do not add web server or browser UI unless the user reverses the non-web requirement.
-- Treat LLM integration as an adapter layer, not as a replacement for deterministic core state transitions.
+- Local-only. No web server, no browser UI, no hosted AI.
+- The simulation core runs and is fully testable without Pygame.
+- The LLM never blocks the sim loop. Reuse the existing non-blocking scheduler
+  in `llm.py`.
+- The Governor sets policy only; it does not act for individual pawns tick by
+  tick.
+- Determinism: same seed plus same policy equals same outcome. The LLM is the
+  only nondeterministic layer and must be swappable for the deterministic
+  fallback.
 
-## Directory Map
+## Module Layout
 
 ```text
-E:\GPTCode\local-agent-town\
-├── src\agent_town\      <- simulation core and desktop viewer
-├── tests\               <- unittest coverage for core behavior
-├── scripts\             <- validation helpers
-├── AGENTS.md            <- agent behavior and edit or read scope
-├── BLUEPRINT.md         <- stable project definition
-├── ROADMAP.md           <- active work plan and proof log
-├── RUNBOOK.md           <- setup, operation, verification, recovery
-├── setup.ps1            <- create local environment and install package
-└── run.ps1              <- launch desktop viewer
+src\agent_town\
+  core.py            <- shared dataclasses + the frozen contract (Phase 0)
+  world.py           <- map, tiles, resource nodes              (Track A)
+  economy.py         <- stockpile, recipes, production, tax     (Track A)
+  buildings.py       <- building types, job slots               (Track A)
+  construction.py    <- build sites, hauling to site            (Track A)
+  pawns.py           <- pawn schema, needs, breaks              (Track B)
+  mood.py            <- mood + effective-work formula           (Track B)
+  schedule.py        <- schedule templates, day clock           (Track B)
+  governor.py        <- context builder + fallback governor     (Track B)
+  llm.py             <- adapter, extended for the governor       (Track B)
+  app.py             <- Pygame viewer, renders new state         (integration)
+tests\               <- unittest, headless, per module
 ```
 
-## Main Contracts
+Transition note: the legacy social-sim (`Agent`, `Simulation`, `Location` in
+`core.py`, plus the current `app.py`, `persistence.py`, `spatial.py`) is kept
+importable and green so the existing viewer keeps working. It is retired when
+the viewer is rewritten to render colony state at integration milestone I3.
 
-### Screens
+## Frozen contract
 
-| Screen | Purpose | Status | Source |
-|---|---|---|---|
-| Pygame town viewer | Watch NPCs move, pan, zoom, select agents, and suggest ideas | working prototype | `src\agent_town\app.py` |
-| Local LLM scheduler | Stagger occasional local-model planning turns without blocking the viewer | working prototype | `src\agent_town\llm.py` |
+These shapes live in `core.py`, were written first, and are frozen. Both build
+tracks build against them. Any change after the freeze is a small one-file PR
+that both tracks rebase on, never a unilateral edit.
 
-### Commands
+| Entity | Key fields |
+|---|---|
+| `Good` (enum) | logs, planks, grain, flour, bread, stone |
+| `GridMap` | width, height, tiles; `in_bounds`, `tile_at` |
+| `ResourceNode` | kind (a Good), amount, x, y |
+| `Stockpile` | counts (Good to int); `add`, `remove`, `has` |
+| `Recipe` | inputs, outputs, work_units, skill |
+| `JobRef` | building_id, role |
+| `Building` | id, kind, x, y, recipe or None, job_slots, staffed_by, built |
+| `ConstructionSite` | id, building_kind, x, y, required, delivered, work_remaining |
+| `Pawn` | id, name, skills, traits, wants, needs, mood, schedule, assignment, x, y, state |
+| `ScheduleTemplate` | name, blocks (24 long); `block_at` |
+| `FactionState` | stockpile, coin, pawns, buildings, construction_sites, research, season, tax_rate, day, time_of_day, grid, resource_nodes |
+| `ColonyException` | kind, pawn_id or None, building_id or None, detail |
+| `GovernorAction` | kind plus the fields for that action (see Governor interface) |
 
-| Command | Purpose | Required for done |
+Naming decision: the refactor plan calls the exception-queue entity
+"Exception". It is implemented as `ColonyException` so it never shadows the
+builtin `Exception`; the LLM governor's hard fallback relies on a broad
+`except Exception`.
+
+### The one cross-track seam
+
+Each tick, a built building with a recipe, at least one staffed pawn, and inputs
+in the stockpile produces output at:
+
+```text
+building_output_rate = base_rate * sum(pawn.effective_work for staffed pawns)
+
+pawn.effective_work = skill_factor(skill in recipe.skill)
+                    * mood_factor(pawn.mood)
+                    * trait_factor(pawn.traits, recipe)
+                    * schedule_factor(pawn.schedule, time_of_day)   # 0 off-shift
+```
+
+Track A owns the production side. Track B owns `effective_work`. Both depend
+only on the signature `effective_work(pawn, recipe, time_of_day) -> float`,
+defined in `mood.py`. In Phase 0 it returns a neutral placeholder of 1.0 so
+Track A can integrate before Track B lands the real formula in milestone B2.
+This is the only place the two tracks meet.
+
+## Build 1 content scope
+
+Production chains:
+
+| Chain | Buildings | Flow |
 |---|---|---|
-| `.\setup.ps1` | Create `.venv` and install the project | yes for local run |
-| `.\run.ps1` | Launch the desktop viewer | yes for manual use |
-| `.\.venv\Scripts\python.exe -m unittest discover -s tests` | Run core tests | yes for behavior changes |
-| `.\.venv\Scripts\python.exe -m agent_town --smoke-test` | Verify viewer imports, opens, draws briefly, and exits | yes for viewer changes |
-| `.\.venv\Scripts\python.exe .\scripts\benchmark_scaling.py --agents 100 500 1000` | Measure core loop, draw loop, LLM context building, and persistence scale | yes before scale decisions |
-| `.\scripts\validate-workbench.ps1` | Validate workbench docs | yes for doc structure changes |
+| Wood | Forester, Sawmill | tree node to logs to planks |
+| Food | Farm, Mill, Bakery | grain to flour to bread |
+| Stone | Quarry | stone node to stone |
 
-### Data Model
+Construction consumes planks plus stone. Bread is the consumable that feeds the
+food need.
 
-| Entity | Key fields | Stored where | Notes |
-|---|---|---|---|
-| `Location` | name, x, y, kind, radius | memory only | Town places and behavior effects |
-| `Agent` | id, name, position, needs, goal, activity, destination, memories, suggestions, relationships, routine hints, emote state | memory only | NPC state |
-| `MemoryEntry` | tick, text | memory only | Short rolling event history |
-| `EventEntry` | tick, text | memory only | Short town feed |
-| `DecisionResult` | destination, intent, optional speech, optional memory, optional relationship effect | memory only | Validated output from local LLM planning |
-| `Simulation` | locations, agents, tick, random seed | memory only | Owns simulation step and social interactions |
-| `SQLiteSimulationStore` | snapshots, event log, schema metadata | local SQLite file when explicitly used | Tested save/load and replay helper, not automatic viewer persistence |
+Pawn needs (build 1): rest, food, recreation. Each value is in the range 0.0 to
+1.0 where 1.0 means fully satisfied; needs decay toward 0.0 over time and are
+restored by the matching schedule block plus the right good or building.
+
+Trait subset: industrious or lazy (work speed), tough or frail (mood floor now,
+combat later), optimist or pessimist (mood floor), loner (solo jobs lift mood),
+night owl (better on the night schedule).
+
+Wants subset: wants_outdoor_work, wants_own_house, wants_soldier (flagged,
+unused until build 2). A met want is a mood boost; an ignored one is a slow mood
+drag.
+
+Mood and breaks: `mood = base + needs_satisfaction + trait_modifiers +
+want_progress`. Below a threshold the pawn breaks: it slacks (effective_work
+drops), then wanders off the job. The break, surfaced as a `ColonyException`, is
+the Governor's early-warning signal.
+
+## Governor interface
+
+Actions the Governor may emit (validated against state before they mutate it):
+
+| Category | Actions |
+|---|---|
+| Pawns | `assign_pawn(pawn_id, building_id, role)`, `set_schedule(pawn_id_or_group, template)` |
+| Town | `place_building(kind, x, y)`, `set_production_target(building_id, good, amount)` |
+| Progression | `set_research(tech)` (stretch) |
+
+What the Governor reads, built by `governor.build_context`:
+
+- Faction summary: population, average mood, stockpile levels, coin, day and
+  season, tax_rate.
+- Roster summary: pawns grouped by current assignment, with standout skills and
+  traits only.
+- Exception queue: the only per-pawn detail, and only on a problem (unhappy
+  pawn plus reason, idle pawn, skill-mismatched assignment, unstaffed building,
+  missing inputs, pawn about to break).
+
+The Governor pulls a full pawn sheet only when an exception names that pawn. It
+never receives all raw pawn records; summaries plus exceptions keep the context
+small.
+
+Two governors share one `decide(context) -> list of GovernorAction` interface:
+
+- `FallbackGovernor`: rule-based greedy matcher that assigns each pawn to its
+  best-skill open slot, sets a sensible schedule, and builds the next missing
+  chain link. This is also the test oracle: if a town survives N days under the
+  fallback, the economy is winnable.
+- `LLMGovernor`: same signature, backed by Gemma 4 E4B via `llm.py` with
+  JSON-schema output and a hard fallback to `FallbackGovernor` on any error.
+
+## Two-track division of labor
+
+| | Track A | Track B |
+|---|---|---|
+| Owns | `world.py`, `economy.py`, `buildings.py`, `construction.py` | `pawns.py`, `mood.py`, `schedule.py`, `governor.py`, `llm.py` |
+| Theme | the town and its goods | the people and the sovereign |
+| Depends on | the `effective_work` signature only | `Building.job_slots`, `Stockpile`, recipes only |
+
+The split is by subsystem behind the frozen contract, so the two tracks can work
+in parallel without editing the same files. Integration is done jointly or by
+whoever finishes first.
 
 ## Core Logic And Invariants
 
-Core behavior lives in `src\agent_town\core.py`.
+Core behavior lives in the colony modules under `src\agent_town`.
 
 Rules:
 
-- Agents always target a named `Location`.
-- Suggestions must validate the target agent id before mutating state.
-- LLM decisions must validate agent id, destination, relationship target, and text lengths before mutating state.
-- Social interaction scans must go through the spatial query layer so larger agent counts do not fall back to all-pairs checks.
-- The viewer may show local model state but must not block waiting for model output.
-- Movement, needs, location effects, and conversations must be testable without Pygame.
-- Renderer code may read simulation state but should not duplicate decision logic.
-
-Do not duplicate this logic in:
-
-- Pygame draw code;
-- future LLM prompts;
-- persistence adapters.
+- All economy, pawn, mood, schedule, and governor logic is testable without
+  Pygame.
+- Governor actions are validated against state before they mutate it.
+- The viewer may read colony state but must not duplicate engine logic or block
+  on model output.
+- The deterministic core and the fallback governor must pass tests before the
+  LLM layer is built.
+- The Governor is never fed raw pawn state; summaries plus exceptions only.
 
 ## Trust, Privacy, And Safety Boundaries
 
-Sensitive data:
-
-- future local LLM logs;
-- future save files;
-- future user-authored agent memories or suggestions.
-
-Rules:
-
-- Keep the base project local-only.
-- Do not commit `.venv`, logs, databases, private exports, tokens, or generated dumps.
-- Do not enable hosted LLM providers, telemetry, or external persistence without explicit user approval.
-- Local LLM use must remain local-only. `AGENT_TOWN_LLM_MODEL` overrides discovery, and `AGENT_TOWN_LLM_AUTO_DISCOVER=0` disables startup discovery when the user wants deterministic non-LLM runs.
-
-## Known Risks
-
-| Risk | Impact | Mitigation or owner |
-|---|---|---|
-| Pygame dependency missing | Viewer cannot launch | Use `setup.ps1`; smoke-test import after install |
-| Local model offline, slow, or rejecting request payloads | Agents could appear not to think | Keep deterministic fallback, use JSON Schema structured output, and show visible model status |
-| NPC behavior is still lightweight | Agents can feel repetitive | Add persistence and deeper memory after prototype is stable |
-| Persistence is helper-only | Simulation history is still lost on normal viewer close | Wire explicit save/load UI only after replay behavior is stable |
-| Large population simulation | Social scans, future pathfinding, and memory growth can dominate before rendering | Use spatial indexing and `scripts\benchmark_scaling.py` before expanding population targets |
+- Keep the project local-only. No hosted LLM providers, telemetry, or external
+  persistence without explicit user approval.
+- Do not commit `.venv`, logs, databases, private exports, tokens, or generated
+  dumps.
+- Local LLM use stays local-only. `AGENT_TOWN_LLM_MODEL` overrides discovery,
+  and `AGENT_TOWN_LLM_AUTO_DISCOVER=0` disables startup discovery for
+  deterministic non-LLM runs.
 
 ## Design Decisions
 
 | Decision | Rationale | Date or source |
 |---|---|---|
-| Desktop Pygame instead of web | User explicitly does not want a web-based thing | 2026-06-26 user request |
-| Testable core separate from renderer | Enables red and green testing without opening a window | 2026-06-26 implementation |
-| Workbench docs adopted | User requested `KaydenClark/LLM_Workbench` project structure | 2026-06-26 user request |
-| OpenAI-compatible local model adapter | Supports LM Studio and Ollama without hosted services or provider lock-in | 2026-06-26 implementation |
-| Kenney CC0 sprites bundled from local zips | Improves watchability while keeping original zip files untouched | 2026-06-26 implementation |
-| Asset-first colony/RTS visual direction | The UI should prioritize top-down simulation readability over a broad custom palette | 2026-06-26 visual design reset |
-| Free-asset-first art workflow | New visual needs should search license-safe free medieval-fantasy assets before custom placeholders | 2026-06-27 user direction |
-| Scale architecture boundaries before engine migration | Current evidence points at simulation and persistence bottlenecks before Pygame rendering | 2026-06-27 scale planning implementation |
+| Refactor the social-sim into an LLM-governed colony builder | New product direction; supersedes the social-sim blueprint | 2026-06-27 `Local_little_world_refactor1.md` |
+| Freeze a shared contract in `core.py` first | Lets two tracks build in parallel without colliding | 2026-06-27 Phase 0 |
+| `effective_work` is the only cross-track seam | Keeps the parallel split clean and the integration point small | 2026-06-27 Phase 0 |
+| Name the exception entity `ColonyException` | Avoids shadowing the builtin `Exception` the LLM fallback relies on | 2026-06-27 Phase 0 |
+| Keep the legacy social-sim importable during the refactor | Keeps the existing viewer and tests green until milestone I3 | 2026-06-27 Phase 0 |
+| Deterministic fallback governor before the LLM governor | The fallback is the winnability oracle and the safety net | 2026-06-27 refactor plan |
 
 ## Health Criteria
 
 The project is healthy when:
 
-- `.\.venv\Scripts\python.exe -m unittest discover -s tests` passes;
+- `.\.venv\Scripts\python.exe -m unittest discover -s tests` passes headless;
+- the frozen contract in `core.py` imports and instantiates;
 - `.\.venv\Scripts\python.exe -m agent_town --smoke-test` exits successfully;
 - `.\scripts\validate-workbench.ps1` passes;
-- `.\.venv\Scripts\python.exe .\scripts\benchmark_scaling.py --agents 100 500 1000` runs before population or engine migration decisions;
-- the desktop viewer launches through `.\run.ps1`;
 - secrets and local data are not exposed in committed or built output.

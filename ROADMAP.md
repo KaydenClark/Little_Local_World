@@ -7,24 +7,44 @@ This is the active work plan. Keep it forward-looking and proof-oriented.
 
 ## Current State
 
-The project has a local Python desktop slice: a Pygame town viewer, ten autonomous NPCs, selectable inspection state, suggestion input, Kenney sprites/emotes, event feed, spatial-indexed social checks, SQLite snapshot/replay helpers, a scaling benchmark script, and unit-tested simulation core.
+The project is mid-refactor from the AI-Town social wander-sim into a
+single-faction, LLM-governed colony builder. The authoritative build plan is
+`Local_little_world_refactor1.md`; `BLUEPRINT.md` carries the stable summary.
+
+Phase 0 is complete: the frozen colony contract lives in `core.py` (Good,
+GridMap, ResourceNode, Stockpile, Recipe, Building, ConstructionSite, Pawn,
+JobRef, ScheduleTemplate, FactionState, ColonyException, GovernorAction), eight
+stubbed colony modules exist (world, economy, buildings, construction, pawns,
+mood, schedule, governor), and the `effective_work` cross-track seam is defined
+in `mood.py` (returns a 1.0 placeholder until milestone B2).
 
 Important drift or uncertainty:
 
-- Pygame was not installed globally when the project was created; local `.venv` setup is required.
-- LLM-backed planning is implemented as an optional local OpenAI-compatible adapter. It uses `AGENT_TOWN_LLM_MODEL` when set, otherwise it quickly discovers a local non-embedding model from the configured `/models` endpoint when LM Studio/Ollama is already running.
-- Persistence exists as an explicit SQLite helper for snapshots and event-log replay. The viewer does not autosave or expose load UI yet.
+- The legacy social-sim (`Agent`, `Simulation`, `Location` in `core.py`, plus
+  the current `app.py`, `persistence.py`, `spatial.py`) is intentionally kept
+  importable and green so the existing Pygame viewer keeps working. It is
+  retired when the viewer is rewritten to render colony state at milestone I3.
+- Track A (world/economy/buildings/construction) and Track B (pawns/mood/
+  schedule/governor) behavioural bodies are still stubs raising
+  NotImplementedError.
+- Local LLM planning remains an optional local OpenAI-compatible adapter in
+  `llm.py`, to be extended into the LLM governor at milestone I2.
 
 ## Current Goal
 
-Stabilize the first local LLM-backed desktop prototype while keeping the non-LLM town loop reliable and measuring scale before broad feature work.
+Build the deterministic colony engine bottom-up under the Phase 0 contract:
+Track A (economy and world) and Track B (pawns and governor), then integrate so
+the fallback governor keeps about 12 pawns alive across simulated days headless.
 
 Done when:
 
-- core and LLM adapter tests pass;
-- the Pygame smoke test opens, draws assets briefly, and exits;
-- the scaling benchmark can be run for 100, 500, and 1,000 synthetic agents;
-- workbench validation passes.
+- Track A milestones A1 to A4 pass headless tests (map, one chain, construction,
+  multi-chain plus tax loop);
+- Track B milestones B1 to B4 pass headless tests (needs/schedule/mood,
+  effective_work, traits/wants/breaks, context plus fallback governor);
+- integration I1 shows the fallback governor sustaining the colony for N days
+  with no death spiral;
+- the smoke test still exits successfully and workbench validation passes.
 
 ## Next Tasks
 
@@ -80,3 +100,4 @@ Append a row when a task changes durable project state. Use actual results, not 
 | 2026-06-27 | Document free-asset-first sourcing rule | `.\scripts\validate-workbench.ps1` | pass | No new asset was imported; future asset work still needs per-asset license verification |
 | 2026-06-27 | Implement scale boundary slice | `.\.venv\Scripts\python.exe -m unittest discover -s tests`; `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; `.\.venv\Scripts\python.exe .\scripts\benchmark_scaling.py --agents 100 500 1000` | pass | Benchmark result: 1,000 synthetic agents measured 4.862 ms core step, 2.420 ms LLM context build, and 13.744 ms dummy draw frame; viewer save/load UI remains future work |
 | 2026-06-27 | Merge current `main` test coverage into scale boundary branch | `.\.venv\Scripts\python.exe -m unittest discover -s tests`; `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; `.\.venv\Scripts\python.exe .\scripts\benchmark_scaling.py --agents 100 500 1000` | pass | Latest merged benchmark result: 1,000 synthetic agents measured 4.617 ms core step, 2.399 ms LLM context build, and 12.477 ms dummy draw frame |
+| 2026-06-27 | Phase 0: freeze colony-builder contract and stub module skeletons | `.\.venv\Scripts\python.exe -m unittest discover -s tests`; `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1` | pass | Added the frozen colony contract to `core.py`, eight stubbed colony modules (world, economy, buildings, construction, pawns, mood, schedule, governor), and contract tests (65 tests, was 55). Behavioural bodies are stubbed for Track A and Track B; the `effective_work` seam returns a 1.0 placeholder. Legacy social-sim kept importable until the viewer is rewritten at milestone I3 |
