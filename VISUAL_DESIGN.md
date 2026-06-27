@@ -1,6 +1,6 @@
 # Local Agent Town - Visual Design
 
-**Last reviewed:** 2026-06-26
+**Last reviewed:** 2026-06-27
 **Status:** active
 **Design stance:** Age of Empires-first settlement readability with RimWorld simulation clarity
 
@@ -37,6 +37,34 @@ Rules:
 - Do not hand-pick colors before checking whether the Kenney sheets already solve the visual need.
 - Prefer sprites, tile composition, outlines, and spatial grouping over ornamental panels.
 - Keep licensing notes near the assets. These packs are CC0, but crediting Kenney is still good practice.
+
+## External Asset Sourcing
+
+Do not spend project time hand-building art when a suitable free asset already exists.
+
+Default workflow:
+
+- Search for a free, game-ready asset first.
+- Prefer CC0 or public domain sources. Use CC-BY only when attribution is practical and recorded next to the asset.
+- Confirm the source URL, license, author, and whether commercial use and modification are allowed before import.
+- Keep the original download untouched, then generate any runtime crops, sheets, or resized files from that source.
+- Avoid non-commercial, unclear, share-alike, or franchise-derived assets unless the user explicitly approves the tradeoff.
+
+Style filter:
+
+- Medieval fantasy settlement first: timber, stone, thatch, carts, wells, market stalls, farms, roads, walls, towers, workshops, and readable village silhouettes.
+- Use classic fantasy adventure games as taste references, but do not copy protected franchise assets.
+- If unsure, choose Age of Empires-style RTS readability over painterly decoration.
+
+Starter sources:
+
+| Source | Use first for | License notes |
+|---|---|---|
+| `https://opengameart.org/content/isometric-medieval-buildings` | isometric fantasy buildings | listed as CC0 |
+| `https://opengameart.org/content/cc0-isometric` | broad isometric asset search | collection is CC0-oriented, but verify each item |
+| `https://opengameart.org/content/isometric-medieval-city-sim-assets` | city-sim buildings, citizens, sounds | listed as CC-BY 3.0; attribution required |
+| `https://screamingbrainstudios.com/downloads/` | CC0/Public Domain free game assets and tools | site states packs are CC0/Public Domain |
+| `https://www.summerengine.com/asset-store/pack/isometric-medieval-town` | isometric medieval town tiles | page describes the pack as Free CC0 |
 
 ## Screen Priorities
 

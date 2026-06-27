@@ -4,6 +4,17 @@ A local desktop prototype for watching autonomous NPCs move through a small soci
 
 This is intentionally not web based. The first version uses Python and Pygame for a watchable 2D world, with the simulation logic kept separate from the renderer.
 
+## Architecture stance
+
+The current scale decision is: keep Pygame as the prototype viewer, but make the simulation core easier to measure, persist, and replace around.
+
+That means new scale work should start with evidence instead of an engine rewrite:
+
+- benchmark the headless core, LLM context building, persistence, and dummy draw loop;
+- keep social/proximity logic behind a spatial query layer;
+- persist snapshots and event logs through explicit SQLite helpers before adding save/load UI;
+- migrate engines only if benchmark evidence shows rendering, editor tooling, or Pygame-specific limits are the blocker.
+
 Project structure follows the `LLM_Workbench` pattern:
 
 - `AGENTS.md` - agent instructions, scope, and verification rules.
@@ -58,11 +69,15 @@ Ollama can use the same adapter with `AGENT_TOWN_LLM_BASE_URL=http://localhost:1
 - Lightweight autonomous behavior: eat, rest, socialize, reflect, work, and wander.
 - Optional local LLM planning through an OpenAI-compatible adapter.
 - Kenney CC0 sprites for agents, locations, and emotes.
+- Spatial-indexed social checks with per-step scale metrics.
+- SQLite snapshot and event-log helpers for save/replay experiments.
+- A repeatable scaling benchmark for 100, 500, and 1,000 synthetic agents.
 - Suggestions that influence the selected NPC's next decision.
 - Inspect panel for activity, needs, local model status, memory, event feed, and pending suggestions.
 
 ## Next useful upgrades
 
-- Persist world history to SQLite.
+- Wire explicit viewer save/load commands to the tested SQLite helpers.
 - Add locations that contain objects and routines.
 - Add event summaries so you can scrub through what happened.
+- Add pathfinding benchmarks before larger maps or blocked terrain.

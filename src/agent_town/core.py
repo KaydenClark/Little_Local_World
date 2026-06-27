@@ -4,10 +4,14 @@ from dataclasses import dataclass, field
 from math import hypot
 import random
 
+from .spatial import SpatialIndex
+
 
 WORLD_WIDTH = 2400
 WORLD_HEIGHT = 1600
 MAX_EVENT_LOG = 80
+SOCIAL_INTERACTION_RADIUS = 115.0
+SOCIAL_CELL_SIZE = 140.0
 
 
 def _clean_text(value: str, limit: int) -> str:
@@ -104,6 +108,7 @@ class Simulation:
         self.elapsed = 0.0
         self.rng = random.Random(seed)
         self.events: list[EventEntry] = []
+        self.last_step_metrics: dict[str, int] = self._empty_step_metrics()
         self.record_event("Town day started.")
 
     def step(self, dt: float) -> None:
@@ -112,6 +117,20 @@ class Simulation:
 
         self.elapsed += dt
         self.tick += 1
+        metrics = self._empty_step_metrics()
+        self._advance_agents(dt)
+        self._resolve_social_interactions(metrics)
+        self.last_step_metrics = metrics
+
+    def _empty_step_metrics(self) -> dict[str, int]:
+        return {
+            "agents": len(self.agents),
+            "social_candidate_visits": 0,
+            "social_distance_checks": 0,
+            "conversations_started": 0,
+        }
+
+    def _advance_agents(self, dt: float) -> None:
         for agent in self.agents.values():
             self._update_needs(agent, dt)
             self._update_emote(agent, dt)
@@ -125,8 +144,6 @@ class Simulation:
                     self._choose_next_action(agent)
             else:
                 self._move_toward(agent, destination, dt)
-
-        self._resolve_social_interactions()
 
     def suggest(self, agent_id: str, text: str) -> None:
         if agent_id not in self.agents:
@@ -347,21 +364,38 @@ class Simulation:
                 return self._nearest_kind(agent, kind)
         return None
 
-    def _resolve_social_interactions(self) -> None:
+    def _resolve_social_interactions(self, metrics: dict[str, int] | None = None) -> None:
         agents = list(self.agents.values())
-        for index, first in enumerate(agents):
+        order_by_id = {agent.id: index for index, agent in enumerate(agents)}
+        location_by_id = {agent.id: self.agent_location_name(agent) for agent in agents}
+        spatial_index = SpatialIndex(agents, cell_size=SOCIAL_CELL_SIZE)
+
+        for first in agents:
             if first.conversation_cooldown > 0:
                 continue
-            for second in agents[index + 1 :]:
+
+            first_location = location_by_id[first.id]
+            if first_location == "between places":
+                continue
+
+            candidates = spatial_index.nearby(first.x, first.y, SOCIAL_INTERACTION_RADIUS)
+            if metrics is not None:
+                metrics["social_candidate_visits"] += len(candidates)
+
+            for second in sorted(candidates, key=lambda agent: order_by_id[agent.id]):
+                if order_by_id[second.id] <= order_by_id[first.id]:
+                    continue
                 if second.conversation_cooldown > 0:
                     continue
-                if self.agent_location_name(first) == "between places":
+                if first_location != location_by_id[second.id]:
                     continue
-                if self.agent_location_name(first) != self.agent_location_name(second):
-                    continue
-                if self._distance(first.x, first.y, second.x, second.y) > 115:
+                if metrics is not None:
+                    metrics["social_distance_checks"] += 1
+                if self._distance(first.x, first.y, second.x, second.y) > SOCIAL_INTERACTION_RADIUS:
                     continue
                 self._start_conversation(first, second)
+                if metrics is not None:
+                    metrics["conversations_started"] += 1
                 break
 
     def _start_conversation(self, first: Agent, second: Agent) -> None:
