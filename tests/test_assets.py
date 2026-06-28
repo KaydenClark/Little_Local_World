@@ -7,6 +7,8 @@ from agent_town.app import LOCATION_FOOTPRINTS, SCENERY_STAMPS, TERRAIN_TILE_IND
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+# Source asset zips live alongside the bundled sprites under the package.
+ASSETS_DIR = PROJECT_ROOT / "src" / "agent_town" / "assets"
 
 
 SOURCE_ASSETS = {
@@ -34,7 +36,7 @@ class KenneyAssetTests(unittest.TestCase):
         for manifest_attr, (zip_name, entry_name) in SOURCE_ASSETS.items():
             with self.subTest(asset=manifest_attr):
                 asset_path = getattr(manifest, manifest_attr)
-                with zipfile.ZipFile(PROJECT_ROOT / zip_name) as archive:
+                with zipfile.ZipFile(ASSETS_DIR / zip_name) as archive:
                     expected = archive.read(entry_name)
 
                 self.assertEqual(asset_path.read_bytes(), expected)

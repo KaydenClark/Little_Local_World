@@ -32,10 +32,14 @@ deterministic `FallbackGovernor` in `governor.py`. The fallback now also emits
 the next missing build-1 chain building as a `place_building` action while
 leaving construction-site realization to Track A.
 
-Integration I1 has its first headless regression: a seeded 12-pawn colony runs
-for three simulated days under the fallback governor with production, needs,
-mood, bread meals, and daily tax staying above the asserted floors. This is
-still a test harness over the colony modules, not a reusable engine loop.
+Integration I1 is complete: the test-harness loop is extracted into a reusable
+deterministic stepper in `engine.py` (`step_hour` / `run` / `run_days`). It
+applies governor actions, realizes affordable `place_building` actions into
+construction (haul -> work -> built), advances per-pawn needs/mood/breaks, runs
+production through the `effective_work` seam, and collects daily tax on
+rollover. The seeded 12-pawn three-day fallback-survival regression now runs
+through the engine, and `test_engine.py` covers construction completion,
+unaffordable-placement skipping, and determinism.
 
 Important drift or uncertainty:
 
@@ -43,11 +47,14 @@ Important drift or uncertainty:
   the current `app.py`, `persistence.py`, `spatial.py`) is intentionally kept
   importable and green so the existing Pygame viewer keeps working. It is
   retired when the viewer is rewritten to render colony state at milestone I3.
-- I1 is not yet a reusable engine object/function. The proof lives in
-  `tests/test_integration_i1.py`, which is enough to protect the seam but should
-  be extracted into a real headless stepper before viewer work.
+- The default `python -m agent_town` view is now the colony viewer
+  (`colony_view.py`), which renders the colony `FactionState` and steps the
+  engine. The legacy social-sim (`app.py`, `create_default_simulation`) is still
+  importable and tested; it is retired once the colony viewer reaches parity
+  (camera, pawn-selection panel, LLM toggle).
 - Local LLM planning remains an optional local OpenAI-compatible adapter in
-  `llm.py`, to be extended into the LLM governor at milestone I2.
+  `llm.py`, not yet wired as a governor. There is no `LLMGovernor` class yet;
+  that is milestone I2, the next bridge step now that the viewer renders state.
 
 ## Current Goal
 
@@ -64,18 +71,52 @@ Done when:
 - the viewer renders colony state instead of the legacy social-sim state;
 - the smoke test still exits successfully and workbench validation passes.
 
+## Build arc (the long road)
+
+The immediate goal above finishes build 1. The product then grows in builds,
+each gated on the prior. Conservation ("nothing from nothing", `BLUEPRINT.md`)
+governs every system. The full content design lives in `BLUEPRINT.md`'s "Target
+content design"; this is the sequencing.
+
+- **Build 1 - one colony works (current).** About 12 pawns, 3 chains (wood,
+  food, stone), construction, needs/mood/breaks, happiness-to-tax, deterministic
+  fallback Governor then the LLM Governor, viewer renders colony state.
+- **Build 2 - depth and the spectator.** Water and clothes/beauty chains; the
+  full needs set (water, shelter, clothes, beauty); building quality to
+  happiness; decay + repair as a material/coin sink; the wage money loop
+  (wages -> spend -> tax) with the Market and Tavern; storage caps and a
+  "storage full %" readout; RimWorld work priorities (`set_work_priority`) and
+  the per-colony spectator view; skill-based healthcare (Infirmary + optional
+  medicine); the Church as recreation/mood; operator-triggered disasters; the
+  revolution meter plus the keep and fail state; pets as decor; save state.
+- **Build 3 - the people are real.** Pawn lifecycle: aging, productivity bands,
+  death; birth from two parent pawns with lineage; the home -> barracks ->
+  trained -> deployable soldier pipeline; Watch Tower soldier slots; Police and
+  Firehouse; the ore -> metal -> tools/parts chain; cooking and meat. Soldiers
+  want beer + meat.
+- **Build 4 - competition and the Space Age.** Two Governor agents, one shared
+  map, finite contested resources, rivals unaware at first. The research spine
+  to the industrial tier (components) and the space-program endgame: the first
+  colony to launch wins, and outlasting the rival is the implied secondary win.
+  Scale target up to about 1000 pawns per colony.
+
 ## Next Tasks
 
-1. **Extract the I1 headless stepper** - move the test-harness loop into a
-   reusable colony engine function that applies fallback actions, realizes
-   construction, advances production/needs/mood/tax, and preserves the
-   three-day survival test.
-2. **LLM governor I2** - add the local LLM governor behind the fallback
-   interface with schema validation and hard fallback. Proof: manual Gemma 4
-   E4B run log plus deterministic fallback tests still green.
-3. **Viewer I3** - render colony buildings, pawns, stockpile, mood, and
-   construction state in `app.py`, then retire the legacy social-sim only after
-   the new viewer smoke test is green.
+The bridge order is I1 -> I3 -> I2 (see the colony render before adding the LLM).
+
+1. **(done) Extract the I1 headless stepper** - `engine.py` is the reusable
+   colony engine; the three-day survival test runs through it. See the current
+   state above.
+2. **(done, cleanup pending) Viewer I3** - `colony_view.py` renders the colony
+   `FactionState` (tiles, buildings with staffing, pawns by mood, HUD) with the
+   authored `assets/colony` sprites and steps `engine.step_hour`; it is now the
+   default `python -m agent_town` view and its smoke test is green. Remaining:
+   retire the legacy social-sim once the colony viewer reaches parity (camera,
+   pawn-selection panel, LLM toggle).
+3. **LLM governor I2 (next)** - add the local `LLMGovernor` behind the fallback
+   `decide` interface with schema validation and a hard fallback, dropped into
+   the same engine loop. Proof: manual Gemma 4 E4B run log plus deterministic
+   fallback tests still green.
 4. **Manual LM Studio/Ollama tuning pass** - run Gemma 4 E4B-it, Qwen3.5-4B,
    and Phi-4-mini-instruct locally and record which model gives the best
    speed/personality balance.
@@ -87,17 +128,56 @@ Do not start these until their prerequisite is met.
 | Item | Blocked on | Why it matters |
 |---|---|---|
 | Hosted AI providers | explicit user approval | Avoids accidental paid or network-dependent behavior |
-| Multiplayer or remote viewing | explicit product direction change | Current requirement is local and not web based |
+| Human multiplayer or remote viewing | explicit product direction change | Local-only, not web based; AI-vs-AI multi-colony is build 4, not this |
 | Large map editor | stable core loop | Editing tools are less useful before agent behavior is interesting |
 | Engine migration | benchmark evidence that Pygame rendering or editor tooling is the blocker | Current measured risk is simulation scale, persistence, and future pathfinding before rendering |
 
 ## Backlog
 
-- Add event feed and time controls.
-- Add places with objects and tasks.
-- Add agent-to-agent message summaries.
-- Add screenshots or GIF capture for quick review.
-- Add pathfinding benchmark before implementing obstacles or large maps.
+Tagged by the earliest build that needs them; see `BLUEPRINT.md` for the design.
+
+Build 2 (depth and the spectator):
+
+- Water chain (Water Well -> water need) and clothes/beauty chain (animals ->
+  wool/hide -> Tailor -> cloth/clothes; furniture -> beauty).
+- Full needs: water, shelter, clothes, beauty, wired to schedule restoration.
+- Building quality -> happiness, plus decay + repair consuming planks/stone +
+  labour (the missing material/coin sink).
+- Wage money loop: pay pawns (treasury -> purse), pawns spend at Market/Tavern,
+  tax the wages back; Market trades surplus with off-map caravans.
+- Storage caps + "storage full %" readout; Storehouse raises capacity.
+- `set_work_priority` action + RimWorld per-pawn work-priority model.
+- Per-colony spectator view: open a colony and see assignments, priorities,
+  stockpile, mood, construction live.
+- Skill-based healthcare: doctoring priority, Infirmary, optional medicine,
+  skill grows by treating.
+- Operator-triggered disasters (fire, lightning, cold) via a deliberate UI
+  action or a separate storyteller model - never the playing Governor.
+- Revolution meter (mood -> revolt risk) + the keep avatar + fail state.
+- Save state (wake the dormant SQLite scaffold for long games).
+- Pets as decor once population passes a threshold.
+
+Build 3 (the people are real):
+
+- Pawn lifecycle: aging, productivity bands (productive ~16-60), death; 1 real
+  hour ~= 1 game year.
+- Birth from two parent pawns with lineage tracking; child -> adult.
+- Soldier pipeline: home -> walk to barracks -> train -> deployable-anywhere
+  soldier; Watch Tower soldier slots; soldiers want beer + meat.
+- ore -> metal -> tools/parts chain (Mine, Smelter, Blacksmith); cooking/meat;
+  Police House and Firehouse.
+
+Build 4 (competition and the Space Age):
+
+- Two Governor agents, one shared map, contested finite resources.
+- Research spine to industrial components and the space-program launch victory.
+- Scale to ~1000 pawns per colony (this is where spatial indexing/benchmarks
+  earn their place).
+
+Carried from the social-sim era (revisit when relevant):
+
+- Event feed and time controls; screenshots/GIF capture for quick review.
+- Pathfinding benchmark before obstacles or large maps.
 
 ## Release Checks
 
@@ -134,3 +214,8 @@ Append a row when a task changes durable project state. Use actual results, not 
 | 2026-06-28 | Add in-game LM Studio connect/disconnect toggle | `.\.venv\Scripts\python.exe -m unittest discover -s tests`; `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1` | pass | Added runtime scheduler reconnect/disable support and a Pygame `L` key toggle with panel guidance. Already-running game windows must be relaunched to pick up this code change |
 | 2026-06-28 | Make the LM Studio toggle visible and clickable | `.\.venv\Scripts\python.exe -m unittest discover -s tests`; `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1` | pass | Added a high-visibility `LM Studio` panel control near the selected pawn header and made it clickable, while keeping `L` as the shortcut |
 | 2026-06-28 | Document visible-controls-first feature rule | `.\scripts\validate-workbench.ps1` | pass | Updated `BLUEPRINT.md` so future user-facing features prioritize visible buttons, toggles, icon/state indicators, and color cues over keypress-only controls |
+| 2026-06-28 | Rework BLUEPRINT/ROADMAP to the full game vision (autopilot+spectator, RimWorld priorities, multi-agent -> Space Age) | `.\scripts\validate-workbench.ps1` | pass | Docs only. Added long-term vision, conservation north star, full production-chain/needs/services design, money loop, healthcare-as-skill, and a build-1..4 arc. Refactor doc kept until the I1-I3 bridge is green; new goods/actions remain design targets, not yet in the frozen `core.py` contract |
+| 2026-06-28 | Integration I1: extract reusable headless engine stepper | `.\.venv\Scripts\python.exe -m unittest discover -s tests` (117 tests, was 113); `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1` | pass | Added `engine.py` (`step_hour`/`run`/`run_days`, `StepResult`) realizing governor actions, construction, per-pawn/production/tax. Repointed the three-day survival regression through the engine and added `test_engine.py` (construction completion, unaffordable-skip, determinism, whole-day stepping). Next bridge step is the I3 colony viewer |
+| 2026-06-28 | Integration I3: colony viewer renders FactionState with authored sprites | `.\.venv\Scripts\python.exe -m unittest discover -s tests` (126 tests, was 117); `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; rendered frame inspected at `%TEMP%\colony_frame.png` | pass | Relocated the new authored sprites into `assets/colony/`, added `load_colony_manifest` (25px tiles), `colony.create_default_colony`, and `colony_view.py` (tiles/nodes/buildings-with-staffing/pawns-by-mood/HUD) stepping `engine.step_hour`; repointed `__main__` to it. Added `test_colony.py` + `test_colony_view.py`. Remaining: pawn movement to workplaces, camera/pan-zoom, pawn-selection panel, and retiring the legacy social-sim at parity. Authored sprites are stand-ins mapped by category (raw->house3, processing->house); per-kind art still pending |
+| 2026-06-28 | Integrate CC0 pawn sprites and inventory new asset packs | `.\.venv\Scripts\python.exe -m unittest discover -s tests` (126 tests); `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; rendered frame inspected at `%TEMP%\colony_frame.png` | pass | Sliced four front-facing pawn sprites (`pawn_a..d`) from the CC0 ansimuz `town_rpg_pack`, replacing the mood circles with style-matched townsfolk plus a mood dot. Repointed `test_assets.py` at the relocated Kenney source zips under `assets/`. Added `assets/colony/README.md` provenance. Held packs pending license: `32_Characters` (best pawn variety), `gfx` (possible rips), `FreePixelFood`. Unused CC0 adds still available: town well/bushes/fences (slice from `town_rpg_pack`), `trees_and_bushes_pack` |
+| 2026-06-28 | Confirm asset licenses and swap pawns to the Tiny Characters Set | `.\.venv\Scripts\python.exe -m unittest discover -s tests` (126 tests); `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; rendered frame inspected at `%TEMP%\colony_frame.png` | pass | Confirmed CC0 via source pages: Tiny Characters Set (Fleurman/GrafxKid, opengameart) and Free Pixel Food (Henry Software, itch). Sliced+trimmed all 24 characters from `32_Characters/All.png` into `pawn_00..23`, removed the four `pawn_a..d`, and load pawns by glob (each colonist now a distinct person). `gfx.zip` left unverified (possible rips). `FreePixelFood` now cleared for HUD good-icons. Updated `assets/colony/README.md` |
