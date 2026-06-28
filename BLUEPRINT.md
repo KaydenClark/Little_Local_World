@@ -1,6 +1,6 @@
 # Local Agent Town - Blueprint
 
-**Last reviewed:** 2026-06-27
+**Last reviewed:** 2026-06-28
 **Status:** active
 **Source root:** `E:\GPTCode\local-agent-town`
 
@@ -35,8 +35,7 @@ the stable summary; the refactor plan is the milestone-by-milestone spec.
 - One Governor: a deterministic rule-based fallback first, a local LLM
   (Gemma 4 E4B) as a drop-in second.
 - The Governor reads summaries plus an exception queue, never raw pawn state.
-- The existing Pygame viewer kept working as a smoke test, eventually rendering
-  the new colony state.
+- The Pygame viewer renders the colony state and remains a smoke-test surface.
 
 ### Non-Goals
 
@@ -48,6 +47,61 @@ This project is not trying to:
   build 1;
 - add spatial indexing, benchmarks, or performance optimization at 12 pawns;
 - let the Governor micromanage pawns - it issues policy commands only.
+
+"Multiplayer game" above means human multiplayer. Multiple AI agents each
+running their own colony on one map (below) is a planned later build, not a
+non-goal.
+
+## Long-term vision (beyond build 1)
+
+Build 1 is the foundation: one colony, one Governor, about 12 pawns, headless
+then rendered. The product it grows into:
+
+- **Pure autopilot, watched not played.** The operator does not play the colony.
+  One Governor agent per colony runs it end to end; the operator spectates -
+  opening any colony and seeing its live state (pawn assignments, work
+  priorities, stockpiles, mood, construction) as if they were the one playing,
+  but only to confirm the agent is managing well. The colony is hands-off by
+  design.
+- **One voice per colony.** The Governor agent is the colony's single voice and
+  mind. Pawns have no voice; they have RimWorld-style free will - each pawn
+  autonomously picks its highest-priority available job from a priority list the
+  Governor tunes. The point of the spectator view is watching how the agent
+  juggles those priorities across a dozen, then hundreds, of autonomous pawns.
+- **Scale arc:** 1 agent / about 12 pawns, then 1 agent / up to about 1000
+  pawns, then two agents each running their own colony on one shared map,
+  competing for the same finite resources. Rivals do not know the other exists
+  at first; contact is emergent.
+- **Victory is the Space Age.** The primary win is technological: research and
+  build a colony able to leave the planet (a launch / space-age milestone). The
+  secondary, implied win is to outlast the rival colony. Research is therefore a
+  core progression spine, not a stretch goal.
+- **A player avatar / "the keep."** Each colony has a seat of power in the world
+  the agent is identified with, so the agent has visible stake. Revolution
+  targets the keep; losing it is a fail state.
+- **Immortal agents, mortal pawns.** Real time maps to game time at roughly
+  1 real hour = 1 game year. The Governor agent is immortal; pawns age (live to
+  about 80, productive about 16-60; the Space Age extends this to about 120,
+  productive to about 80). The very old and very young are cared for, not worked.
+
+These are marked direction. Build 1 stays single-colony, single-map, no rival,
+no military; the roadmap sequences the rest, governed by the law below.
+
+## Design north star: conservation ("nothing from nothing")
+
+Stated as a law because it governs every system: nothing is created from
+nothing; everything traces to a source.
+
+- Goods come from chains: bread is baked from flour milled from grain grown on a
+  farm.
+- Soldiers come from people: a soldier is a pawn who was born from two parent
+  pawns, grew up, walked to a barracks, and trained. The barracks never spawns a
+  unit from nothing.
+- Coin comes from circulation: taxes are collected from wages the colony already
+  paid out (see the money loop). The only external coin source is trade.
+
+When a new system is proposed, the test is: where does each thing come from, and
+where does it go? If the answer is "nowhere," the design is wrong.
 
 ## Architecture
 
@@ -88,6 +142,18 @@ Architecture constraints (hard):
   only nondeterministic layer and must be swappable for the deterministic
   fallback.
 
+Operator interaction principles:
+
+- User-facing features should be reachable through visible UI controls first:
+  buttons, toggles, segmented controls, sliders, or panel actions as fits the
+  feature. Keyboard shortcuts may exist, but they are secondary accelerators,
+  not the only way to discover or use the feature.
+- Important state changes need visible status treatment: use compact icons,
+  color indicators, borders, or badges so the operator can tell at a glance
+  whether a feature is on, off, pending, blocked, or degraded.
+- Be creative but practical. Prefer small, game-readable controls that match
+  the desktop settlement UI over plain text instructions buried in a footer.
+
 ## Module Layout
 
 ```text
@@ -102,14 +168,14 @@ src\agent_town\
   schedule.py        <- schedule templates, day clock           (Track B)
   governor.py        <- context builder + fallback governor     (Track B)
   llm.py             <- adapter, extended for the governor       (Track B)
-  app.py             <- Pygame viewer, renders new state         (integration)
+  colony_view.py    <- Pygame viewer for colony state            (integration)
 tests\               <- unittest, headless, per module
 ```
 
-Transition note: the legacy social-sim (`Agent`, `Simulation`, `Location` in
-`core.py`, plus the current `app.py`, `persistence.py`, `spatial.py`) is kept
-importable and green so the existing viewer keeps working. It is retired when
-the viewer is rewritten to render colony state at integration milestone I3.
+Transition note: the legacy social-sim (`Agent`, `Simulation`, `Location`,
+`app.py`, `persistence.py`, and `spatial.py`) was retired after I3 reached
+colony-viewer parity. Current runtime code is the colony contract, engine,
+governor, local LLM client, and `colony_view.py`.
 
 ## Frozen contract
 
@@ -188,15 +254,142 @@ want_progress`. Below a threshold the pawn breaks: it slacks (effective_work
 drops), then wanders off the job. The break, surfaced as a `ColonyException`, is
 the Governor's early-warning signal.
 
+## Target content design (full game)
+
+Build 1 ships only the first rows; `ROADMAP.md` sequences the rest. This table
+is the design target the chains converge on, not the build-1 cut. Every "from /
+to" obeys the conservation law above. The `Build` column is the earliest build
+that ships the row.
+
+### Production chains
+
+Tier 0 is extraction from map resource nodes. Each later tier needs the prior
+tier's output and, past tier 1, a research unlock - so an advanced building can
+only exist once its supplier and its tech do.
+
+| Tier | Building | Consumes | Produces | Skill | Build |
+|---|---|---|---|---|---|
+| 0 | Forester | tree node | logs | forestry | 1 |
+| 0 | Quarry | stone node | stone | mining | 1 |
+| 0 | Farm (crops) | field node | grain, vegetables | farming | 1 |
+| 0 | Water Well | water table | water | hauling | 2 |
+| 0 | Mine | ore node | ore | mining | 3 |
+| 0 | Pasture / Animal Farm | feed (grain) | raw meat, hide, wool | herding | 3 |
+| 0 | Hunter's Hut | wild game node | raw meat, hide | hunting | 3 |
+| 1 | Sawmill | logs | planks | woodworking | 1 |
+| 1 | Mill | grain | flour | milling | 1 |
+| 1 | Bakery | flour, water | bread | baking | 1 |
+| 1 | Brewery | grain, water | beer | brewing | 2 |
+| 1 | Tailor | wool / hide | cloth, clothes | tailoring | 2 |
+| 1 | Kitchen / Butcher | raw meat | meat (cooked) | cooking | 3 |
+| 1 | Smelter | ore | metal | smithing | 3 |
+| 2 | Carpenter / Workshop | planks, parts | furniture | crafting | 2 |
+| 2 | Apothecary | herbs, cloth | medicine | medicine | 2 |
+| 2 | Blacksmith / Forge | metal | tools, parts | smithing | 3 |
+| 3 | Laboratory | books/components + researcher | research points | research | 3 |
+| 3 | Foundry / Machine shop | metal, parts | components | engineering | 4 |
+| 3 | Space program | components, research | launch readiness | engineering | 4 |
+
+Tools and furniture are quality boosters: tools raise pawn work speed; furniture
+raises building quality, which raises mood (see needs).
+
+### Pawn needs (full set)
+
+Each need is 0.0 to 1.0, decays over time, and is restored by the matching
+good/building on a schedule block. Build 1 ships rest, food, recreation; the
+rest follow.
+
+| Need | Restored by | Build |
+|---|---|---|
+| Rest | House / bed; quality raises the cap | 1 |
+| Food | Bread, later meat/vegetables for variety | 1 |
+| Recreation | Tavern, Church | 1 |
+| Water | Well water | 2 |
+| Shelter | An assigned House; quality raises mood | 2 |
+| Clothes | Clothing from the Tailor; warmth matters in cold | 2 |
+| Beauty ("pretty things") | Furniture, building quality, decorations | 2 |
+| Protection | Watch Tower / soldier coverage, Firehouse, Police | 3 |
+
+### Service and civic buildings (satisfy needs / logistics, no output good)
+
+| Building | Role | Build |
+|---|---|---|
+| House | Shelter + rest; quality raises mood | 1 |
+| Tavern | Recreation + mood; sells beer/bread to pawns (money loop); soldiers want beer + meat | 2 |
+| Church | Recreation and mood-boost center; one worker slot | 2 |
+| Storehouse | Raises stockpile capacity (see storage) | 2 |
+| Market | Trade with off-map caravans (coin in/out); pawns spend wages here | 2 |
+| Infirmary | Treat injured/sick; skill-based healthcare | 2 |
+| Watch Tower | Protection; one slot, must be staffed by a soldier pawn | 3 |
+| Firehouse | Cuts fire-disaster spread and damage | 3 |
+| Police House | Suppresses crime/unrest, lowers revolution risk | 3 |
+| Barracks | Trains a grown pawn into a soldier (needs a real pawn) | 3 |
+
+### The money loop
+
+Coin is conserved internally and only enters or leaves through trade.
+
+- Wages: treasury to pawn purse each day. Unpaid pawns lose mood.
+- Spending + tax: pawn purse back to treasury, via purchases at the
+  Market/Tavern and via tax on wages.
+- Trade: the Market sells surplus goods to off-map caravans for net new coin, or
+  buys scarce goods for coin. This is the only external source and sink.
+
+So "where do taxes come from if you don't pay your people" resolves cleanly: you
+tax the wages you paid, and net colony wealth comes from selling what the pawns
+produced. No wages means nothing to tax, plus a mood penalty.
+
+### Healthcare (skill, not a punishing chain)
+
+Treatment is a labour + skill task, not a deep supply chain. A pawn with a
+doctoring priority tends a patient (at the Infirmary or in a bed); care quality
+scales with the doctor's skill, and every treatment raises that skill. Medicine
+(one cheap Apothecary good) is an optional booster that improves outcomes but is
+never required - you can run healthcare with a willing, improving pawn and
+nothing else, RimWorld-style.
+
+### Research and the Space Age
+
+Research points (Laboratory output) buy techs along a spine that ends in space
+flight. Techs unlock the later building tiers and raise pawn lifespan and
+productivity. Reaching and completing the space-age milestone is the primary
+victory.
+
+### Storage
+
+Stockpile capacity is finite and raised by the Storehouse; a "storage full %"
+readout surfaces it (see `ROADMAP.md`). Build 1 keeps the uncapped stockpile;
+caps and hauling pressure land in build 2.
+
+### Disasters (operator as storyteller)
+
+Disasters (fire, lightning, cold snaps that freeze crops or kill unsheltered
+pawns) are operator-triggered, not random: the operator is the storyteller, via
+a deliberate UI action or a separate prompting model - never the Governor agent
+that is playing the colony.
+
+### Pets
+
+Decoration in build 1 (dogs/cats appear once population passes a threshold).
+Later, dogs gain a guard role: protecting the colony area alongside pawns.
+
 ## Governor interface
 
 Actions the Governor may emit (validated against state before they mutate it):
 
 | Category | Actions |
 |---|---|
-| Pawns | `assign_pawn(pawn_id, building_id, role)`, `set_schedule(pawn_id_or_group, template)` |
+| Pawns | `assign_pawn(pawn_id, building_id, role)`, `set_schedule(pawn_id_or_group, template)`, `set_work_priority(pawn_id_or_group, work_type, level)` |
 | Town | `place_building(kind, x, y)`, `set_production_target(building_id, good, amount)` |
-| Progression | `set_research(tech)` (stretch) |
+| Progression | `set_research(tech)` |
+
+Pawns have RimWorld-style free will: each picks its highest-priority available
+job from its priority list. The Governor's main lever is tuning priorities and
+schedules, not hand-placing pawns in slots - `assign_pawn` is an override for
+the rare case. Watching how the agent balances priorities across the roster is
+the substance of the spectator view. (`set_work_priority` is a build-2 addition;
+build 1 still assigns slots directly. `set_research` is core to the Space-Age
+victory, not a stretch.)
 
 What the Governor reads, built by `governor.build_context`:
 
@@ -268,6 +461,7 @@ Rules:
 | Name the exception entity `ColonyException` | Avoids shadowing the builtin `Exception` the LLM fallback relies on | 2026-06-27 Phase 0 |
 | Keep the legacy social-sim importable during the refactor | Keeps the existing viewer and tests green until milestone I3 | 2026-06-27 Phase 0 |
 | Deterministic fallback governor before the LLM governor | The fallback is the winnability oracle and the safety net | 2026-06-27 refactor plan |
+| Retire the legacy social-sim after I3 parity | Removes obsolete viewer/runtime code once the colony viewer, LLM governor, smoke test, and benchmarks cover the current product | 2026-06-28 I3 cleanup |
 
 ## Health Criteria
 

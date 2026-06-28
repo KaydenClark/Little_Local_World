@@ -15,7 +15,10 @@ by the engine via Track A construction at integration.
 
 from __future__ import annotations
 
-from typing import Any, Protocol
+import time
+from concurrent.futures import Future, ThreadPoolExecutor
+from dataclasses import dataclass
+from typing import Any, Callable, Protocol
 
 from . import pawns, schedule
 from .core import (
@@ -30,6 +33,7 @@ from .core import (
     GovernorAction,
     JobRef,
 )
+from .llm import LLMClientError, LocalLLMClient, ModelDiscovery
 
 # A pawn this unhappy (but not yet breaking) is flagged for the governor.
 UNHAPPY_THRESHOLD = 0.4
@@ -334,3 +338,370 @@ class FallbackGovernor:
                 break
 
         return actions
+
+
+# ---------------------------------------------------------------------------
+# LLM governor (integration milestone I2)
+#
+# Same ``decide(context) -> list[GovernorAction]`` interface as FallbackGovernor,
+# backed by a local model via ``LocalLLMClient``. It asks for a JSON object of
+# policy actions against a fixed schema, parses+validates them, and hard-falls
+# back to FallbackGovernor on ANY error (this is why the colony exception entity
+# is ``ColonyException`` and not ``Exception`` - the bare ``except Exception``
+# below must stay a safety net, not catch a domain object).
+# ---------------------------------------------------------------------------
+
+COLONY_ACTION_KINDS = (
+    ACTION_ASSIGN_PAWN,
+    ACTION_SET_SCHEDULE,
+    ACTION_PLACE_BUILDING,
+    ACTION_SET_PRODUCTION_TARGET,
+    ACTION_SET_RESEARCH,
+)
+
+COLONY_ACTION_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "actions": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "kind": {"type": "string", "enum": list(COLONY_ACTION_KINDS)},
+                    "pawn_id": {"type": "string"},
+                    "building_id": {"type": "string"},
+                    "role": {"type": "string"},
+                    "group": {"type": "string"},
+                    "template": {"type": "string"},
+                    "building_kind": {"type": "string"},
+                    "good": {"type": "string"},
+                    "amount": {"type": "integer"},
+                    "x": {"type": "integer"},
+                    "y": {"type": "integer"},
+                    "tech": {"type": "string"},
+                },
+                "required": ["kind"],
+            },
+        }
+    },
+    "required": ["actions"],
+}
+
+GOVERNOR_SYSTEM_PROMPT = (
+    "You are the Governor of a small colony. You set POLICY only - you never move "
+    "pawns yourself. Each turn you read a JSON summary of the colony and reply with "
+    "a JSON object {\"actions\": [...]} of zero or more policy actions. Valid action "
+    "kinds and their fields:\n"
+    "- assign_pawn {pawn_id, building_id, role}: staff an idle pawn into an open "
+    "building slot whose skill matches the pawn.\n"
+    "- set_schedule {group, template}: group is a pawn_id or \"all\"; template is "
+    "one of default, night, rest. Put unhappy or breaking pawns on rest.\n"
+    "- place_building {building_kind, x, y}: queue the next missing production "
+    "building.\n"
+    "- set_production_target {building_id, good, amount}.\n"
+    "- set_research {tech}.\n"
+    "Prefer to staff idle pawns into matching open slots and to rest unhappy pawns. "
+    "Reply with valid JSON only - no prose, no markdown, no chain of thought."
+)
+
+
+def _coerce_int(value: Any) -> int | None:
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def action_from_dict(data: dict[str, Any]) -> GovernorAction | None:
+    """Build a GovernorAction from a raw LLM action dict, or None if unusable."""
+    kind = data.get("kind")
+    if kind not in COLONY_ACTION_KINDS:
+        return None
+
+    good_value = data.get("good")
+    good_enum: Good | None = None
+    if good_value is not None:
+        try:
+            good_enum = Good(str(good_value))
+        except ValueError:
+            good_enum = None
+
+    return GovernorAction(
+        kind=kind,
+        pawn_id=_clean_str(data.get("pawn_id")),
+        group=_clean_str(data.get("group")),
+        building_id=_clean_str(data.get("building_id")),
+        building_kind=_clean_str(data.get("building_kind")),
+        role=_clean_str(data.get("role")),
+        template=_clean_str(data.get("template")),
+        good=good_enum,
+        amount=_coerce_int(data.get("amount")),
+        x=_coerce_int(data.get("x")),
+        y=_coerce_int(data.get("y")),
+        tech=_clean_str(data.get("tech")),
+    )
+
+
+def parse_action_list(payload: dict[str, Any]) -> list[GovernorAction]:
+    """Parse the LLM's ``{"actions": [...]}`` object into GovernorActions."""
+    raw = payload.get("actions")
+    if not isinstance(raw, list):
+        raise ValueError("LLM governor response must contain an 'actions' list")
+    actions: list[GovernorAction] = []
+    for item in raw:
+        if isinstance(item, dict):
+            action = action_from_dict(item)
+            if action is not None:
+                actions.append(action)
+    return actions
+
+
+def _clean_str(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+class LLMGovernor:
+    """LLM-backed governor with a hard fallback to FallbackGovernor.
+
+    ``decide`` asks the model for an action list; on any error - disabled client,
+    timeout, bad JSON, schema miss - it returns the deterministic fallback's
+    decision instead, so the colony never stalls on a flaky model. A successful
+    call that yields no usable actions also defers to the fallback.
+    """
+
+    def __init__(
+        self,
+        client: LocalLLMClient | None = None,
+        *,
+        fallback: "FallbackGovernor | None" = None,
+        propose: Any = None,
+    ) -> None:
+        self.client = client
+        self.fallback = fallback or FallbackGovernor()
+        # ``propose`` lets tests inject a context->payload function in place of a
+        # live model call.
+        self._propose = propose
+
+    def decide(self, context: dict[str, Any]) -> list[GovernorAction]:
+        try:
+            payload = self._propose(context) if self._propose is not None else self._ask_model(context)
+            actions = parse_action_list(payload)
+        except Exception:
+            return self.fallback.decide(context)
+        return actions if actions else self.fallback.decide(context)
+
+    def _ask_model(self, context: dict[str, Any]) -> dict[str, Any]:
+        if self.client is None:
+            raise LLMClientError("LLM governor has no client configured")
+        return self.client.complete_json(
+            GOVERNOR_SYSTEM_PROMPT,
+            {"colony": context},
+            schema=COLONY_ACTION_SCHEMA,
+            name="colony_actions",
+        )
+
+
+# ---------------------------------------------------------------------------
+# Non-blocking governor scheduler (integration milestone I2)
+#
+# The live colony viewer renders at 60 fps and steps the engine on a short real-
+# time interval. A 4B local model takes seconds to answer, so calling it inline
+# from ``step_hour`` would freeze the window. ``ColonyDecisionScheduler`` runs the
+# model call on a single worker thread and implements the ``Governor`` protocol:
+# each hour it harvests any finished call, may launch a new one, and returns
+# either the model's freshly decided actions or - while the model is mid-thought,
+# offline, or disabled - the deterministic ``FallbackGovernor``'s actions. The
+# colony keeps advancing every hour and only *upgrades* to LLM policy when a
+# decision is ready, so the fallback always covers the gap.
+# ---------------------------------------------------------------------------
+
+# Governor status states surfaced to the viewer HUD.
+GOV_DISABLED = "disabled"
+GOV_IDLE = "idle"
+GOV_THINKING = "thinking"
+GOV_OFFLINE = "offline"
+GOV_INVALID = "invalid"
+
+# Default real-time cooldown (seconds) between completing one model call and
+# starting the next, so the viewer does not hammer the model continuously.
+DEFAULT_DECISION_INTERVAL = 6.0
+
+
+@dataclass
+class GovernorStatus:
+    """Live governor state for the viewer HUD and run logs."""
+
+    enabled: bool
+    state: str
+    model: str = ""
+    base_url: str = ""
+    last_error: str = ""
+    last_latency: float = 0.0
+    last_action_kinds: tuple[str, ...] = ()
+
+
+def _connection_error(message: str) -> bool:
+    lowered = message.lower()
+    return any(word in lowered for word in ("connection", "timed out", "refused", "unreachable", "failed"))
+
+
+class ColonyDecisionScheduler:
+    """Non-blocking ``Governor`` adapter that runs an LLM call off the render loop.
+
+    Wraps a :class:`LocalLLMClient`; its :meth:`decide` never blocks on the
+    network. A single worker thread holds at most one in-flight model call. When
+    a call finishes, its actions are applied on the next :meth:`decide`; every
+    hour in between (and whenever the model is offline or disabled) falls back to
+    the deterministic :class:`FallbackGovernor`, so the colony never stalls.
+    """
+
+    def __init__(
+        self,
+        client: LocalLLMClient | None = None,
+        *,
+        fallback: "FallbackGovernor | None" = None,
+        interval: float = DEFAULT_DECISION_INTERVAL,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self.client = client or LocalLLMClient(model=None)
+        self.fallback = fallback or FallbackGovernor()
+        self.interval = max(0.0, interval)
+        self.clock = clock
+        self._executor = self._create_executor()
+        self._future: Future[tuple[list[GovernorAction], float]] | None = None
+        self._pending: list[GovernorAction] | None = None
+        self._next_time = 0.0
+        self.status = self._idle_status()
+
+    @classmethod
+    def from_env(
+        cls,
+        *,
+        model_discovery: ModelDiscovery | None = None,
+        interval: float = DEFAULT_DECISION_INTERVAL,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> "ColonyDecisionScheduler":
+        """Build a scheduler whose client is discovered from the environment."""
+        return cls(
+            LocalLLMClient.from_env(model_discovery=model_discovery),
+            interval=interval,
+            clock=clock,
+        )
+
+    @property
+    def enabled(self) -> bool:
+        return self.client.enabled
+
+    def decide(self, context: dict[str, Any]) -> list[GovernorAction]:
+        """Return this hour's actions without blocking on the model."""
+        self._harvest()
+        self._maybe_submit(context)
+        if self._pending is not None:
+            actions, self._pending = self._pending, None
+            return actions
+        return self.fallback.decide(context)
+
+    def connect_from_env(self, *, model_discovery: ModelDiscovery | None = None) -> bool:
+        """(Re)connect to a local model discovered from the environment."""
+        client = LocalLLMClient.from_env(model_discovery=model_discovery)
+        if client.enabled:
+            self._replace_client(client)
+            return True
+        self._replace_client(
+            client,
+            last_error="No local chat model found. Start LM Studio, load a model, then retry.",
+        )
+        return False
+
+    def disable(self, reason: str = "LLM governor off (autopilot on fallback).") -> None:
+        """Drop to the deterministic fallback and cancel any in-flight call."""
+        self._replace_client(LocalLLMClient(model=None), last_error=reason)
+
+    def toggle(self, *, model_discovery: ModelDiscovery | None = None) -> bool:
+        """Flip between the LLM governor and the fallback; return the new state."""
+        if self.enabled:
+            self.disable()
+            return False
+        return self.connect_from_env(model_discovery=model_discovery)
+
+    def shutdown(self, *, wait: bool = False) -> None:
+        self._executor.shutdown(wait=wait, cancel_futures=not wait)
+
+    # -- internals ---------------------------------------------------------
+
+    @staticmethod
+    def _create_executor() -> ThreadPoolExecutor:
+        return ThreadPoolExecutor(max_workers=1, thread_name_prefix="colony-llm")
+
+    def _idle_status(self, *, last_error: str = "") -> GovernorStatus:
+        return GovernorStatus(
+            enabled=self.client.enabled,
+            state=GOV_IDLE if self.client.enabled else GOV_DISABLED,
+            model=self.client.model,
+            base_url=self.client.base_url,
+            last_error=last_error,
+        )
+
+    def _replace_client(self, client: LocalLLMClient, *, last_error: str = "") -> None:
+        if self._future is not None:
+            self._future.cancel()
+            self._future = None
+        self._executor.shutdown(wait=False, cancel_futures=True)
+        self.client = client
+        self._executor = self._create_executor()
+        self._pending = None
+        self._next_time = 0.0
+        self.status = self._idle_status(last_error=last_error)
+
+    def _maybe_submit(self, context: dict[str, Any]) -> None:
+        if not self.client.enabled:
+            self.status.enabled = False
+            self.status.state = GOV_DISABLED
+            return
+        if self._future is not None:
+            self.status.state = GOV_THINKING
+            return
+        if self.clock() < self._next_time:
+            return
+        self.status.state = GOV_THINKING
+        self._future = self._executor.submit(self._decide_actions, context)
+
+    def _harvest(self) -> None:
+        if self._future is None or not self._future.done():
+            return
+        future, self._future = self._future, None
+        self._next_time = self.clock() + self.interval
+        try:
+            actions, latency = future.result()
+        except LLMClientError as exc:
+            self.status.state = GOV_OFFLINE if _connection_error(str(exc)) else GOV_INVALID
+            self.status.last_error = str(exc)
+            return
+        except (ValueError, TypeError, KeyError) as exc:
+            self.status.state = GOV_INVALID
+            self.status.last_error = str(exc)
+            return
+        self.status.state = GOV_IDLE
+        self.status.last_error = ""
+        self.status.last_latency = latency
+        self.status.last_action_kinds = tuple(action.kind for action in actions)
+        # An empty (or all-junk) decision defers to the fallback, matching
+        # LLMGovernor: "the model chose nothing, keep the colony moving".
+        self._pending = actions or None
+
+    def _decide_actions(self, context: dict[str, Any]) -> tuple[list[GovernorAction], float]:
+        """Worker-thread body: ask the model and parse its action list."""
+        start = self.clock()
+        payload = self.client.complete_json(
+            GOVERNOR_SYSTEM_PROMPT,
+            {"colony": context},
+            schema=COLONY_ACTION_SCHEMA,
+            name="colony_actions",
+        )
+        actions = parse_action_list(payload)
+        return actions, self.clock() - start

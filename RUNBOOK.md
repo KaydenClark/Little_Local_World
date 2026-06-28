@@ -1,6 +1,6 @@
 # Local Agent Town - Runbook
 
-**Last reviewed:** 2026-06-27
+**Last reviewed:** 2026-06-28
 **Runtime owner:** Kayden  
 **Environment:** local desktop
 
@@ -63,24 +63,14 @@ Expected result:
 
 ## Asset Preparation
 
-The app uses selected Kenney runtime sheets under `src\agent_town\assets\kenney`. Verify or prepare them from the root zip files with:
-
-```powershell
-.\scripts\prepare-kenney-assets.ps1
-```
-
-Expected result:
-
-- `characters.png`, `rpg_tiles.png`, `emotes.png`, and `emotes.xml` exist.
-- Existing matching files are verified without being overwritten.
-- Changed files are not overwritten unless the command is run with `-Force`.
+The colony viewer uses runtime sprites under `src\agent_town\assets\colony`.
 
 When adding a new free asset:
 
 - Verify the source URL, license, author, and attribution requirements before download.
 - Prefer CC0 or public domain. Use CC-BY only when attribution is recorded next to the imported files.
 - Keep the original download or source zip untouched and generate runtime files from it.
-- Update nearby asset notes, the preparation script, and asset tests when the runtime asset set changes.
+- Update nearby asset notes and asset tests when the runtime asset set changes.
 - If no license-safe asset fits, use the smallest temporary placeholder and record that it should be replaced.
 
 ## Run Locally
@@ -101,14 +91,14 @@ Open:
 
 Expected result:
 
-- A town map appears.
-- NPCs move over time.
-- Kenney sprites appear for people, places, and emotes when assets are present.
-- Mouse wheel zooms.
+- A colony map appears.
+- The engine advances simulated hours over time.
+- Colony sprites appear for terrain, buildings, resources, and pawns.
+- Mouse wheel, `+`, and `-` zoom.
 - `WASD` or arrow keys pan.
-- Clicking an NPC updates the inspection panel.
-- Pressing `/`, typing a suggestion, and pressing `Enter` queues the suggestion for the selected NPC.
-- The inspection panel shows local model state: disabled, idle, thinking, offline, or invalid.
+- Clicking a pawn, or pressing `Tab`, updates the inspection panel.
+- Pressing `L` connects to or disconnects from LM Studio/Ollama while the game is running.
+- The HUD shows local model state: disabled, idle, thinking, offline, or invalid.
 
 ## Test And Build
 
@@ -137,7 +127,7 @@ Expected result:
 - Core tests pass.
 - Smoke test exits without import or display errors.
 - Workbench validation passes.
-- Asset checks prove the runtime sheets match the Kenney source zips.
+- Asset checks prove the colony runtime sprites and provenance notes exist.
 
 Scaling benchmark:
 
@@ -147,23 +137,17 @@ Scaling benchmark:
 
 Expected result:
 
-- A CSV-style table reports core tick time, LLM context build time, dummy draw time, SQLite save/load time, snapshot size, event count, memory count, and social-scan metrics.
+- A CSV-style table reports engine step time, governor context build time, dummy draw time, final applied action count, and completed-building count.
 - Use this before increasing default population size or deciding whether Pygame is the scaling blocker.
 
 ## Data Operations
 
-There is no automatic viewer save/load UI yet.
-
-SQLite snapshot and event-log helper:
-
-- `agent_town.persistence.SQLiteSimulationStore(path).save_snapshot(sim)` writes a labeled local snapshot and replayable event log.
-- `load_snapshot()` restores tick, elapsed time, agents, locations, memories, relationships, events, and random state.
-- `load_event_log()` returns the saved event feed in replay order.
+There is no colony save/load UI or persistence model yet.
 
 Safety rules:
 
 - Do not wire persistent local databases into automatic viewer behavior without updating `BLUEPRINT.md`, `RUNBOOK.md`, and tests.
-- Do not store real private data in agent memories unless the user explicitly approves that use.
+- Do not store real private data in future pawn or governor memory unless the user explicitly approves that use.
 
 ## Deployment Or Startup
 
@@ -176,10 +160,9 @@ There is no deployment target. The project runs locally through PowerShell.
 | `ModuleNotFoundError: pygame` | Setup was not run or wrong Python is being used | `.\.venv\Scripts\python.exe -c "import pygame"` | Run `.\setup.ps1` |
 | Double-click does nothing visible | Windows did not execute the PowerShell script directly | Open `Launch Local Agent Town.cmd` | Use the `.cmd` launcher, which calls the PowerShell launcher with the right policy |
 | Window does not open | Display or Pygame issue | `.\.venv\Scripts\python.exe -m agent_town --smoke-test` | Reinstall through `.\setup.ps1`; check local graphics environment |
-| Agent does not follow a suggestion | Suggestion did not include a known place or supported keyword | Inspect pending suggestions in the panel | Use place names like `Archive Library` or keywords like `study`, `eat`, `talk`, `rest`, `work` |
-| Local model shows disabled | No model variable was set and startup discovery found no local chat model, or `AGENT_TOWN_LLM_AUTO_DISCOVER=0` | Inspect the Local Model row | Start LM Studio/Ollama before launching, or set `AGENT_TOWN_LLM_MODEL` exactly as the local server expects it |
+| Local model shows disabled | The in-game toggle is off, no local chat model was found, or `AGENT_TOWN_LLM_AUTO_DISCOVER=0` | Inspect the HUD governor row | Start LM Studio/Ollama, load a model, then press `L`; or set `AGENT_TOWN_LLM_MODEL` exactly as the local server expects it |
 | Local model shows offline | LM Studio/Ollama server is not running or URL is wrong | Check `AGENT_TOWN_LLM_BASE_URL` | Start the local server or change the URL |
-| Local model shows invalid reply | Model returned malformed JSON, unknown destination/agent, or the server rejected the request payload | Inspect the Local Model row | Use a smaller/faster instruct model and keep max tokens low |
+| Local model shows invalid reply | Model returned malformed JSON, unknown action, or the server rejected the request payload | Inspect the HUD governor row | Use a smaller/faster instruct model and keep max tokens low |
 | Workbench validation fails | Required docs missing headings or unresolved placeholders | `.\scripts\validate-workbench.ps1` | Update the named doc and rerun validation |
 
 ## Recovery And Rollback
