@@ -60,6 +60,57 @@ class SimulationTests(unittest.TestCase):
         for agent in sim.agents.values():
             self.assertIn(agent.destination, sim.locations)
 
+    def test_simulation_requires_at_least_one_location(self):
+        with self.assertRaisesRegex(ValueError, "at least one location"):
+            Simulation([], [])
+
+    def test_construction_rejects_an_agent_pointing_at_an_unknown_destination(self):
+        with self.assertRaisesRegex(ValueError, "Unknown destination"):
+            Simulation(
+                [Location("Home", 0, 0, "home", 10)],
+                [Agent("a", "Ari", 0, 0, (1, 2, 3), (), destination="Nowhere")],
+            )
+
+    def test_construction_coerces_unknown_home_and_workplace_to_destination(self):
+        sim = Simulation(
+            [Location("Home", 0, 0, "home", 10)],
+            [
+                Agent(
+                    "a",
+                    "Ari",
+                    0,
+                    0,
+                    (1, 2, 3),
+                    (),
+                    destination="Home",
+                    home="Missing Home",
+                    workplace="Missing Job",
+                )
+            ],
+        )
+
+        agent = sim.agents["a"]
+        self.assertEqual(agent.home, "Home")
+        self.assertEqual(agent.workplace, "Home")
+
+    def test_apply_decision_moves_agent_and_records_speech_as_an_event(self):
+        sim = create_default_simulation()
+
+        sim.apply_decision(
+            "mira",
+            DecisionResult(
+                destination="Greenhouse Cafe",
+                intent="grab a snack",
+                speech="I am hungry.",
+            ),
+        )
+
+        agent = sim.agents["mira"]
+        self.assertEqual(agent.destination, "Greenhouse Cafe")
+        self.assertEqual(agent.goal, "grab a snack")
+        self.assertEqual(agent.last_speech, "I am hungry.")
+        self.assertTrue(any("I am hungry." in event.text for event in sim.events))
+
     def test_llm_decision_validates_destination_before_mutating(self):
         sim = create_default_simulation()
         original_destination = sim.agents["mira"].destination

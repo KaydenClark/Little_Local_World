@@ -5,9 +5,9 @@ os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 
 import pygame
 
-from agent_town.app import LOCATION_TILE_INDEX, App
+from agent_town.app import LOCATION_TILE_INDEX, WALKING_PATHS
 from agent_town.assets import load_kenney_manifest
-from agent_town.core import create_default_simulation
+from agent_town.core import WORLD_HEIGHT, WORLD_WIDTH, create_default_simulation
 
 EXPECTED_LOCATIONS = {
     "Town Square": "social",
@@ -19,16 +19,6 @@ EXPECTED_LOCATIONS = {
     "Riverside Park": "social",
     "Clinic Garden": "quiet",
 }
-
-PATH_ENDPOINTS = [
-    ("Town Square", "North Apartments"),
-    ("Town Square", "South Row Homes"),
-    ("Town Square", "Greenhouse Cafe"),
-    ("Town Square", "Archive Library"),
-    ("Town Square", "Maker Hall"),
-    ("Town Square", "Riverside Park"),
-    ("Riverside Park", "Clinic Garden"),
-]
 
 
 def _tile_nonblank(sheet: pygame.Surface, index: int, tile_size: int, margin: int) -> bool:
@@ -59,26 +49,21 @@ class DefaultBuildingTests(unittest.TestCase):
             with self.subTest(building=name):
                 self.assertEqual(self.sim.locations[name].kind, kind)
 
-    def test_each_building_has_a_positive_radius_inside_the_world(self):
+    def test_each_building_sits_on_the_map_with_a_usable_arrival_radius(self):
         for name, location in self.sim.locations.items():
             with self.subTest(building=name):
+                # A non-positive radius makes the location impossible to "arrive"
+                # at, so agents would orbit it forever.
                 self.assertGreater(location.radius, 0)
                 self.assertGreaterEqual(location.x, 0)
+                self.assertLessEqual(location.x, WORLD_WIDTH)
                 self.assertGreaterEqual(location.y, 0)
+                self.assertLessEqual(location.y, WORLD_HEIGHT)
 
     def test_every_building_kind_maps_to_a_tile_index(self):
         for name, location in self.sim.locations.items():
             with self.subTest(building=name):
                 self.assertIn(location.kind, LOCATION_TILE_INDEX)
-
-    def test_every_building_kind_maps_to_a_draw_color(self):
-        for name, location in self.sim.locations.items():
-            with self.subTest(building=name):
-                color = App._location_color(location)
-                self.assertEqual(len(color), 3)
-                for channel in color:
-                    self.assertGreaterEqual(channel, 0)
-                    self.assertLessEqual(channel, 255)
 
     def test_every_building_tile_sprite_is_nonblank(self):
         manifest = load_kenney_manifest()
@@ -95,15 +80,11 @@ class DefaultBuildingTests(unittest.TestCase):
         finally:
             pygame.quit()
 
-    def test_walking_paths_only_reference_real_buildings(self):
-        for start_name, end_name in PATH_ENDPOINTS:
+    def test_drawn_walking_paths_only_connect_real_buildings(self):
+        for start_name, end_name in WALKING_PATHS:
             with self.subTest(path=(start_name, end_name)):
                 self.assertIn(start_name, self.sim.locations)
                 self.assertIn(end_name, self.sim.locations)
-
-    def test_every_building_is_reachable_by_at_least_one_agent_kind_need(self):
-        kinds_present = {location.kind for location in self.sim.locations.values()}
-        self.assertEqual(kinds_present, set(EXPECTED_LOCATIONS.values()))
 
 
 if __name__ == "__main__":
