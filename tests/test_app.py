@@ -98,11 +98,11 @@ class AppSmokeTests(unittest.TestCase):
     def test_llm_status_text_explains_runtime_toggle(self):
         app = App(create_default_simulation(), smoke_test=True)
         try:
-            self.assertIn("Press L to connect", app._llm_status_text())
+            self.assertIn("LM Connection switch", app._llm_status_text())
 
             app.llm_scheduler.status = LLMRuntimeStatus(enabled=True, state="idle", model="gemma")
 
-            self.assertIn("Press L to disconnect", app._llm_status_text())
+            self.assertIn("LM Connection switch", app._llm_status_text())
         finally:
             app.llm_scheduler.shutdown(wait=True)
 
@@ -110,14 +110,14 @@ class AppSmokeTests(unittest.TestCase):
         app = App(create_default_simulation(), smoke_test=True)
         try:
             disconnected = app._llm_toggle_labels()
-            self.assertEqual(disconnected[0], "LM Studio disconnected")
-            self.assertIn("Click or press L to connect", disconnected[1])
+            self.assertEqual(disconnected[0], "LM Connection")
+            self.assertIn("Off", disconnected[1])
 
             app.llm_scheduler.status = LLMRuntimeStatus(enabled=True, state="thinking", model="gemma")
 
             connected = app._llm_toggle_labels()
-            self.assertEqual(connected[0], "LM Studio connected")
-            self.assertIn("click or press L to disconnect", connected[1])
+            self.assertEqual(connected[0], "LM Connection")
+            self.assertIn("thinking", connected[1])
         finally:
             app.llm_scheduler.shutdown(wait=True)
 
@@ -138,6 +138,29 @@ class AppSmokeTests(unittest.TestCase):
             app.llm_scheduler.shutdown(wait=True)
 
         self.assertEqual(calls, ["connect"])
+
+    def test_clicking_panel_controls_pauses_speeds_and_selects_next_agent(self):
+        app = App(create_default_simulation(), smoke_test=True)
+        try:
+            app.pause_button_rect = pygame.Rect(SCREEN_WIDTH - PANEL_WIDTH + 24, 20, 86, 34)
+            app.speed_down_button_rect = pygame.Rect(SCREEN_WIDTH - PANEL_WIDTH + 118, 20, 54, 34)
+            app.speed_up_button_rect = pygame.Rect(SCREEN_WIDTH - PANEL_WIDTH + 180, 20, 54, 34)
+            app.next_agent_button_rect = pygame.Rect(SCREEN_WIDTH - PANEL_WIDTH + 242, 20, 64, 34)
+            initial_agent = app.selected_id
+
+            app._handle_mouse(pygame.event.Event(pygame.MOUSEBUTTONDOWN, {"button": 1, "pos": app.pause_button_rect.center}))
+            self.assertTrue(app.paused)
+
+            app._handle_mouse(pygame.event.Event(pygame.MOUSEBUTTONDOWN, {"button": 1, "pos": app.speed_up_button_rect.center}))
+            self.assertGreater(app.speed, 1.0)
+
+            app._handle_mouse(pygame.event.Event(pygame.MOUSEBUTTONDOWN, {"button": 1, "pos": app.speed_down_button_rect.center}))
+            self.assertAlmostEqual(app.speed, 1.0)
+
+            app._handle_mouse(pygame.event.Event(pygame.MOUSEBUTTONDOWN, {"button": 1, "pos": app.next_agent_button_rect.center}))
+            self.assertNotEqual(app.selected_id, initial_agent)
+        finally:
+            app.llm_scheduler.shutdown(wait=True)
 
 
 if __name__ == "__main__":

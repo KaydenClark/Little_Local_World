@@ -99,6 +99,9 @@ Operator interaction principles:
   whether a feature is on, off, pending, blocked, or degraded.
 - Be creative but practical. Prefer small, game-readable controls that match
   the desktop settlement UI over plain text instructions buried in a footer.
+- Runtime controls currently include panel-first pause/play, speed down/up
+  `◀◀`/`▶▶`, next-agent selection, and an `LM Connection` slide switch;
+  shortcuts remain optional accelerators rather than the primary interface.
 
 ## Module Layout
 
