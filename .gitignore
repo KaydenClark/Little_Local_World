@@ -14,3 +14,7 @@ dist/
 *.sqlite
 .env
 .env.*
+
+# Handoff documents are local-only working notes — never commit them.
+HANDOFF.md
+HANDOFF*.md
