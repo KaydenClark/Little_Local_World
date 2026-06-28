@@ -8,15 +8,21 @@ import pygame
 from agent_town import colony
 from agent_town.colony_view import (
     BUILDING_SPRITE,
+    INSPECTOR_WIDTH,
+    PAWN_ROSTER_HEIGHT,
     Camera,
     ColonyViewer,
+    _need_bar_color,
     _mood_color,
+    _pawn_status_label,
+    _top_skills,
     find_pawn_at_screen,
     governor_status_line,
     load_colony_assets,
     parse_args,
     render_colony,
 )
+from agent_town.pawns import STATE_SLACKING
 from agent_town.governor import ColonyDecisionScheduler, FallbackGovernor
 from agent_town.llm import LocalLLMClient
 
@@ -63,6 +69,33 @@ class MoodColorTests(unittest.TestCase):
         high = _mood_color(1.0)
         self.assertGreater(low[0], low[1])  # red-dominant when sad
         self.assertGreater(high[1], high[0])  # green-dominant when happy
+
+    def test_need_bar_color_flags_low_needs(self):
+        low = _need_bar_color(0.19)
+        full = _need_bar_color(0.95)
+
+        self.assertGreater(low[0], low[1])
+        self.assertGreater(full[1], full[0])
+
+
+class PawnInspectorModelTests(unittest.TestCase):
+    def test_top_skills_sorts_by_score_then_name(self):
+        state = colony.create_default_colony()
+        pawn = state.pawns["pawn00"]
+        pawn.skills = {"mining": 12, "farming": 16, "baking": 16}
+
+        self.assertEqual(_top_skills(pawn), [("baking", 16), ("farming", 16), ("mining", 12)])
+
+    def test_pawn_status_label_prioritizes_break_states(self):
+        state = colony.create_default_colony()
+        pawn = state.pawns["pawn00"]
+        pawn.state = STATE_SLACKING
+
+        self.assertEqual(_pawn_status_label(pawn), "Stressed")
+
+    def test_viewer_reserves_roster_and_wider_inspector(self):
+        self.assertGreaterEqual(PAWN_ROSTER_HEIGHT, 58)
+        self.assertGreaterEqual(INSPECTOR_WIDTH, 280)
 
 
 class GovernorStatusLineTests(unittest.TestCase):
