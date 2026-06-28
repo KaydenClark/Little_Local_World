@@ -43,16 +43,16 @@ unaffordable-placement skipping, and determinism.
 
 Important drift or uncertainty:
 
-- The legacy social-sim (`Agent`, `Simulation`, `Location` in `core.py`, plus
-  the current `app.py`, `persistence.py`, `spatial.py`) is intentionally kept
-  importable and green so the existing Pygame viewer keeps working. It is
-  retired when the viewer is rewritten to render colony state at milestone I3.
+- The legacy social-sim (`Agent`, `Simulation`, `Location`, `app.py`,
+  `persistence.py`, `spatial.py`, and their compatibility tests) has been
+  retired after I3 reached colony-viewer parity. The package now exports the
+  colony runtime (`FactionState`, `create_default_colony`) and the console
+  entrypoint goes directly to `colony_view.py`.
 - The default `python -m agent_town` view is now the colony viewer
   (`colony_view.py`), which renders the colony `FactionState`, steps the
   engine, supports camera pan/zoom, and has a right-side pawn inspection panel.
-  The legacy social-sim (`app.py`, `create_default_simulation`) is still
-  importable and tested; it is retired once the colony viewer reaches final
-  parity after the live local-model run log and any last viewer cleanup.
+  The legacy social-sim entrypoints and tests are removed; final viewer cleanup
+  now means polishing the colony viewer itself, not keeping the old viewer alive.
 - The LLM governor (I2) is integrated: `governor.LLMGovernor` implements the
   same `decide(context)` interface backed by `LocalLLMClient.complete_json` with
   a JSON-schema action list and a hard fallback to `FallbackGovernor` on any
@@ -60,7 +60,7 @@ Important drift or uncertainty:
   identically to the fallback over three days), has a live Gemma 4 E4B run log
   through `scripts/llm_governor_run.py --hours 6`, and is wired into the
   real-time viewer through the non-blocking `ColonyDecisionScheduler`. Remaining
-  bridge work is final viewer cleanup before retiring the legacy social-sim.
+  bridge work is final colony-viewer cleanup before build-2 depth begins.
 
 ## Current Goal
 
@@ -118,14 +118,13 @@ The bridge order is I1 -> I3 -> I2 (see the colony render before adding the LLM)
    authored `assets/colony` sprites and steps `engine.step_hour`; it is now the
    default `python -m agent_town` view and its smoke test is green. Camera
    pan/zoom, pawn selection, the inspection panel, and the LLM toggle are now in
-   place. Remaining: live local-model run log plus final viewer cleanup before
-   retiring the legacy social-sim.
+   place. Remaining: final colony-viewer cleanup before build-2 depth begins.
 3. **(done) LLM governor I2** - `governor.LLMGovernor` is behind the fallback
    `decide` interface with JSON-schema output and a hard fallback;
    `test_llm_governor.py` is green, `scripts/llm_governor_run.py --hours 6`
    completed against live `google/gemma-4-e4b`, and the real-time viewer uses
    `ColonyDecisionScheduler` so local model calls never block the sim loop.
-   Remaining: final viewer cleanup before retiring the legacy social-sim.
+   Remaining: final colony-viewer cleanup before build-2 depth begins.
 4. **Manual LM Studio/Ollama tuning pass** - run Gemma 4 E4B-it, Qwen3.5-4B,
    and Phi-4-mini-instruct locally and record which model gives the best
    speed/personality balance.
@@ -232,3 +231,4 @@ Append a row when a task changes durable project state. Use actual results, not 
 | 2026-06-28 | Bridge the LLM governor into the colony viewer without blocking | `.\.venv\Scripts\python.exe -m unittest tests.test_colony_governor tests.test_colony_view` (18 tests); `.\.venv\Scripts\python.exe -m unittest discover -s tests` (149 tests); `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1` | pass | Added `ColonyDecisionScheduler`, wired the live colony viewer through it by default, kept smoke tests deterministic on fallback, added HUD status text plus the `L` connect/disconnect toggle, and covered offline/disabled/thinking behavior with injected-http tests. Remaining I3 work: camera/pan-zoom, pawn-selection panel, live Gemma run log, and legacy social-sim retirement after parity |
 | 2026-06-28 | I3 viewer parity: camera pan/zoom and pawn inspection panel | `.\.venv\Scripts\python.exe -m unittest tests.test_colony_governor tests.test_colony_view` (21 tests); `.\.venv\Scripts\python.exe -m unittest discover -s tests` (152 tests); `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; rendered frame inspected at `%TEMP%\local-agent-town-i3-panel.png` | pass | Added a camera transform with clamped pan/zoom, keyboard/mouse viewer controls, click/Tab pawn selection, selected-pawn highlight, and a right inspection panel showing pawn state, assignment, mood, needs, and top skill. Remaining: live local-model run log plus final cleanup before retiring the legacy social-sim |
 | 2026-06-28 | Live Gemma proof for the LLM governor bridge | `.\.venv\Scripts\python.exe scripts\llm_governor_run.py --hours 6`; `.\scripts\validate-workbench.ps1` | pass | LM Studio at `http://localhost:1234/v1` auto-selected `google/gemma-4-e4b`; the model emitted assignment actions for 6 simulated hours and the colony ended day 0 with coin 20, mood 91%, wandering 0, bread 15, planks 2, stone 5. Remaining: final viewer cleanup before retiring the legacy social-sim |
+| 2026-06-28 | Retire legacy social-sim after I3 viewer parity | `.\.venv\Scripts\python.exe -m unittest discover -s tests` (104 tests); `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\.venv\Scripts\agent-town.exe --smoke-test`; `.\scripts\validate-workbench.ps1`; `.\.venv\Scripts\python.exe .\scripts\benchmark_scaling.py --pawns 100 500 1000 --steps 20 --context-repeats 5 --draw-frames 2`; `git diff --check` | pass | Removed the old `Agent`/`Simulation`/`Location` runtime, `app.py`, social persistence, spatial-index compatibility code, old tests, and old app entrypoint. Package exports now point at the colony runtime; benchmark and docs now describe the colony engine/viewer. Remaining: untracked local asset zips stay excluded from Git until license/sourcing is decided |

@@ -1,19 +1,23 @@
 # Local Agent Town
 
-A local desktop prototype for watching autonomous NPCs move through a small social world.
+A local desktop prototype for watching one LLM-governed colony run on autopilot.
 
-This is intentionally not web based. The first version uses Python and Pygame for a watchable 2D world, with the simulation logic kept separate from the renderer.
+This is intentionally not web based. The simulation core is deterministic Python;
+Pygame is the local viewer for the colony state.
 
-## Architecture stance
+## Architecture Stance
 
-The current scale decision is: keep Pygame as the prototype viewer, but make the simulation core easier to measure, persist, and replace around.
+The current scale decision is: keep Pygame as the prototype viewer, but keep the
+engine testable and measurable without the viewer.
 
-That means new scale work should start with evidence instead of an engine rewrite:
+That means new scale work should start with evidence instead of an engine
+rewrite:
 
-- benchmark the headless core, LLM context building, persistence, and dummy draw loop;
-- keep social/proximity logic behind a spatial query layer;
-- persist snapshots and event logs through explicit SQLite helpers before adding save/load UI;
-- migrate engines only if benchmark evidence shows rendering, editor tooling, or Pygame-specific limits are the blocker.
+- benchmark the headless colony engine, governor context building, and dummy
+  draw loop;
+- keep the Governor as policy only, never a pawn micromanager;
+- migrate engines only if benchmark evidence shows rendering, editor tooling,
+  or Pygame-specific limits are the blocker.
 
 Project structure follows the `LLM_Workbench` pattern:
 
@@ -42,42 +46,44 @@ Launch Local Agent Town.cmd
 
 ## Controls
 
-- Pan: `WASD` or arrow keys
-- Zoom: mouse wheel
-- Select NPC: click an NPC or press `Tab`
-- Pause: `P`
-- Speed: `-` and `=`
-- Suggest an idea to the selected NPC: press `/`, type, then `Enter`
-- Cancel suggestion text: `Esc`
+- Pan: `WASD` or arrow keys.
+- Zoom: mouse wheel, `+`, or `-`.
+- Select pawn: click a pawn or press `Tab`.
+- Local model governor: press `L` to connect or disconnect LM Studio/Ollama.
+- Quit: `Esc` or `Q`.
 
 ## Optional Local AI
 
-The simulation runs without an LLM. To let a local model occasionally enrich agent plans, start an OpenAI-compatible local server such as LM Studio, then set:
+The colony runs without an LLM. To let a local model govern policy, start an
+OpenAI-compatible local server such as LM Studio, then set:
 
 ```powershell
-$env:AGENT_TOWN_LLM_MODEL = "gemma-4-e4b-it"
+$env:AGENT_TOWN_LLM_MODEL = "google/gemma-4-e4b"
 $env:AGENT_TOWN_LLM_BASE_URL = "http://localhost:1234/v1"
 .\run.ps1
 ```
 
-Ollama can use the same adapter with `AGENT_TOWN_LLM_BASE_URL=http://localhost:11434/v1`.
+Ollama can use the same adapter with
+`AGENT_TOWN_LLM_BASE_URL=http://localhost:11434/v1`.
 
-## What exists now
+## What Exists Now
 
-- A small town map with named places.
-- Ten NPCs with needs, activities, destinations, short memories, relationships, routines, and visible emotes.
-- Lightweight autonomous behavior: eat, rest, socialize, reflect, work, and wander.
-- Optional local LLM planning through an OpenAI-compatible adapter.
-- Kenney CC0 sprites for agents, locations, and emotes.
-- Spatial-indexed social checks with per-step scale metrics.
-- SQLite snapshot and event-log helpers for save/replay experiments.
-- A repeatable scaling benchmark for 100, 500, and 1,000 synthetic agents.
-- Suggestions that influence the selected NPC's next decision.
-- Inspect panel for activity, needs, local model status, memory, event feed, and pending suggestions.
+- A deterministic build-1 colony engine.
+- Twelve pawns with skills, traits, needs, mood, schedule, assignments, and
+  break states.
+- Production chains for logs, planks, stone, grain, flour, and bread.
+- Construction, daily tax, and a fallback Governor that keeps the colony moving.
+- A local LLM Governor behind the same interface, with hard fallback on any
+  error.
+- A Pygame colony viewer with camera pan/zoom, pawn selection, a right-side
+  inspector, HUD, and local model status.
+- CC0/provenance-tracked colony sprites under `src\agent_town\assets\colony`.
+- A repeatable colony scaling benchmark for 100, 500, and 1,000 pawns.
 
-## Next useful upgrades
+## Next Useful Upgrades
 
-- Wire explicit viewer save/load commands to the tested SQLite helpers.
-- Add locations that contain objects and routines.
-- Add event summaries so you can scrub through what happened.
+- Finish final viewer cleanup after the social-sim retirement.
+- Add build-2 depth: water, clothes/beauty, storage caps, repair, wages, and
+  work priorities.
+- Add save state once the colony persistence model is designed.
 - Add pathfinding benchmarks before larger maps or blocked terrain.

@@ -35,8 +35,7 @@ the stable summary; the refactor plan is the milestone-by-milestone spec.
 - One Governor: a deterministic rule-based fallback first, a local LLM
   (Gemma 4 E4B) as a drop-in second.
 - The Governor reads summaries plus an exception queue, never raw pawn state.
-- The existing Pygame viewer kept working as a smoke test, eventually rendering
-  the new colony state.
+- The Pygame viewer renders the colony state and remains a smoke-test surface.
 
 ### Non-Goals
 
@@ -169,14 +168,14 @@ src\agent_town\
   schedule.py        <- schedule templates, day clock           (Track B)
   governor.py        <- context builder + fallback governor     (Track B)
   llm.py             <- adapter, extended for the governor       (Track B)
-  app.py             <- Pygame viewer, renders new state         (integration)
+  colony_view.py    <- Pygame viewer for colony state            (integration)
 tests\               <- unittest, headless, per module
 ```
 
-Transition note: the legacy social-sim (`Agent`, `Simulation`, `Location` in
-`core.py`, plus the current `app.py`, `persistence.py`, `spatial.py`) is kept
-importable and green so the existing viewer keeps working. It is retired when
-the viewer is rewritten to render colony state at integration milestone I3.
+Transition note: the legacy social-sim (`Agent`, `Simulation`, `Location`,
+`app.py`, `persistence.py`, and `spatial.py`) was retired after I3 reached
+colony-viewer parity. Current runtime code is the colony contract, engine,
+governor, local LLM client, and `colony_view.py`.
 
 ## Frozen contract
 
@@ -462,6 +461,7 @@ Rules:
 | Name the exception entity `ColonyException` | Avoids shadowing the builtin `Exception` the LLM fallback relies on | 2026-06-27 Phase 0 |
 | Keep the legacy social-sim importable during the refactor | Keeps the existing viewer and tests green until milestone I3 | 2026-06-27 Phase 0 |
 | Deterministic fallback governor before the LLM governor | The fallback is the winnability oracle and the safety net | 2026-06-27 refactor plan |
+| Retire the legacy social-sim after I3 parity | Removes obsolete viewer/runtime code once the colony viewer, LLM governor, smoke test, and benchmarks cover the current product | 2026-06-28 I3 cleanup |
 
 ## Health Criteria
 

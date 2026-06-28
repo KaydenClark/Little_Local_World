@@ -8,8 +8,8 @@ press ``L`` to toggle the LLM on and off. Uses the authored colony sprite set
 (``assets/colony``), falling back to simple shapes only where no sprite exists
 (e.g. grain/stone nodes, pawns).
 
-This replaces the legacy social-sim as the default ``python -m agent_town``
-view. The legacy ``app.py`` stays importable until it is fully retired.
+This is the default ``python -m agent_town`` view after the legacy social-sim
+viewer was retired.
 """
 
 from __future__ import annotations
