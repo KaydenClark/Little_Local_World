@@ -53,15 +53,14 @@ Important drift or uncertainty:
   The legacy social-sim (`app.py`, `create_default_simulation`) is still
   importable and tested; it is retired once the colony viewer reaches final
   parity after the live local-model run log and any last viewer cleanup.
-- The LLM governor (I2) exists headless: `governor.LLMGovernor` implements the
+- The LLM governor (I2) is integrated: `governor.LLMGovernor` implements the
   same `decide(context)` interface backed by `LocalLLMClient.complete_json` with
   a JSON-schema action list and a hard fallback to `FallbackGovernor` on any
   error. It is proven faithful (an always-failing LLM governor drives the colony
-  identically to the fallback over three days). Remaining for the bridge: a
-  live-model run log (needs LM Studio/Gemma; `scripts/llm_governor_run.py`) and
-  wiring it into the real-time viewer **without blocking** the sim loop (reuse
-  the `LLMDecisionScheduler` async pattern), after which the legacy social-sim
-  retires.
+  identically to the fallback over three days), has a live Gemma 4 E4B run log
+  through `scripts/llm_governor_run.py --hours 6`, and is wired into the
+  real-time viewer through the non-blocking `ColonyDecisionScheduler`. Remaining
+  bridge work is final viewer cleanup before retiring the legacy social-sim.
 
 ## Current Goal
 
@@ -121,12 +120,12 @@ The bridge order is I1 -> I3 -> I2 (see the colony render before adding the LLM)
    pan/zoom, pawn selection, the inspection panel, and the LLM toggle are now in
    place. Remaining: live local-model run log plus final viewer cleanup before
    retiring the legacy social-sim.
-3. **(done headless) LLM governor I2** - `governor.LLMGovernor` is behind the
-   fallback `decide` interface with JSON-schema output and a hard fallback;
-   `test_llm_governor.py` is green and `scripts/llm_governor_run.py` is the live
-   proof tool. Remaining: a live Gemma run log, then a non-blocking integration
-   into the real-time viewer (async, reusing the `LLMDecisionScheduler`
-   pattern), after which the legacy social-sim retires.
+3. **(done) LLM governor I2** - `governor.LLMGovernor` is behind the fallback
+   `decide` interface with JSON-schema output and a hard fallback;
+   `test_llm_governor.py` is green, `scripts/llm_governor_run.py --hours 6`
+   completed against live `google/gemma-4-e4b`, and the real-time viewer uses
+   `ColonyDecisionScheduler` so local model calls never block the sim loop.
+   Remaining: final viewer cleanup before retiring the legacy social-sim.
 4. **Manual LM Studio/Ollama tuning pass** - run Gemma 4 E4B-it, Qwen3.5-4B,
    and Phi-4-mini-instruct locally and record which model gives the best
    speed/personality balance.
@@ -232,3 +231,4 @@ Append a row when a task changes durable project state. Use actual results, not 
 | 2026-06-28 | Integration I2: headless LLM governor with hard fallback | `.\.venv\Scripts\python.exe -m unittest discover -s tests` (137 tests, was 126); `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; offline `scripts\llm_governor_run.py --hours 6` (hard-fallback path) | pass | Added `LocalLLMClient.complete_json` (generic schema chat) and `governor.LLMGovernor` (JSON-schema action list, `action_from_dict`/`parse_action_list`, hard fallback on any error; empty result defers to fallback). `test_llm_governor.py` (11 tests) covers parsing, hard fallback, injected-http client path, and a 3-day determinism proof that an always-failing LLM governor == fallback. Remaining: live Gemma run log + non-blocking integration into the real-time viewer |
 | 2026-06-28 | Bridge the LLM governor into the colony viewer without blocking | `.\.venv\Scripts\python.exe -m unittest tests.test_colony_governor tests.test_colony_view` (18 tests); `.\.venv\Scripts\python.exe -m unittest discover -s tests` (149 tests); `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1` | pass | Added `ColonyDecisionScheduler`, wired the live colony viewer through it by default, kept smoke tests deterministic on fallback, added HUD status text plus the `L` connect/disconnect toggle, and covered offline/disabled/thinking behavior with injected-http tests. Remaining I3 work: camera/pan-zoom, pawn-selection panel, live Gemma run log, and legacy social-sim retirement after parity |
 | 2026-06-28 | I3 viewer parity: camera pan/zoom and pawn inspection panel | `.\.venv\Scripts\python.exe -m unittest tests.test_colony_governor tests.test_colony_view` (21 tests); `.\.venv\Scripts\python.exe -m unittest discover -s tests` (152 tests); `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; rendered frame inspected at `%TEMP%\local-agent-town-i3-panel.png` | pass | Added a camera transform with clamped pan/zoom, keyboard/mouse viewer controls, click/Tab pawn selection, selected-pawn highlight, and a right inspection panel showing pawn state, assignment, mood, needs, and top skill. Remaining: live local-model run log plus final cleanup before retiring the legacy social-sim |
+| 2026-06-28 | Live Gemma proof for the LLM governor bridge | `.\.venv\Scripts\python.exe scripts\llm_governor_run.py --hours 6`; `.\scripts\validate-workbench.ps1` | pass | LM Studio at `http://localhost:1234/v1` auto-selected `google/gemma-4-e4b`; the model emitted assignment actions for 6 simulated hours and the colony ended day 0 with coin 20, mood 91%, wandering 0, bread 15, planks 2, stone 5. Remaining: final viewer cleanup before retiring the legacy social-sim |
