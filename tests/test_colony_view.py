@@ -10,10 +10,13 @@ from agent_town.colony_view import (
     BUILDING_SPRITE,
     ColonyViewer,
     _mood_color,
+    governor_status_line,
     load_colony_assets,
     parse_args,
     render_colony,
 )
+from agent_town.governor import ColonyDecisionScheduler, FallbackGovernor
+from agent_town.llm import LocalLLMClient
 
 
 class ColonyAssetTests(unittest.TestCase):
@@ -60,6 +63,29 @@ class MoodColorTests(unittest.TestCase):
         self.assertGreater(high[1], high[0])  # green-dominant when happy
 
 
+class GovernorStatusLineTests(unittest.TestCase):
+    def test_plain_governor_reads_as_fallback_autopilot(self):
+        text, _color = governor_status_line(FallbackGovernor())
+        self.assertIn("fallback", text.lower())
+
+    def test_disabled_scheduler_prompts_to_connect(self):
+        sched = ColonyDecisionScheduler(LocalLLMClient(model=None))
+        text, _color = governor_status_line(sched)
+        self.assertIn("press L", text)
+        sched.shutdown(wait=True)
+
+
+class _RecordingGovernor:
+    """A governor that just counts decide() calls for wiring tests."""
+
+    def __init__(self):
+        self.calls = 0
+
+    def decide(self, context):
+        self.calls += 1
+        return []
+
+
 class ColonyViewerSmokeTests(unittest.TestCase):
     def test_viewer_runs_a_few_frames_and_exits(self):
         viewer = ColonyViewer(smoke_test=True)
@@ -67,6 +93,16 @@ class ColonyViewerSmokeTests(unittest.TestCase):
         self.assertFalse(viewer.running)
         # The engine advanced the colony while rendering.
         self.assertGreater(viewer.state.time_of_day + viewer.state.day * 24, 0)
+
+    def test_smoke_viewer_defaults_to_deterministic_fallback(self):
+        viewer = ColonyViewer(smoke_test=True)
+        self.assertIsInstance(viewer.governor, FallbackGovernor)
+
+    def test_viewer_steps_through_injected_governor(self):
+        gov = _RecordingGovernor()
+        viewer = ColonyViewer(smoke_test=True, governor=gov)
+        viewer.run()
+        self.assertGreater(gov.calls, 0)
 
     def test_parse_args_smoke_flag(self):
         self.assertFalse(parse_args([]).smoke_test)

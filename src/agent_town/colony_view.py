@@ -1,10 +1,12 @@
 """Colony viewer (integration milestone I3).
 
 Renders the build-1 colony ``FactionState`` - terrain tiles, resource nodes,
-buildings, pawns, and a HUD - and steps the deterministic engine under the
-fallback governor so the colony visibly runs. Uses the authored colony sprite
-set (``assets/colony``), falling back to simple shapes only where no sprite
-exists (e.g. grain/stone nodes, pawns).
+buildings, pawns, and a HUD - and steps the engine so the colony visibly runs.
+The live viewer governs via a non-blocking :class:`ColonyDecisionScheduler` (a
+local LLM on autopilot, with the deterministic fallback covering every gap);
+press ``L`` to toggle the LLM on and off. Uses the authored colony sprite set
+(``assets/colony``), falling back to simple shapes only where no sprite exists
+(e.g. grain/stone nodes, pawns).
 
 This replaces the legacy social-sim as the default ``python -m agent_town``
 view. The legacy ``app.py`` stays importable until it is fully retired.
@@ -23,6 +25,16 @@ from . import economy, engine
 from .assets import ColonyAssetManifest, load_colony_manifest
 from .core import FactionState, Good
 from .colony import create_default_colony
+from .governor import (
+    GOV_DISABLED,
+    GOV_IDLE,
+    GOV_INVALID,
+    GOV_OFFLINE,
+    GOV_THINKING,
+    ColonyDecisionScheduler,
+    FallbackGovernor,
+    Governor,
+)
 from .pawns import STATE_WANDERING, STATE_SLACKING
 
 MARGIN = 12
@@ -74,6 +86,41 @@ HUD_GOODS = (
     ("Stone", Good.STONE),
 )
 
+HUD_MUTED = (150, 156, 148)
+GOVERNOR_STATUS_COLOR = {
+    GOV_IDLE: (140, 200, 150),
+    GOV_THINKING: (220, 200, 120),
+    GOV_OFFLINE: (224, 130, 110),
+    GOV_INVALID: (224, 130, 110),
+    GOV_DISABLED: HUD_MUTED,
+}
+
+
+def governor_status_line(gov: Governor) -> tuple[str, tuple[int, int, int]]:
+    """A one-line HUD summary of how the colony is being governed right now.
+
+    A plain governor (no ``status``) reads as fallback autopilot; a
+    :class:`ColonyDecisionScheduler` reports its live LLM connection state and
+    the ``L`` toggle that switches it on and off.
+    """
+    status = getattr(gov, "status", None)
+    if status is None:
+        return ("Governor: fallback (autopilot)   pawns coloured by mood", HUD_MUTED)
+
+    color = GOVERNOR_STATUS_COLOR.get(status.state, HUD_MUTED)
+    model = status.model.rsplit("/", 1)[-1] if status.model else "local model"
+    if status.state == GOV_DISABLED:
+        text = "Governor: fallback (autopilot)   press L to connect a local LLM"
+    elif status.state == GOV_THINKING:
+        text = f"Governor: LLM {model}   thinking... (fallback covering)   L: disconnect"
+    elif status.state == GOV_IDLE:
+        kinds = ", ".join(status.last_action_kinds) or "no change"
+        latency = f" {status.last_latency:.1f}s" if status.last_latency else ""
+        text = f"Governor: LLM {model}   last decision{latency}: {kinds}   L: disconnect"
+    else:  # offline / invalid
+        text = f"Governor: LLM {model} unreachable - fallback covering   L: retry"
+    return (text, color)
+
 
 @dataclass
 class ColonyAssets:
@@ -124,6 +171,8 @@ def render_colony(
     assets: ColonyAssets,
     font: pygame.font.Font,
     origin: tuple[int, int],
+    *,
+    status_line: tuple[str, tuple[int, int, int]] | None = None,
 ) -> None:
     """Draw the whole colony (tiles, nodes, buildings, pawns, HUD) onto ``surface``."""
     surface.fill(BACKGROUND)
@@ -151,7 +200,7 @@ def render_colony(
     for pawn in state.pawns.values():
         _draw_pawn(surface, pawn, assets, pawn_keys, ox, oy, ts)
 
-    _draw_hud(surface, state, font)
+    _draw_hud(surface, state, font, status_line)
 
 
 def _draw_node(surface, node, assets: ColonyAssets, ox: int, oy: int, ts: int) -> None:
@@ -207,7 +256,12 @@ def _draw_label(surface, font, text: str, center_x: int, bottom_y: int) -> None:
     surface.blit(box, (center_x - box.get_width() // 2, bottom_y - box.get_height()))
 
 
-def _draw_hud(surface: pygame.Surface, state: FactionState, font: pygame.font.Font) -> None:
+def _draw_hud(
+    surface: pygame.Surface,
+    state: FactionState,
+    font: pygame.font.Font,
+    status_line: tuple[str, tuple[int, int, int]] | None = None,
+) -> None:
     width = surface.get_width()
     top = surface.get_height() - HUD_HEIGHT
     pygame.draw.rect(surface, HUD_BG, (0, top, width, HUD_HEIGHT))
@@ -222,22 +276,36 @@ def _draw_hud(surface: pygame.Surface, state: FactionState, font: pygame.font.Fo
     )
     goods = "   ".join(f"{label} {state.stockpile.counts.get(good, 0)}" for label, good in HUD_GOODS)
 
+    text, color = status_line or ("Governor: fallback (autopilot)   pawns coloured by mood", HUD_MUTED)
     surface.blit(font.render(line1, True, HUD_TEXT), (MARGIN, top + 14))
     surface.blit(font.render(goods, True, HUD_TEXT), (MARGIN, top + 44))
-    surface.blit(
-        font.render("Governor: fallback (autopilot)   pawns coloured by mood", True, (150, 156, 148)),
-        (MARGIN, top + 68),
-    )
+    surface.blit(font.render(text, True, color), (MARGIN, top + 68))
 
 
 class ColonyViewer:
-    """Steps the engine under the fallback governor and renders the colony."""
+    """Steps the engine under a governor and renders the colony.
 
-    def __init__(self, state: FactionState | None = None, *, smoke_test: bool = False) -> None:
+    By default the live viewer drives the colony with a
+    :class:`ColonyDecisionScheduler`, so a local LLM governs on autopilot
+    without blocking the render loop, with the deterministic fallback covering
+    every gap. Smoke-test runs use the bare fallback so they stay deterministic
+    and touch no network. Press ``L`` to toggle the LLM on and off at runtime.
+    """
+
+    def __init__(
+        self,
+        state: FactionState | None = None,
+        *,
+        smoke_test: bool = False,
+        governor: Governor | None = None,
+    ) -> None:
         pygame.init()
         pygame.font.init()
         self.smoke_test = smoke_test
         self.state = state if state is not None else create_default_colony()
+        if governor is None:
+            governor = FallbackGovernor() if smoke_test else ColonyDecisionScheduler.from_env()
+        self.governor = governor
         self.assets = None  # set after the display mode exists
 
         grid = self.state.grid
@@ -255,14 +323,17 @@ class ColonyViewer:
 
     def run(self) -> None:
         frames = 0
-        while self.running:
-            dt = self.clock.tick(60) / 1000.0
-            self._handle_events()
-            self._advance(dt)
-            self._draw()
-            frames += 1
-            if self.smoke_test and frames >= SMOKE_FRAMES:
-                self.running = False
+        try:
+            while self.running:
+                dt = self.clock.tick(60) / 1000.0
+                self._handle_events()
+                self._advance(dt)
+                self._draw()
+                frames += 1
+                if self.smoke_test and frames >= SMOKE_FRAMES:
+                    self.running = False
+        finally:
+            self._shutdown_governor()
 
     def _handle_events(self) -> None:
         if self.smoke_test:
@@ -272,18 +343,37 @@ class ColonyViewer:
                 self.running = False
             elif event.type == pygame.KEYDOWN and event.key in (pygame.K_ESCAPE, pygame.K_q):
                 self.running = False
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_l:
+                self._toggle_governor()
+
+    def _toggle_governor(self) -> None:
+        toggle = getattr(self.governor, "toggle", None)
+        if callable(toggle):
+            toggle()
+
+    def _shutdown_governor(self) -> None:
+        shutdown = getattr(self.governor, "shutdown", None)
+        if callable(shutdown):
+            shutdown(wait=False)
 
     def _advance(self, dt: float) -> None:
         if self.smoke_test:
-            engine.step_hour(self.state)
+            engine.step_hour(self.state, self.governor)
             return
         self._accum += dt
         while self._accum >= STEP_INTERVAL:
-            engine.step_hour(self.state)
+            engine.step_hour(self.state, self.governor)
             self._accum -= STEP_INTERVAL
 
     def _draw(self) -> None:
-        render_colony(self.screen, self.state, self.assets, self.font, (MARGIN, MARGIN))
+        render_colony(
+            self.screen,
+            self.state,
+            self.assets,
+            self.font,
+            (MARGIN, MARGIN),
+            status_line=governor_status_line(self.governor),
+        )
         pygame.display.flip()
 
 
