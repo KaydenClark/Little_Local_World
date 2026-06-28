@@ -10,10 +10,10 @@ Pygame is the local viewer for the colony state.
 ![Current Local Agent Town UI](docs/screenshots/current-state.png)
 
 This is a screenshot of the current local viewer state. It shows the intended
-near-term direction: a RimWorld-style pawn roster, selected-pawn sheet,
-readable colony map, resource HUD, and bottom command strip. The bottom command
-buttons are visual placeholders right now; they do not trigger build, work,
-assign, research, history, or menu actions yet.
+near-term direction: a larger readable colony map with in-map overlays for the
+RimWorld-style pawn roster, selected-pawn sheet, resource HUD, and command
+strip. The bottom command buttons are visual placeholders right now; they do not
+trigger build, work, assign, research, history, or menu actions yet.
 
 ## Architecture Stance
 
@@ -85,10 +85,10 @@ Ollama can use the same adapter with
 - Construction, daily tax, and a fallback Governor that keeps the colony moving.
 - A local LLM Governor behind the same interface, with hard fallback on any
   error.
-- A Pygame colony viewer with camera pan/zoom, pawn selection, a top pawn
-  roster, right-side pawn sheet, HUD, and local model status.
-- A bottom command strip that shows the target control surface, but is not wired
-  to gameplay actions yet.
+- A resizable Pygame colony viewer with camera pan/zoom, pawn selection, in-map
+  roster/sheet/HUD/command overlays, and local model status.
+- A command strip that shows the target control surface, but is not wired to
+  gameplay actions yet.
 - CC0/provenance-tracked colony sprites under `src\agent_town\assets\colony`.
 - A repeatable colony scaling benchmark for 100, 500, and 1,000 pawns.
 

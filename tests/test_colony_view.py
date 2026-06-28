@@ -8,7 +8,9 @@ import pygame
 from agent_town import colony
 from agent_town.colony_view import (
     BUILDING_SPRITE,
+    GOVERNOR_FOOTER_HEIGHT,
     INSPECTOR_WIDTH,
+    MIN_WINDOW_SIZE,
     PAWN_ROSTER_HEIGHT,
     Camera,
     ColonyViewer,
@@ -18,6 +20,7 @@ from agent_town.colony_view import (
     _top_skills,
     find_pawn_at_screen,
     governor_status_line,
+    map_rect_for_surface,
     load_colony_assets,
     parse_args,
     render_colony,
@@ -62,6 +65,23 @@ class ColonyAssetTests(unittest.TestCase):
 
         render_colony(surface, state, assets, font, (12, 12))
 
+    def test_render_colony_draws_resized_overlay_layout(self):
+        assets = load_colony_assets()
+        font = pygame.font.Font(None, 16)
+        state = colony.create_default_colony()
+        surface = pygame.Surface((1180, 780))
+
+        render_colony(
+            surface,
+            state,
+            assets,
+            font,
+            (12, 12),
+            status_line=("Governor: fallback", (150, 156, 148)),
+            selected_pawn_id="pawn00",
+            show_inspector=True,
+        )
+
 
 class MoodColorTests(unittest.TestCase):
     def test_mood_color_runs_red_to_green(self):
@@ -93,9 +113,16 @@ class PawnInspectorModelTests(unittest.TestCase):
 
         self.assertEqual(_pawn_status_label(pawn), "Stressed")
 
-    def test_viewer_reserves_roster_and_wider_inspector(self):
+    def test_viewer_keeps_existing_overlay_surfaces_sized_for_content(self):
         self.assertGreaterEqual(PAWN_ROSTER_HEIGHT, 58)
         self.assertGreaterEqual(INSPECTOR_WIDTH, 280)
+
+    def test_map_rect_uses_window_width_with_only_status_footer_reserved(self):
+        rect = map_rect_for_surface(1180, 780)
+
+        self.assertEqual(rect.topleft, (0, 0))
+        self.assertEqual(rect.width, 1180)
+        self.assertEqual(rect.height, 780 - GOVERNOR_FOOTER_HEIGHT)
 
 
 class GovernorStatusLineTests(unittest.TestCase):
@@ -168,6 +195,14 @@ class ColonyViewerSmokeTests(unittest.TestCase):
     def test_parse_args_smoke_flag(self):
         self.assertFalse(parse_args([]).smoke_test)
         self.assertTrue(parse_args(["--smoke-test"]).smoke_test)
+
+    def test_viewer_window_is_resizable_and_larger_by_default(self):
+        viewer = ColonyViewer(smoke_test=True)
+
+        self.assertGreaterEqual(viewer.screen.get_width(), MIN_WINDOW_SIZE[0])
+        self.assertGreaterEqual(viewer.screen.get_height(), MIN_WINDOW_SIZE[1])
+        self.assertTrue(viewer.display_flags & pygame.RESIZABLE)
+        self.assertGreater(viewer.camera.zoom, 1.0)
 
 
 if __name__ == "__main__":

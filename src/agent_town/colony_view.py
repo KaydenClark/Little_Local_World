@@ -38,9 +38,10 @@ from .governor import (
 from .pawns import STATE_WANDERING, STATE_SLACKING
 
 MARGIN = 12
-HUD_HEIGHT = 118
 INSPECTOR_WIDTH = 288
 PAWN_ROSTER_HEIGHT = 66
+GOVERNOR_FOOTER_HEIGHT = 30
+MIN_WINDOW_SIZE = (1100, 760)
 STEP_INTERVAL = 0.6  # real seconds per simulated hour at normal speed
 SMOKE_FRAMES = 8
 BUILDING_TILE_WIDTH = 2  # buildings are scaled to this many tiles wide
@@ -113,6 +114,11 @@ GOVERNOR_STATUS_COLOR = {
     GOV_INVALID: (224, 130, 110),
     GOV_DISABLED: HUD_MUTED,
 }
+
+
+def map_rect_for_surface(width: int, height: int) -> pygame.Rect:
+    """The playable map area fills the window, reserving only the status footer."""
+    return pygame.Rect(0, 0, width, max(120, height - GOVERNOR_FOOTER_HEIGHT))
 
 
 def governor_status_line(gov: Governor) -> tuple[str, tuple[int, int, int]]:
@@ -289,21 +295,7 @@ def render_colony(
     base_ts = assets.tile_size
     ts = camera.scaled_tile_size(base_ts)
     ox, oy = origin
-    map_rect = pygame.Rect(
-        0,
-        PAWN_ROSTER_HEIGHT,
-        surface.get_width(),
-        surface.get_height() - HUD_HEIGHT - PAWN_ROSTER_HEIGHT,
-    )
-    inspector_rect = None
-    if show_inspector:
-        inspector_rect = pygame.Rect(
-            surface.get_width() - INSPECTOR_WIDTH,
-            0,
-            INSPECTOR_WIDTH,
-            surface.get_height() - HUD_HEIGHT,
-        )
-        map_rect.width = max(120, surface.get_width() - INSPECTOR_WIDTH)
+    map_rect = map_rect_for_surface(surface.get_width(), surface.get_height())
 
     previous_clip = surface.get_clip()
     surface.set_clip(map_rect)
@@ -346,10 +338,18 @@ def render_colony(
         )
 
     surface.set_clip(previous_clip)
-    _draw_pawn_roster(surface, state, assets, font, selected_pawn_id, map_rect.width)
-    if inspector_rect is not None:
+    if show_inspector:
+        panel_rect = _details_overlay_rect(surface, map_rect)
+        roster_rect = pygame.Rect(panel_rect.x, panel_rect.y, panel_rect.width, PAWN_ROSTER_HEIGHT)
+        inspector_rect = pygame.Rect(
+            panel_rect.x,
+            roster_rect.bottom,
+            panel_rect.width,
+            panel_rect.height - roster_rect.height,
+        )
+        _draw_pawn_roster(surface, state, assets, font, selected_pawn_id, roster_rect.width, rect=roster_rect)
         _draw_inspector(surface, state, font, selected_pawn_id, inspector_rect)
-    _draw_hud(surface, state, font, status_line)
+    _draw_hud(surface, state, font, status_line, map_rect)
 
 
 def _scale_for_camera(sprite: pygame.Surface, camera: Camera) -> pygame.Surface:
@@ -512,6 +512,26 @@ def _draw_chip(
     return rect
 
 
+def _details_overlay_rect(surface: pygame.Surface, map_rect: pygame.Rect) -> pygame.Rect:
+    """Panel for selected-pawn details and the compact roster inside the map."""
+    width = min(370, max(310, surface.get_width() // 3))
+    reserved_top = 92
+    bottom_gap = 58
+    available_height = max(300, map_rect.height - reserved_top - bottom_gap)
+    height = min(470, available_height)
+    return pygame.Rect(MARGIN, reserved_top, width, height)
+
+
+def _command_overlay_rect(surface: pygame.Surface, map_rect: pygame.Rect) -> pygame.Rect:
+    width = min(660, surface.get_width() - MARGIN * 2)
+    return pygame.Rect(MARGIN, map_rect.bottom - 44, width, 34)
+
+
+def _status_overlay_rect(surface: pygame.Surface, map_rect: pygame.Rect) -> pygame.Rect:
+    width = min(760, surface.get_width() - MARGIN * 2)
+    return pygame.Rect(MARGIN, MARGIN, width, 68)
+
+
 def _draw_tab_strip(surface: pygame.Surface, font: pygame.font.Font, rect: pygame.Rect) -> None:
     tabs = ("Log", "Gear", "Social", "Bio", "Needs", "Health")
     tab_w = rect.width // len(tabs)
@@ -537,8 +557,10 @@ def _draw_pawn_roster(
     font: pygame.font.Font,
     selected_pawn_id: str | None,
     width: int,
+    *,
+    rect: pygame.Rect | None = None,
 ) -> None:
-    rect = pygame.Rect(0, 0, width, PAWN_ROSTER_HEIGHT)
+    rect = rect or pygame.Rect(0, 0, width, PAWN_ROSTER_HEIGHT)
     pygame.draw.rect(surface, PANEL_BG, rect)
     pygame.draw.line(surface, PANEL_BORDER, rect.bottomleft, rect.bottomright, 1)
 
@@ -548,10 +570,10 @@ def _draw_pawn_roster(
 
     card_w = 58
     gap = 8
-    x = MARGIN
-    y = 7
+    x = rect.x + 8
+    y = rect.y + 7
     for pawn in state.pawns.values():
-        if x + card_w > width - MARGIN:
+        if x + card_w > rect.right - 8:
             break
         selected = pawn.id == selected_pawn_id
         card = pygame.Rect(x, y, card_w, PAWN_ROSTER_HEIGHT - 14)
@@ -579,8 +601,10 @@ def _draw_inspector(
     selected_pawn_id: str | None,
     rect: pygame.Rect,
 ) -> None:
+    previous_clip = surface.get_clip()
+    surface.set_clip(rect)
     pygame.draw.rect(surface, INSPECTOR_BG, rect)
-    pygame.draw.line(surface, INSPECTOR_BORDER, rect.topleft, rect.bottomleft, 1)
+    pygame.draw.rect(surface, INSPECTOR_BORDER, rect, 1)
 
     x = rect.x + 14
     y = rect.y + 14
@@ -596,6 +620,7 @@ def _draw_inspector(
         line("No pawn selected", INSPECTOR_MUTED, gap=26)
         line(f"Mood {round(economy.average_mood(state) * 100)}%", INSPECTOR_MUTED)
         line(f"Coin {state.coin}", INSPECTOR_MUTED)
+        surface.set_clip(previous_clip)
         return
 
     status = _pawn_status_label(pawn)
@@ -646,6 +671,7 @@ def _draw_inspector(
         if chip_x > rect.right - 78:
             chip_x = x
             chip_y += chip.height + 6
+    surface.set_clip(previous_clip)
 
 
 def _draw_hud(
@@ -653,11 +679,13 @@ def _draw_hud(
     state: FactionState,
     font: pygame.font.Font,
     status_line: tuple[str, tuple[int, int, int]] | None = None,
+    map_rect: pygame.Rect | None = None,
 ) -> None:
+    map_rect = map_rect or map_rect_for_surface(surface.get_width(), surface.get_height())
     width = surface.get_width()
-    top = surface.get_height() - HUD_HEIGHT
-    pygame.draw.rect(surface, HUD_BG, (0, top, width, HUD_HEIGHT))
-    pygame.draw.line(surface, PANEL_BORDER, (0, top), (width, top), 1)
+    footer_top = map_rect.bottom
+    pygame.draw.rect(surface, HUD_BG, (0, footer_top, width, surface.get_height() - footer_top))
+    pygame.draw.line(surface, PANEL_BORDER, (0, footer_top), (width, footer_top), 1)
 
     population = len(state.pawns)
     avg_mood = economy.average_mood(state)
@@ -672,33 +700,44 @@ def _draw_hud(
     )
 
     text, color = status_line or ("Governor: fallback (autopilot)   pawns coloured by mood", HUD_MUTED)
-    x = MARGIN
+    status_rect = _status_overlay_rect(surface, map_rect)
+    pygame.draw.rect(surface, PANEL_BG, status_rect, border_radius=3)
+    pygame.draw.rect(surface, PANEL_BORDER, status_rect, 1, border_radius=3)
+
+    x = status_rect.x + 8
+    y = status_rect.y + 7
     for item in stat_items:
         glyph = font.render(item, True, HUD_TEXT)
-        box = pygame.Rect(x, top + 10, glyph.get_width() + 16, 24)
+        box = pygame.Rect(x, y, glyph.get_width() + 16, 24)
         pygame.draw.rect(surface, PANEL_BG_2, box, border_radius=2)
         pygame.draw.rect(surface, (58, 67, 69), box, 1, border_radius=2)
         surface.blit(glyph, (box.x + 8, box.y + 5))
         x = box.right + 8
 
-    x = MARGIN
+    x = status_rect.x + 8
+    y = status_rect.y + 36
     for label, good in HUD_GOODS:
         amount = state.stockpile.counts.get(good, 0)
         text_chip = f"{label} {amount}"
         glyph = font.render(text_chip, True, HUD_TEXT)
-        box = pygame.Rect(x, top + 41, glyph.get_width() + 16, 24)
+        box = pygame.Rect(x, y, glyph.get_width() + 16, 24)
+        if box.right > status_rect.right - 8:
+            break
         pygame.draw.rect(surface, (31, 36, 34), box, border_radius=2)
         pygame.draw.rect(surface, (56, 64, 58), box, 1, border_radius=2)
         surface.blit(glyph, (box.x + 8, box.y + 5))
         x = box.right + 8
 
-    _draw_text(surface, font, text, color, (MARGIN, top + 72), width - MARGIN * 2)
+    _draw_text(surface, font, text, color, (MARGIN, footer_top + 8), width - MARGIN * 2)
 
     buttons = ("Architect", "Work", "Assign", "Research", "History", "Menu")
-    button_y = top + HUD_HEIGHT - 28
-    button_w = 104
+    command_rect = _command_overlay_rect(surface, map_rect)
+    pygame.draw.rect(surface, PANEL_BG, command_rect, border_radius=3)
+    pygame.draw.rect(surface, PANEL_BORDER, command_rect, 1, border_radius=3)
+    button_y = command_rect.y + 3
+    button_w = max(74, (command_rect.width - 10) // len(buttons))
     for index, label in enumerate(buttons):
-        button = pygame.Rect(index * (button_w + 2), button_y, button_w, 28)
+        button = pygame.Rect(command_rect.x + 5 + index * button_w, button_y, button_w - 2, 28)
         pygame.draw.rect(surface, (31, 42, 45), button)
         pygame.draw.rect(surface, PANEL_BORDER, button, 1)
         glyph = font.render(label, True, HUD_TEXT)
@@ -732,15 +771,17 @@ class ColonyViewer:
         self.camera = Camera()
         self.selected_pawn_id = next(iter(self.state.pawns), None)
         self.assets = None  # set after the display mode exists
+        self.display_flags = pygame.RESIZABLE
 
         grid = self.state.grid
         ts = load_colony_manifest().tile_size
-        width = (grid.width * ts if grid else 600) + 2 * MARGIN + INSPECTOR_WIDTH
-        height = (grid.height * ts if grid else 400) + 2 * MARGIN + HUD_HEIGHT + PAWN_ROSTER_HEIGHT
-        self.screen = pygame.display.set_mode((width, height))
+        width = max(MIN_WINDOW_SIZE[0], (grid.width * ts if grid else 600) + 2 * MARGIN)
+        height = max(MIN_WINDOW_SIZE[1], (grid.height * ts if grid else 400) + 2 * MARGIN + GOVERNOR_FOOTER_HEIGHT)
+        self.screen = pygame.display.set_mode((width, height), self.display_flags)
         pygame.display.set_caption("Local Agent Town - Colony")
 
         self.assets = load_colony_assets()
+        self._fit_camera_to_window()
         self._clamp_camera()
         self.font = _load_font()
         self.clock = pygame.time.Clock()
@@ -773,6 +814,8 @@ class ColonyViewer:
                 self._toggle_governor()
             elif event.type == pygame.KEYDOWN:
                 self._handle_camera_key(event.key)
+            elif event.type == pygame.VIDEORESIZE:
+                self._resize_window(event.w, event.h)
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 self._select_pawn_at(event.pos)
             elif event.type == pygame.MOUSEWHEEL:
@@ -796,15 +839,29 @@ class ColonyViewer:
             self._select_next_pawn()
 
     def _map_rect(self) -> pygame.Rect:
-        return pygame.Rect(
-            0,
-            PAWN_ROSTER_HEIGHT,
-            self.screen.get_width() - INSPECTOR_WIDTH,
-            self.screen.get_height() - HUD_HEIGHT - PAWN_ROSTER_HEIGHT,
-        )
+        return map_rect_for_surface(self.screen.get_width(), self.screen.get_height())
 
     def _map_origin(self) -> tuple[int, int]:
-        return (MARGIN, PAWN_ROSTER_HEIGHT + MARGIN)
+        return (MARGIN, MARGIN)
+
+    def _resize_window(self, width: int, height: int) -> None:
+        width = max(MIN_WINDOW_SIZE[0], width)
+        height = max(MIN_WINDOW_SIZE[1], height)
+        self.screen = pygame.display.set_mode((width, height), self.display_flags)
+        self._clamp_camera()
+
+    def _fit_camera_to_window(self) -> None:
+        grid = self.state.grid
+        if grid is None or self.assets is None:
+            return
+        map_rect = self._map_rect()
+        world_w = max(1, grid.width * self.assets.tile_size)
+        world_h = max(1, grid.height * self.assets.tile_size)
+        fit_zoom = min(
+            MAX_ZOOM,
+            max(1.0, min((map_rect.width - 2 * MARGIN) / world_w, (map_rect.height - 2 * MARGIN) / world_h)),
+        )
+        self.camera.zoom = fit_zoom
 
     def _pan_camera(self, screen_dx: float, screen_dy: float) -> None:
         self.camera.pan(screen_dx, screen_dy)

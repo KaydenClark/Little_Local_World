@@ -94,14 +94,16 @@ Expected result:
 - A colony map appears.
 - The engine advances simulated hours over time.
 - Colony sprites appear for terrain, buildings, resources, and pawns.
-- A top pawn roster shows colonist portraits, names, mood dots, and selection.
+- The desktop window is resizable.
+- In-map overlays show colonist portraits, names, mood dots, selected-pawn
+  details, colony resources, and command buttons.
 - Mouse wheel, `+`, and `-` zoom.
 - `WASD` or arrow keys pan.
 - Clicking a pawn, or pressing `Tab`, updates the pawn sheet with status,
   assignment, needs, skills, and traits.
 - Pressing `L` connects to or disconnects from LM Studio/Ollama while the game is running.
-- The HUD shows local model state: disabled, idle, thinking, offline, or invalid.
-- The bottom command strip is a visual placeholder in the current build. The
+- The footer shows local model state: disabled, idle, thinking, offline, or invalid.
+- The in-map command strip is a visual placeholder in the current build. The
   `Architect`, `Work`, `Assign`, `Research`, `History`, and `Menu` buttons do
   not perform actions yet.
 

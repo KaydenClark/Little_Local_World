@@ -1,6 +1,6 @@
 # Local Agent Town - Visual Design
 
-**Last reviewed:** 2026-06-27
+**Last reviewed:** 2026-06-28
 **Status:** active
 **Design stance:** Age of Empires-first settlement readability with RimWorld simulation clarity
 
@@ -121,8 +121,9 @@ Use a restrained simulation HUD:
 
 Panel styling should stay flat and low-contrast. The sprites and map state should carry the mood.
 
-The current build-1 viewer uses a pawn-sheet layout: top roster, right-side
-status/needs/skills/traits sheet, and bottom command/status strip. Future UI
+The current build-1 viewer uses a larger resizable map with in-map overlays:
+stats near the top, roster plus selected-pawn status/needs/skills/traits on the
+map, commands near the bottom, and local model state in a slim footer. Future UI
 work should extend those surfaces with real controls and event history rather
 than returning to a plain text inspector.
 
