@@ -8,8 +8,10 @@ import pygame
 from agent_town import colony
 from agent_town.colony_view import (
     BUILDING_SPRITE,
+    Camera,
     ColonyViewer,
     _mood_color,
+    find_pawn_at_screen,
     governor_status_line,
     load_colony_assets,
     parse_args,
@@ -73,6 +75,32 @@ class GovernorStatusLineTests(unittest.TestCase):
         text, _color = governor_status_line(sched)
         self.assertIn("press L", text)
         sched.shutdown(wait=True)
+
+
+class CameraTests(unittest.TestCase):
+    def test_screen_to_tile_accounts_for_pan_and_zoom(self):
+        camera = Camera(offset_x=25.0, offset_y=50.0, zoom=2.0)
+
+        self.assertEqual(camera.screen_to_tile((62, 112), (12, 12), 25), (2, 4))
+
+    def test_camera_clamps_to_world_bounds(self):
+        camera = Camera(offset_x=999.0, offset_y=-50.0, zoom=2.0)
+
+        camera.clamp_to_world(world_size=(600, 400), viewport_size=(300, 200))
+
+        self.assertEqual(camera.offset_x, 450.0)
+        self.assertEqual(camera.offset_y, 0.0)
+
+
+class PawnSelectionTests(unittest.TestCase):
+    def test_find_pawn_at_screen_uses_camera_transform(self):
+        state = colony.create_default_colony()
+        camera = Camera(offset_x=25.0, offset_y=0.0, zoom=2.0)
+        pawn = state.pawns["pawn00"]
+
+        center = camera.tile_center_to_screen(pawn.x, pawn.y, (12, 12), 25)
+
+        self.assertEqual(find_pawn_at_screen(state, center, (12, 12), 25, camera), "pawn00")
 
 
 class _RecordingGovernor:

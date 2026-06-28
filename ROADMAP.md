@@ -48,10 +48,11 @@ Important drift or uncertainty:
   importable and green so the existing Pygame viewer keeps working. It is
   retired when the viewer is rewritten to render colony state at milestone I3.
 - The default `python -m agent_town` view is now the colony viewer
-  (`colony_view.py`), which renders the colony `FactionState` and steps the
-  engine. The legacy social-sim (`app.py`, `create_default_simulation`) is still
-  importable and tested; it is retired once the colony viewer reaches parity
-  (camera, pawn-selection panel, LLM toggle).
+  (`colony_view.py`), which renders the colony `FactionState`, steps the
+  engine, supports camera pan/zoom, and has a right-side pawn inspection panel.
+  The legacy social-sim (`app.py`, `create_default_simulation`) is still
+  importable and tested; it is retired once the colony viewer reaches final
+  parity after the live local-model run log and any last viewer cleanup.
 - The LLM governor (I2) exists headless: `governor.LLMGovernor` implements the
   same `decide(context)` interface backed by `LocalLLMClient.complete_json` with
   a JSON-schema action list and a hard fallback to `FallbackGovernor` on any
@@ -116,9 +117,10 @@ The bridge order is I1 -> I3 -> I2 (see the colony render before adding the LLM)
 2. **(done, cleanup pending) Viewer I3** - `colony_view.py` renders the colony
    `FactionState` (tiles, buildings with staffing, pawns by mood, HUD) with the
    authored `assets/colony` sprites and steps `engine.step_hour`; it is now the
-   default `python -m agent_town` view and its smoke test is green. Remaining:
-   retire the legacy social-sim once the colony viewer reaches parity (camera,
-   pawn-selection panel, LLM toggle).
+   default `python -m agent_town` view and its smoke test is green. Camera
+   pan/zoom, pawn selection, the inspection panel, and the LLM toggle are now in
+   place. Remaining: live local-model run log plus final viewer cleanup before
+   retiring the legacy social-sim.
 3. **(done headless) LLM governor I2** - `governor.LLMGovernor` is behind the
    fallback `decide` interface with JSON-schema output and a hard fallback;
    `test_llm_governor.py` is green and `scripts/llm_governor_run.py` is the live
@@ -229,3 +231,4 @@ Append a row when a task changes durable project state. Use actual results, not 
 | 2026-06-28 | Confirm asset licenses and swap pawns to the Tiny Characters Set | `.\.venv\Scripts\python.exe -m unittest discover -s tests` (126 tests); `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; rendered frame inspected at `%TEMP%\colony_frame.png` | pass | Confirmed CC0 via source pages: Tiny Characters Set (Fleurman/GrafxKid, opengameart) and Free Pixel Food (Henry Software, itch). Sliced+trimmed all 24 characters from `32_Characters/All.png` into `pawn_00..23`, removed the four `pawn_a..d`, and load pawns by glob (each colonist now a distinct person). `gfx.zip` left unverified (possible rips). `FreePixelFood` now cleared for HUD good-icons. Updated `assets/colony/README.md` |
 | 2026-06-28 | Integration I2: headless LLM governor with hard fallback | `.\.venv\Scripts\python.exe -m unittest discover -s tests` (137 tests, was 126); `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; offline `scripts\llm_governor_run.py --hours 6` (hard-fallback path) | pass | Added `LocalLLMClient.complete_json` (generic schema chat) and `governor.LLMGovernor` (JSON-schema action list, `action_from_dict`/`parse_action_list`, hard fallback on any error; empty result defers to fallback). `test_llm_governor.py` (11 tests) covers parsing, hard fallback, injected-http client path, and a 3-day determinism proof that an always-failing LLM governor == fallback. Remaining: live Gemma run log + non-blocking integration into the real-time viewer |
 | 2026-06-28 | Bridge the LLM governor into the colony viewer without blocking | `.\.venv\Scripts\python.exe -m unittest tests.test_colony_governor tests.test_colony_view` (18 tests); `.\.venv\Scripts\python.exe -m unittest discover -s tests` (149 tests); `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1` | pass | Added `ColonyDecisionScheduler`, wired the live colony viewer through it by default, kept smoke tests deterministic on fallback, added HUD status text plus the `L` connect/disconnect toggle, and covered offline/disabled/thinking behavior with injected-http tests. Remaining I3 work: camera/pan-zoom, pawn-selection panel, live Gemma run log, and legacy social-sim retirement after parity |
+| 2026-06-28 | I3 viewer parity: camera pan/zoom and pawn inspection panel | `.\.venv\Scripts\python.exe -m unittest tests.test_colony_governor tests.test_colony_view` (21 tests); `.\.venv\Scripts\python.exe -m unittest discover -s tests` (152 tests); `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; rendered frame inspected at `%TEMP%\local-agent-town-i3-panel.png` | pass | Added a camera transform with clamped pan/zoom, keyboard/mouse viewer controls, click/Tab pawn selection, selected-pawn highlight, and a right inspection panel showing pawn state, assignment, mood, needs, and top skill. Remaining: live local-model run log plus final cleanup before retiring the legacy social-sim |
