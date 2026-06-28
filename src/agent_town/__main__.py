@@ -1,4 +1,4 @@
-from .colony_view import main
+from .civilization_view import main
 
 if __name__ == "__main__":
     main()

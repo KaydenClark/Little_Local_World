@@ -1,11 +1,11 @@
-"""Colony viewer (integration milestone I3).
+"""Civilization viewer (integration milestone I3).
 
-Renders the build-1 colony ``FactionState`` - terrain tiles, resource nodes,
-buildings, pawns, and a HUD - and steps the engine so the colony visibly runs.
-The live viewer governs via a non-blocking :class:`ColonyDecisionScheduler` (a
+Renders the build-1 civilization ``FactionState`` - terrain tiles, resource nodes,
+buildings, pawns, and a HUD - and steps the engine so the civilization visibly runs.
+The live viewer governs via a non-blocking :class:`CivilizationDecisionScheduler` (a
 local LLM on autopilot, with the deterministic fallback covering every gap);
-press ``L`` to toggle the LLM on and off. Uses the authored colony sprite set
-(``assets/colony``), falling back to simple shapes only where no sprite exists
+press ``L`` to toggle the LLM on and off. Uses the authored civilization sprite set
+(``assets/civilization``), falling back to simple shapes only where no sprite exists
 (e.g. grain/stone nodes, pawns).
 
 This is the default ``python -m agent_town`` view after the legacy social-sim
@@ -22,16 +22,16 @@ from dataclasses import dataclass, field
 import pygame
 
 from . import economy, engine
-from .assets import ColonyAssetManifest, load_colony_manifest
+from .assets import CivilizationAssetManifest, load_civilization_manifest
 from .core import FactionState, Good
-from .colony import create_default_colony
+from .civilization import create_default_civilization
 from .governor import (
     GOV_DISABLED,
     GOV_IDLE,
     GOV_INVALID,
     GOV_OFFLINE,
     GOV_THINKING,
-    ColonyDecisionScheduler,
+    CivilizationDecisionScheduler,
     FallbackGovernor,
     Governor,
 )
@@ -116,10 +116,10 @@ GOVERNOR_STATUS_COLOR = {
 
 
 def governor_status_line(gov: Governor) -> tuple[str, tuple[int, int, int]]:
-    """A one-line HUD summary of how the colony is being governed right now.
+    """A one-line HUD summary of how the civilization is being governed right now.
 
     A plain governor (no ``status``) reads as fallback autopilot; a
-    :class:`ColonyDecisionScheduler` reports its live LLM connection state and
+    :class:`CivilizationDecisionScheduler` reports its live LLM connection state and
     the ``L`` toggle that switches it on and off.
     """
     status = getattr(gov, "status", None)
@@ -143,7 +143,7 @@ def governor_status_line(gov: Governor) -> tuple[str, tuple[int, int, int]]:
 
 @dataclass
 class Camera:
-    """Screen transform for the colony map.
+    """Screen transform for the civilization map.
 
     Offsets are stored in unscaled world pixels so pan and zoom can compose
     without drifting. The viewer owns input; rendering only reads this transform.
@@ -200,8 +200,8 @@ class Camera:
 
 
 @dataclass
-class ColonyAssets:
-    """Loaded colony sprites: raw surfaces plus pre-scaled building sprites."""
+class CivilizationAssets:
+    """Loaded civilization sprites: raw surfaces plus pre-scaled building sprites."""
 
     tile_size: int
     surfaces: dict[str, pygame.Surface] = field(default_factory=dict)
@@ -209,10 +209,10 @@ class ColonyAssets:
     pawns_scaled: dict[str, pygame.Surface] = field(default_factory=dict)
 
 
-def load_colony_assets(manifest: ColonyAssetManifest | None = None) -> ColonyAssets:
-    """Load every colony sprite and pre-scale building + pawn sprites."""
-    manifest = manifest or load_colony_manifest()
-    assets = ColonyAssets(tile_size=manifest.tile_size)
+def load_civilization_assets(manifest: CivilizationAssetManifest | None = None) -> CivilizationAssets:
+    """Load every civilization sprite and pre-scale building + pawn sprites."""
+    manifest = manifest or load_civilization_manifest()
+    assets = CivilizationAssets(tile_size=manifest.tile_size)
     for name in manifest.sprite_files:
         surface = pygame.image.load(str(manifest.path(name))).convert_alpha()
         assets.surfaces[name] = surface
@@ -270,10 +270,10 @@ def _pawn_status_label(pawn) -> str:
     return "Healthy"
 
 
-def render_colony(
+def render_civilization(
     surface: pygame.Surface,
     state: FactionState,
-    assets: ColonyAssets,
+    assets: CivilizationAssets,
     font: pygame.font.Font,
     origin: tuple[int, int],
     *,
@@ -282,7 +282,7 @@ def render_colony(
     selected_pawn_id: str | None = None,
     show_inspector: bool = False,
 ) -> None:
-    """Draw the whole colony (tiles, nodes, buildings, pawns, HUD) onto ``surface``."""
+    """Draw the whole civilization (tiles, nodes, buildings, pawns, HUD) onto ``surface``."""
     camera = camera or Camera()
     surface.fill(BACKGROUND)
     grid = state.grid
@@ -364,7 +364,7 @@ def _scale_for_camera(sprite: pygame.Surface, camera: Camera) -> pygame.Surface:
     )
 
 
-def _draw_node(surface, node, assets: ColonyAssets, camera: Camera, ox: int, oy: int, base_ts: int) -> None:
+def _draw_node(surface, node, assets: CivilizationAssets, camera: Camera, ox: int, oy: int, base_ts: int) -> None:
     ts = camera.scaled_tile_size(base_ts)
     cx, cy = camera.tile_center_to_screen(node.x, node.y, (ox, oy), base_ts)
     _left, bottom = camera.tile_top_left_to_screen(node.x, node.y + 1, (ox, oy), base_ts)
@@ -377,7 +377,7 @@ def _draw_node(surface, node, assets: ColonyAssets, camera: Camera, ox: int, oy:
     pygame.draw.circle(surface, color, (cx, cy), max(4, ts // 3))
 
 
-def _draw_building(surface, building, assets: ColonyAssets, font, camera: Camera, ox: int, oy: int, base_ts: int) -> None:
+def _draw_building(surface, building, assets: CivilizationAssets, font, camera: Camera, ox: int, oy: int, base_ts: int) -> None:
     sprite = _scale_for_camera(
         assets.buildings_scaled[BUILDING_SPRITE.get(building.kind, DEFAULT_BUILDING_SPRITE)],
         camera,
@@ -402,7 +402,7 @@ def _pawn_sprite_key(pawn, keys: list[str]) -> str:
 def _draw_pawn(
     surface,
     pawn,
-    assets: ColonyAssets,
+    assets: CivilizationAssets,
     pawn_keys: list[str],
     camera: Camera,
     ox: int,
@@ -533,7 +533,7 @@ def _draw_tab_strip(surface: pygame.Surface, font: pygame.font.Font, rect: pygam
 def _draw_pawn_roster(
     surface: pygame.Surface,
     state: FactionState,
-    assets: ColonyAssets,
+    assets: CivilizationAssets,
     font: pygame.font.Font,
     selected_pawn_id: str | None,
     width: int,
@@ -705,11 +705,11 @@ def _draw_hud(
         surface.blit(glyph, (button.centerx - glyph.get_width() // 2, button.centery - glyph.get_height() // 2))
 
 
-class ColonyViewer:
-    """Steps the engine under a governor and renders the colony.
+class CivilizationViewer:
+    """Steps the engine under a governor and renders the civilization.
 
-    By default the live viewer drives the colony with a
-    :class:`ColonyDecisionScheduler`, so a local LLM governs on autopilot
+    By default the live viewer drives the civilization with a
+    :class:`CivilizationDecisionScheduler`, so a local LLM governs on autopilot
     without blocking the render loop, with the deterministic fallback covering
     every gap. Smoke-test runs use the bare fallback so they stay deterministic
     and touch no network. Press ``L`` to toggle the LLM on and off at runtime.
@@ -725,22 +725,22 @@ class ColonyViewer:
         pygame.init()
         pygame.font.init()
         self.smoke_test = smoke_test
-        self.state = state if state is not None else create_default_colony()
+        self.state = state if state is not None else create_default_civilization()
         if governor is None:
-            governor = FallbackGovernor() if smoke_test else ColonyDecisionScheduler.from_env()
+            governor = FallbackGovernor() if smoke_test else CivilizationDecisionScheduler.from_env()
         self.governor = governor
         self.camera = Camera()
         self.selected_pawn_id = next(iter(self.state.pawns), None)
         self.assets = None  # set after the display mode exists
 
         grid = self.state.grid
-        ts = load_colony_manifest().tile_size
+        ts = load_civilization_manifest().tile_size
         width = (grid.width * ts if grid else 600) + 2 * MARGIN + INSPECTOR_WIDTH
         height = (grid.height * ts if grid else 400) + 2 * MARGIN + HUD_HEIGHT + PAWN_ROSTER_HEIGHT
         self.screen = pygame.display.set_mode((width, height))
-        pygame.display.set_caption("Local Agent Town - Colony")
+        pygame.display.set_caption("Local Agent Town - Civilization")
 
-        self.assets = load_colony_assets()
+        self.assets = load_civilization_assets()
         self._clamp_camera()
         self.font = _load_font()
         self.clock = pygame.time.Clock()
@@ -820,7 +820,7 @@ class ColonyViewer:
         grid = self.state.grid
         if grid is None:
             return
-        tile_size = load_colony_manifest().tile_size
+        tile_size = load_civilization_manifest().tile_size
         world_size = (grid.width * tile_size, grid.height * tile_size)
         self.camera.clamp_to_world(world_size, self._map_rect().size)
 
@@ -862,7 +862,7 @@ class ColonyViewer:
             self._accum -= STEP_INTERVAL
 
     def _draw(self) -> None:
-        render_colony(
+        render_civilization(
             self.screen,
             self.state,
             self.assets,
@@ -887,7 +887,7 @@ def _load_font() -> pygame.font.Font:
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run the Local Agent Town colony viewer.")
+    parser = argparse.ArgumentParser(description="Run the Local Agent Town civilization viewer.")
     parser.add_argument("--smoke-test", action="store_true", help="Open briefly, draw a few frames, then exit.")
     return parser.parse_args(argv)
 
@@ -896,7 +896,7 @@ def main(argv: list[str] | None = None) -> None:
     args = parse_args(sys.argv[1:] if argv is None else argv)
     if args.smoke_test:
         os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
-    ColonyViewer(smoke_test=args.smoke_test).run()
+    CivilizationViewer(smoke_test=args.smoke_test).run()
 
 
 if __name__ == "__main__":

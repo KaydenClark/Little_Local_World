@@ -1,25 +1,25 @@
 import unittest
 
-from agent_town import colony, economy, engine
+from agent_town import civilization, economy, engine
 from agent_town.core import Good
 from agent_town import pawns
 
 
-class DefaultColonyTests(unittest.TestCase):
-    def test_seeded_colony_is_well_formed(self):
-        state = colony.create_default_colony()
+class DefaultCivilizationTests(unittest.TestCase):
+    def test_seeded_civilization_is_well_formed(self):
+        state = civilization.create_default_civilization()
 
         self.assertIsNotNone(state.grid)
-        self.assertEqual(len(state.pawns), len(colony.STARTING_PAWNS))
-        self.assertEqual(len(state.buildings), len(colony.STARTING_BUILDINGS))
+        self.assertEqual(len(state.pawns), len(civilization.STARTING_PAWNS))
+        self.assertEqual(len(state.buildings), len(civilization.STARTING_BUILDINGS))
         self.assertTrue(state.resource_nodes)
         # Every building sits on the grid.
         for building in state.buildings.values():
             self.assertTrue(state.grid.in_bounds(building.x, building.y))
 
-    def test_seeded_colony_is_deterministic(self):
-        first = colony.create_default_colony()
-        second = colony.create_default_colony()
+    def test_seeded_civilization_is_deterministic(self):
+        first = civilization.create_default_civilization()
+        second = civilization.create_default_civilization()
 
         self.assertEqual(
             [(b.kind, b.x, b.y) for b in first.buildings.values()],
@@ -30,9 +30,9 @@ class DefaultColonyTests(unittest.TestCase):
             [(n.kind, n.x, n.y) for n in second.resource_nodes],
         )
 
-    def test_fallback_governor_sustains_the_rendered_colony(self):
-        # The viewer's colony must survive autopilot like the I1 colony does.
-        state = colony.create_default_colony()
+    def test_fallback_governor_sustains_the_rendered_civilization(self):
+        # The viewer's civilization must survive autopilot like the I1 civilization does.
+        state = civilization.create_default_civilization()
 
         engine.run_days(state, days=3)
 

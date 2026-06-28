@@ -21,16 +21,16 @@ class LocalLLMClientTests(unittest.TestCase):
 
         result = client.complete_json(
             "system",
-            {"colony": {"day": 1}},
+            {"civilization": {"day": 1}},
             schema={"type": "object", "properties": {"actions": {"type": "array"}}},
-            name="colony_actions",
+            name="civilization_actions",
         )
 
         payload, timeout = calls[0]
         self.assertEqual(result, {"actions": []})
         self.assertEqual(payload["model"], "gemma-4-e4b-it")
         self.assertEqual(payload["response_format"]["type"], "json_schema")
-        self.assertEqual(payload["response_format"]["json_schema"]["name"], "colony_actions")
+        self.assertEqual(payload["response_format"]["json_schema"]["name"], "civilization_actions")
         self.assertEqual(timeout, client.timeout)
 
     def test_complete_json_reports_timeout_as_client_error(self):

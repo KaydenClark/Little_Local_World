@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 # ============================================================================
-# Colony contract (Build 1) - frozen Phase 0 deliverable.
+# Civilization contract (Build 1) - frozen Phase 0 deliverable.
 #
 # These dataclasses and the `effective_work` seam (in mood.py) are the shared
 # interface both build tracks depend on. See BLUEPRINT.md "Frozen contract".
@@ -14,7 +14,7 @@ from enum import Enum
 # schedule/governor) meet only at `effective_work(pawn, recipe, time_of_day)`.
 #
 # Naming note: the refactor plan calls the exception-queue entity "Exception".
-# It is implemented here as `ColonyException` so it never shadows the builtin
+# It is implemented here as `CivilizationException` so it never shadows the builtin
 # `Exception` - the LLM governor's hard fallback relies on `except Exception`.
 # ============================================================================
 
@@ -209,7 +209,7 @@ class FactionState:
 
     The refactor-plan table lists the economic/people fields; ``grid`` and
     ``resource_nodes`` are included here because build 1 is single-faction /
-    single-map, so this is the natural root container for the whole colony.
+    single-map, so this is the natural root container for the whole civilization.
     """
 
     stockpile: Stockpile = field(default_factory=Stockpile)
@@ -227,7 +227,7 @@ class FactionState:
 
 
 @dataclass(frozen=True)
-class ColonyException:
+class CivilizationException:
     """An item in the governor's exception queue (plan entity "Exception")."""
 
     kind: str

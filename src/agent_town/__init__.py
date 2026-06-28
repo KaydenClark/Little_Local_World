@@ -1,6 +1,6 @@
-"""Local Agent Town colony prototype."""
+"""Local Agent Town civilization prototype."""
 
-__all__ = ["FactionState", "create_default_colony"]
+__all__ = ["FactionState", "create_default_civilization"]
 
-from .colony import create_default_colony
+from .civilization import create_default_civilization
 from .core import FactionState

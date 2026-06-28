@@ -1,7 +1,7 @@
 import unittest
 
-from agent_town import buildings, colony
-from agent_town.colony_view import BUILDING_SPRITE
+from agent_town import buildings, civilization
+from agent_town.civilization_view import BUILDING_SPRITE
 
 
 EXPECTED_BUILDINGS = {
@@ -15,8 +15,8 @@ EXPECTED_BUILDINGS = {
 
 
 class DefaultBuildingTests(unittest.TestCase):
-    def test_default_colony_has_expected_build1_buildings(self):
-        state = colony.create_default_colony()
+    def test_default_civilization_has_expected_build1_buildings(self):
+        state = civilization.create_default_civilization()
         counts: dict[str, int] = {}
         for building in state.buildings.values():
             counts[building.kind] = counts.get(building.kind, 0) + 1
@@ -32,7 +32,7 @@ class DefaultBuildingTests(unittest.TestCase):
                 self.assertIn(kind, BUILDING_SPRITE)
 
     def test_default_buildings_are_inside_grid(self):
-        state = colony.create_default_colony()
+        state = civilization.create_default_civilization()
         self.assertIsNotNone(state.grid)
 
         for building in state.buildings.values():

@@ -63,7 +63,7 @@ Expected result:
 
 ## Asset Preparation
 
-The colony viewer uses runtime sprites under `src\agent_town\assets\colony`.
+The civilization viewer uses runtime sprites under `src\agent_town\assets\colony`.
 
 When adding a new free asset:
 
@@ -91,9 +91,9 @@ Open:
 
 Expected result:
 
-- A colony map appears.
+- A civilization map appears.
 - The engine advances simulated hours over time.
-- Colony sprites appear for terrain, buildings, resources, and pawns.
+- Civilization sprites appear for terrain, buildings, resources, and pawns.
 - A top pawn roster shows colonist portraits, names, mood dots, and selection.
 - Mouse wheel, `+`, and `-` zoom.
 - `WASD` or arrow keys pan.
@@ -132,7 +132,7 @@ Expected result:
 - Core tests pass.
 - Smoke test exits without import or display errors.
 - Workbench validation passes.
-- Asset checks prove the colony runtime sprites and provenance notes exist.
+- Asset checks prove the civilization runtime sprites and provenance notes exist.
 
 Scaling benchmark:
 
@@ -147,7 +147,7 @@ Expected result:
 
 ## Data Operations
 
-There is no colony save/load UI or persistence model yet.
+There is no civilization save/load UI or persistence model yet.
 
 Safety rules:
 

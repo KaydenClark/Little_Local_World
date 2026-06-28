@@ -1,7 +1,7 @@
 """Stockpile behaviour, production, and the tax loop. [Track A]
 
 Drives the deterministic economy each tick: staffed buildings with inputs turn
-work into goods, and once per day the colony earns coin from
+work into goods, and once per day the civilization earns coin from
 ``f(avg_mood, population, tax_rate)``. Coin gates new construction.
 
 The one cross-track seam lives here: production multiplies a building's base
@@ -67,7 +67,7 @@ def production_tick(state: FactionState, *, work_fn: WorkFn = mood.effective_wor
 
 
 def average_mood(state: FactionState) -> float:
-    """Mean pawn mood across the colony (0.0 if empty)."""
+    """Mean pawn mood across the civilization (0.0 if empty)."""
     if not state.pawns:
         return 0.0
     return sum(max(0.0, min(1.0, pawn.mood)) for pawn in state.pawns.values()) / len(state.pawns)
@@ -90,7 +90,7 @@ def apply_daily_tax(state: FactionState) -> int:
 
 
 def can_afford(state: FactionState, cost: dict[Good, int], *, coin_cost: int = 0) -> bool:
-    """Whether the colony has the goods and coin for ``cost``."""
+    """Whether the civilization has the goods and coin for ``cost``."""
     if coin_cost < 0:
         raise ValueError("coin_cost must be non-negative")
     if state.coin < coin_cost:

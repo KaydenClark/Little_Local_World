@@ -8,7 +8,7 @@ This project should stop behaving like a dark workbench with game pieces on top.
 
 ## North Star
 
-Local Agent Town starts as a small RTS-readable colony simulation, not a decorative life-sim scene.
+Local Agent Town starts as a small RTS-readable civilization simulation, not a decorative life-sim scene.
 
 The first playable feeling should be:
 
@@ -111,7 +111,7 @@ Do not let labels and bubbles cover each other. At zoomed-out views, reduce text
 Use a restrained simulation HUD:
 
 - **Top pawn roster:** compact colonist cards with portrait, name, mood dot, and
-  selected border so the operator can scan the colony like a RimWorld pawn bar.
+  selected border so the operator can scan the civilization like a RimWorld pawn bar.
 - **Right inspection panel:** selected pawn, task, status, needs, skills, traits,
   and later memories, relationships, suggestions, and local model detail.
 - **Bottom event strip:** recent incidents and social events, compact and timestamped.

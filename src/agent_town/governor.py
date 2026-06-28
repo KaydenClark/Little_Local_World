@@ -27,7 +27,7 @@ from .core import (
     ACTION_SET_PRODUCTION_TARGET,
     ACTION_SET_RESEARCH,
     ACTION_SET_SCHEDULE,
-    ColonyException,
+    CivilizationException,
     FactionState,
     Good,
     GovernorAction,
@@ -142,16 +142,16 @@ def build_construction_summary(state: FactionState) -> list[dict[str, Any]]:
     ]
 
 
-def build_exception_queue(state: FactionState) -> list[ColonyException]:
+def build_exception_queue(state: FactionState) -> list[CivilizationException]:
     """Per-problem detail: unstaffed/missing-inputs/idle/unhappy/break/mismatch."""
-    exceptions: list[ColonyException] = []
+    exceptions: list[CivilizationException] = []
 
     for building in sorted(state.buildings.values(), key=lambda b: b.id):
         if not building.built or building.recipe is None:
             continue
         if building.job_slots > 0 and not building.staffed_by:
             exceptions.append(
-                ColonyException("unstaffed_building", building_id=building.id, detail=building.kind)
+                CivilizationException("unstaffed_building", building_id=building.id, detail=building.kind)
             )
             continue
         if building.staffed_by:
@@ -162,30 +162,30 @@ def build_exception_queue(state: FactionState) -> list[ColonyException]:
             )
             if missing:
                 exceptions.append(
-                    ColonyException("missing_inputs", building_id=building.id, detail=",".join(missing))
+                    CivilizationException("missing_inputs", building_id=building.id, detail=",".join(missing))
                 )
 
     for pawn in sorted(state.pawns.values(), key=lambda p: p.id):
         broken = pawn.state in BROKEN_STATES
         if broken:
-            exceptions.append(ColonyException("pawn_break", pawn_id=pawn.id, detail=pawn.state))
+            exceptions.append(CivilizationException("pawn_break", pawn_id=pawn.id, detail=pawn.state))
         elif pawn.mood < pawns.BREAK_THRESHOLD:
             exceptions.append(
-                ColonyException("pawn_breaking", pawn_id=pawn.id, detail=f"mood {round(pawn.mood, 2)}")
+                CivilizationException("pawn_breaking", pawn_id=pawn.id, detail=f"mood {round(pawn.mood, 2)}")
             )
         elif pawn.mood < UNHAPPY_THRESHOLD:
             exceptions.append(
-                ColonyException("unhappy_pawn", pawn_id=pawn.id, detail=f"mood {round(pawn.mood, 2)}")
+                CivilizationException("unhappy_pawn", pawn_id=pawn.id, detail=f"mood {round(pawn.mood, 2)}")
             )
 
         if pawn.assignment is None:
             if not broken:
-                exceptions.append(ColonyException("idle_pawn", pawn_id=pawn.id, detail=pawn.state))
+                exceptions.append(CivilizationException("idle_pawn", pawn_id=pawn.id, detail=pawn.state))
         else:
             level = pawn.skills.get(pawn.assignment.role, 0)
             if level < MISMATCH_SKILL:
                 exceptions.append(
-                    ColonyException(
+                    CivilizationException(
                         "skill_mismatch",
                         pawn_id=pawn.id,
                         building_id=pawn.assignment.building_id,
@@ -346,12 +346,12 @@ class FallbackGovernor:
 # Same ``decide(context) -> list[GovernorAction]`` interface as FallbackGovernor,
 # backed by a local model via ``LocalLLMClient``. It asks for a JSON object of
 # policy actions against a fixed schema, parses+validates them, and hard-falls
-# back to FallbackGovernor on ANY error (this is why the colony exception entity
-# is ``ColonyException`` and not ``Exception`` - the bare ``except Exception``
+# back to FallbackGovernor on ANY error (this is why the civilization exception entity
+# is ``CivilizationException`` and not ``Exception`` - the bare ``except Exception``
 # below must stay a safety net, not catch a domain object).
 # ---------------------------------------------------------------------------
 
-COLONY_ACTION_KINDS = (
+CIVILIZATION_ACTION_KINDS = (
     ACTION_ASSIGN_PAWN,
     ACTION_SET_SCHEDULE,
     ACTION_PLACE_BUILDING,
@@ -359,7 +359,7 @@ COLONY_ACTION_KINDS = (
     ACTION_SET_RESEARCH,
 )
 
-COLONY_ACTION_SCHEMA: dict[str, Any] = {
+CIVILIZATION_ACTION_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
         "actions": {
@@ -367,7 +367,7 @@ COLONY_ACTION_SCHEMA: dict[str, Any] = {
             "items": {
                 "type": "object",
                 "properties": {
-                    "kind": {"type": "string", "enum": list(COLONY_ACTION_KINDS)},
+                    "kind": {"type": "string", "enum": list(CIVILIZATION_ACTION_KINDS)},
                     "pawn_id": {"type": "string"},
                     "building_id": {"type": "string"},
                     "role": {"type": "string"},
@@ -388,8 +388,8 @@ COLONY_ACTION_SCHEMA: dict[str, Any] = {
 }
 
 GOVERNOR_SYSTEM_PROMPT = (
-    "You are the Governor of a small colony. You set POLICY only - you never move "
-    "pawns yourself. Each turn you read a JSON summary of the colony and reply with "
+    "You are the Governor of a small civilization. You set POLICY only - you never move "
+    "pawns yourself. Each turn you read a JSON summary of the civilization and reply with "
     "a JSON object {\"actions\": [...]} of zero or more policy actions. Valid action "
     "kinds and their fields:\n"
     "- assign_pawn {pawn_id, building_id, role}: staff an idle pawn into an open "
@@ -417,7 +417,7 @@ def _coerce_int(value: Any) -> int | None:
 def action_from_dict(data: dict[str, Any]) -> GovernorAction | None:
     """Build a GovernorAction from a raw LLM action dict, or None if unusable."""
     kind = data.get("kind")
-    if kind not in COLONY_ACTION_KINDS:
+    if kind not in CIVILIZATION_ACTION_KINDS:
         return None
 
     good_value = data.get("good")
@@ -470,7 +470,7 @@ class LLMGovernor:
 
     ``decide`` asks the model for an action list; on any error - disabled client,
     timeout, bad JSON, schema miss - it returns the deterministic fallback's
-    decision instead, so the colony never stalls on a flaky model. A successful
+    decision instead, so the civilization never stalls on a flaky model. A successful
     call that yields no usable actions also defers to the fallback.
     """
 
@@ -500,23 +500,23 @@ class LLMGovernor:
             raise LLMClientError("LLM governor has no client configured")
         return self.client.complete_json(
             GOVERNOR_SYSTEM_PROMPT,
-            {"colony": context},
-            schema=COLONY_ACTION_SCHEMA,
-            name="colony_actions",
+            {"civilization": context},
+            schema=CIVILIZATION_ACTION_SCHEMA,
+            name="civilization_actions",
         )
 
 
 # ---------------------------------------------------------------------------
 # Non-blocking governor scheduler (integration milestone I2)
 #
-# The live colony viewer renders at 60 fps and steps the engine on a short real-
+# The live civilization viewer renders at 60 fps and steps the engine on a short real-
 # time interval. A 4B local model takes seconds to answer, so calling it inline
-# from ``step_hour`` would freeze the window. ``ColonyDecisionScheduler`` runs the
+# from ``step_hour`` would freeze the window. ``CivilizationDecisionScheduler`` runs the
 # model call on a single worker thread and implements the ``Governor`` protocol:
 # each hour it harvests any finished call, may launch a new one, and returns
 # either the model's freshly decided actions or - while the model is mid-thought,
 # offline, or disabled - the deterministic ``FallbackGovernor``'s actions. The
-# colony keeps advancing every hour and only *upgrades* to LLM policy when a
+# civilization keeps advancing every hour and only *upgrades* to LLM policy when a
 # decision is ready, so the fallback always covers the gap.
 # ---------------------------------------------------------------------------
 
@@ -550,14 +550,14 @@ def _connection_error(message: str) -> bool:
     return any(word in lowered for word in ("connection", "timed out", "refused", "unreachable", "failed"))
 
 
-class ColonyDecisionScheduler:
+class CivilizationDecisionScheduler:
     """Non-blocking ``Governor`` adapter that runs an LLM call off the render loop.
 
     Wraps a :class:`LocalLLMClient`; its :meth:`decide` never blocks on the
     network. A single worker thread holds at most one in-flight model call. When
     a call finishes, its actions are applied on the next :meth:`decide`; every
     hour in between (and whenever the model is offline or disabled) falls back to
-    the deterministic :class:`FallbackGovernor`, so the colony never stalls.
+    the deterministic :class:`FallbackGovernor`, so the civilization never stalls.
     """
 
     def __init__(
@@ -585,7 +585,7 @@ class ColonyDecisionScheduler:
         model_discovery: ModelDiscovery | None = None,
         interval: float = DEFAULT_DECISION_INTERVAL,
         clock: Callable[[], float] = time.monotonic,
-    ) -> "ColonyDecisionScheduler":
+    ) -> "CivilizationDecisionScheduler":
         """Build a scheduler whose client is discovered from the environment."""
         return cls(
             LocalLLMClient.from_env(model_discovery=model_discovery),
@@ -636,7 +636,7 @@ class ColonyDecisionScheduler:
 
     @staticmethod
     def _create_executor() -> ThreadPoolExecutor:
-        return ThreadPoolExecutor(max_workers=1, thread_name_prefix="colony-llm")
+        return ThreadPoolExecutor(max_workers=1, thread_name_prefix="civilization-llm")
 
     def _idle_status(self, *, last_error: str = "") -> GovernorStatus:
         return GovernorStatus(
@@ -691,7 +691,7 @@ class ColonyDecisionScheduler:
         self.status.last_latency = latency
         self.status.last_action_kinds = tuple(action.kind for action in actions)
         # An empty (or all-junk) decision defers to the fallback, matching
-        # LLMGovernor: "the model chose nothing, keep the colony moving".
+        # LLMGovernor: "the model chose nothing, keep the civilization moving".
         self._pending = actions or None
 
     def _decide_actions(self, context: dict[str, Any]) -> tuple[list[GovernorAction], float]:
@@ -699,9 +699,9 @@ class ColonyDecisionScheduler:
         start = self.clock()
         payload = self.client.complete_json(
             GOVERNOR_SYSTEM_PROMPT,
-            {"colony": context},
-            schema=COLONY_ACTION_SCHEMA,
-            name="colony_actions",
+            {"civilization": context},
+            schema=CIVILIZATION_ACTION_SCHEMA,
+            name="civilization_actions",
         )
         actions = parse_action_list(payload)
         return actions, self.clock() - start
