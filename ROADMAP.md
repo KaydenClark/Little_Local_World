@@ -130,6 +130,66 @@ The bridge order is I1 -> I3 -> I2 (see the colony render before adding the LLM)
 4. **Manual LM Studio/Ollama tuning pass** - run Gemma 4 E4B-it, Qwen3.5-4B,
    and Phi-4-mini-instruct locally and record which model gives the best
    speed/personality balance.
+5. **Civilization rename, the RimWorld mood foundation, and the Civ stats bar
+   (build 1 stakes, in order).** The mood system is the priority; starvation
+   death is kept but deferred behind it. Adopt RimWorld's model foundation-first
+   (design in `BLUEPRINT.md` "Mood: the RimWorld model" and "Starvation and pawn
+   loss"). Do these in order:
+
+   1. **Rename colony -> Civilization (Civ), everywhere** as one isolated,
+      behaviour-preserving commit (tests stay green before any behaviour
+      changes). ~327 refs across 32 files: rename `colony.py` ->
+      `civilization.py`, `colony_view.py` -> `civilization_view.py`, and the
+      `test_colony_*.py` files; rename `ColonyException` ->
+      `CivilizationException` (frozen-contract change via the one-file-PR
+      process - it keeps the "does not shadow builtin `Exception`" property),
+      `ColonyDecisionScheduler` -> `CivilizationDecisionScheduler`,
+      `create_default_colony` -> `create_default_civilization`; update the LLM
+      prompt wording ("Governor of a small civilization") and the active docs
+      (BLUEPRINT, ROADMAP, README, RUNBOOK, VISUAL_DESIGN, AGENTS). Leave the
+      historical `Local_little_world_refactor1.md` as a frozen artifact; the
+      `assets/colony/` directory rename is optional (asset-path risk) and may
+      trail.
+   2. **RimWorld mood foundation + Hunger as the first thought (the priority),**
+      across `mood.py` / `pawns.py` / `core.py`:
+      - **Thoughts ledger.** Add `Thought {kind, label, value, age, stack}` and a
+        `Pawn.thoughts` list (contract change, one-file-PR); `mood_target = base
+        + sum(thought values)`. Migrate the existing trait/want contributions
+        into thoughts; keep rest+rec as a blended thought.
+      - **Two-layer mood.** Compute `mood_target` each tick and drift the
+        displayed `pawn.mood` toward it at +0.12 / -0.08 per hour, frozen while
+        the pawn sleeps. Add `Pawn.mood_target` to the contract for the readout.
+      - **Hunger thought.** `0 / -0.05 / -0.10 / -0.15` at `>=15 / 5-15 / 0-5 /
+        0%` food becomes the first real thought ("Hungry" / "Starving"); food is
+        pulled out of the blended needs term so it hits mood once.
+      - **Break bands + seeded RNG.** Replace slack@0.25 / wander@0.12 with
+        minor<0.35 / major<0.20 / extreme<0.05; fire breaks on a seeded-PRNG
+        mean-time-between roll (faster in lower bands), keyed to a colony seed on
+        `FactionState`, so runs stay reproducible per seed. Add per-trait
+        break-threshold offsets and a Catharsis thought after a break ends.
+      - Recalibrate base mood and the `economy.daily_tax_income` constant
+        together (mood feeds tax).
+      - Tests: thought add/stack/expire; target-vs-actual drift (+0.12/-0.08,
+        frozen asleep); hunger bands; break bands fire at the right mood under a
+        fixed seed (determinism preserved); catharsis applied; tax stable after
+        recalibration.
+      - Deferred to build 2 (same architecture): expectations (wealth treadmill;
+        stub "extremely low / +0.30"), richer thoughts (meal quality, recreation
+        variety, social, death), and inspirations (nothing to boost yet).
+   3. **Civ stats bar.** Add Civ-wide need averages (Mood, Food, Recreation,
+      Rest) alongside `economy.average_mood` (e.g. `average_need(state, need)`),
+      and render a Civ stats bar in the viewer reusing the existing need-bar
+      colours. Build 1 only adds a mood consequence for food; the other three
+      are readouts. Tests: the averages on a known roster + a render smoke
+      check.
+   4. **(deferred) Starvation death.** After steps 1-3, land the
+      72h-since-last-meal death from the prior plan: `Pawn.hours_since_meal`
+      (contract change), the conservation fix (food only from bread; remove the
+      free off-shift `NEED_FOOD` restoration), engine removal + `staffed_by`
+      scrub + loss reporting on `StepResult`, a `starving_pawn` exception, a
+      food-first fallback, the LLM prompt update, a viewer starvation badge +
+      death event-log line, tests, and a `RUNBOOK.md` manual check (run a
+      bakery-less Civ and watch a pawn die).
 
 ## Blocked Or Deferred
 
@@ -236,3 +296,7 @@ Append a row when a task changes durable project state. Use actual results, not 
 | 2026-06-28 | Retire legacy social-sim after I3 viewer parity | `.\.venv\Scripts\python.exe -m unittest discover -s tests` (104 tests); `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\.venv\Scripts\agent-town.exe --smoke-test`; `.\scripts\validate-workbench.ps1`; `.\.venv\Scripts\python.exe .\scripts\benchmark_scaling.py --pawns 100 500 1000 --steps 20 --context-repeats 5 --draw-frames 2`; `git diff --check` | pass | Removed the old `Agent`/`Simulation`/`Location` runtime, `app.py`, social persistence, spatial-index compatibility code, old tests, and old app entrypoint. Package exports now point at the colony runtime; benchmark and docs now describe the colony engine/viewer. Remaining: untracked local asset zips stay excluded from Git until license/sourcing is decided |
 | 2026-06-28 | RimWorld-style pawn UI pass | `.\.venv\Scripts\python.exe -m unittest tests.test_colony_view` (17 tests); `.\.venv\Scripts\python.exe -m unittest discover -s tests` (108 tests); `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; rendered frame inspected at `%TEMP%\local-agent-town-rimworld-ui.png` | pass | Added a top pawn roster, wider pawn sheet with status/needs/skills/traits, and bottom command/status strip. Remaining: the bottom command buttons are visual shell controls until build/assign/work-priority actions are implemented |
 | 2026-06-28 | Document current UI screenshot and placeholder controls | `.\.venv\Scripts\python.exe -m unittest discover -s tests` (108 tests); `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1` | pass | Added `docs/screenshots/current-state.png` to the README as the current-state screenshot, documented that bottom command buttons do not act yet, and updated `AGENTS.md` so future visual changes refresh the screenshot |
+| 2026-06-28 | Add build-1 starvation/pawn-death design to BLUEPRINT and ROADMAP next task | `.\scripts\validate-workbench.ps1` | pass | Docs only. Recorded the decision (pawn dies after 72h since last meal), the conservation fix (food only from bread, removing the free off-shift restoration), a `BLUEPRINT.md` "Starvation and pawn loss" subsection, a Design Decisions row, and a ROADMAP Next Task #5 listing the full file-by-file touch list. No code changed yet; `Pawn.hours_since_meal` contract change and the cross-module implementation are the next code task |
+| 2026-06-28 | Re-scope build-1 stakes: Civilization rename + hunger mood debuff + Civ stats bar ahead of starvation death | `.\scripts\validate-workbench.ps1` | pass | Docs only. Per user: mood debuff is the priority (hunger as an explicit -5/-10/-15 modifier on the mood ledger, with food pulled out of the blended needs term so it is one clean modifier); full colony->Civilization rename chosen (~327 refs / 32 files) as an isolated first commit; a Civ stats bar shows Civ-wide avg Mood/Food/Rec/Rest. Starvation death kept but deferred behind these. Added `BLUEPRINT.md` "Hunger, mood, and the Civ stats readout" subsection + 2 Design Decisions rows and restructured ROADMAP Next Task #5 into four ordered steps. No code yet |
+| 2026-06-28 | Adopt the RimWorld mood model (foundation-first, seeded-RNG breaks) into the design | `.\scripts\validate-workbench.ps1` | pass | Docs only. Per user: adopt RimWorld's mood system as close as the engine allows. Replaced the `BLUEPRINT.md` mood subsection with "Mood: the RimWorld model (build 1 foundation)" - two-layer target/actual mood (drift +0.12/-0.08 per hour, frozen asleep), a `Thought` ledger, base-from-difficulty, hunger as the first thought, three break bands (35/20/5%) fired on a seeded PRNG keyed to a colony seed, per-trait break thresholds, and Catharsis; expectations/richer-thoughts/inspirations deferred to build 2; rooms/prisoners out of scope. Updated the determinism constraint to allow a seeded PRNG, added a Design Decisions row, and rewrote ROADMAP Next Task #5 step 2 into the mood foundation (contract adds: `Pawn.thoughts`, `Pawn.mood_target`, a `FactionState` seed). No code yet |
+| 2026-06-28 | Move colony UI into resizable in-map overlays | `.\.venv\Scripts\python.exe -m unittest tests.test_colony_view` (20 tests); `.\.venv\Scripts\python.exe -m unittest discover -s tests` (111 tests); `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; `git diff --check`; refreshed and inspected `docs\screenshots\current-state.png` | pass | The map now fills a larger resizable window with stats, roster/pawn sheet, and command strip rendered inside the map viewport; local model status remains in a slim footer outside the map. Command buttons are still visual placeholders |
