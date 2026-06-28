@@ -52,9 +52,15 @@ Important drift or uncertainty:
   engine. The legacy social-sim (`app.py`, `create_default_simulation`) is still
   importable and tested; it is retired once the colony viewer reaches parity
   (camera, pawn-selection panel, LLM toggle).
-- Local LLM planning remains an optional local OpenAI-compatible adapter in
-  `llm.py`, not yet wired as a governor. There is no `LLMGovernor` class yet;
-  that is milestone I2, the next bridge step now that the viewer renders state.
+- The LLM governor (I2) exists headless: `governor.LLMGovernor` implements the
+  same `decide(context)` interface backed by `LocalLLMClient.complete_json` with
+  a JSON-schema action list and a hard fallback to `FallbackGovernor` on any
+  error. It is proven faithful (an always-failing LLM governor drives the colony
+  identically to the fallback over three days). Remaining for the bridge: a
+  live-model run log (needs LM Studio/Gemma; `scripts/llm_governor_run.py`) and
+  wiring it into the real-time viewer **without blocking** the sim loop (reuse
+  the `LLMDecisionScheduler` async pattern), after which the legacy social-sim
+  retires.
 
 ## Current Goal
 
@@ -113,10 +119,12 @@ The bridge order is I1 -> I3 -> I2 (see the colony render before adding the LLM)
    default `python -m agent_town` view and its smoke test is green. Remaining:
    retire the legacy social-sim once the colony viewer reaches parity (camera,
    pawn-selection panel, LLM toggle).
-3. **LLM governor I2 (next)** - add the local `LLMGovernor` behind the fallback
-   `decide` interface with schema validation and a hard fallback, dropped into
-   the same engine loop. Proof: manual Gemma 4 E4B run log plus deterministic
-   fallback tests still green.
+3. **(done headless) LLM governor I2** - `governor.LLMGovernor` is behind the
+   fallback `decide` interface with JSON-schema output and a hard fallback;
+   `test_llm_governor.py` is green and `scripts/llm_governor_run.py` is the live
+   proof tool. Remaining: a live Gemma run log, then a non-blocking integration
+   into the real-time viewer (async, reusing the `LLMDecisionScheduler`
+   pattern), after which the legacy social-sim retires.
 4. **Manual LM Studio/Ollama tuning pass** - run Gemma 4 E4B-it, Qwen3.5-4B,
    and Phi-4-mini-instruct locally and record which model gives the best
    speed/personality balance.
@@ -219,3 +227,4 @@ Append a row when a task changes durable project state. Use actual results, not 
 | 2026-06-28 | Integration I3: colony viewer renders FactionState with authored sprites | `.\.venv\Scripts\python.exe -m unittest discover -s tests` (126 tests, was 117); `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; rendered frame inspected at `%TEMP%\colony_frame.png` | pass | Relocated the new authored sprites into `assets/colony/`, added `load_colony_manifest` (25px tiles), `colony.create_default_colony`, and `colony_view.py` (tiles/nodes/buildings-with-staffing/pawns-by-mood/HUD) stepping `engine.step_hour`; repointed `__main__` to it. Added `test_colony.py` + `test_colony_view.py`. Remaining: pawn movement to workplaces, camera/pan-zoom, pawn-selection panel, and retiring the legacy social-sim at parity. Authored sprites are stand-ins mapped by category (raw->house3, processing->house); per-kind art still pending |
 | 2026-06-28 | Integrate CC0 pawn sprites and inventory new asset packs | `.\.venv\Scripts\python.exe -m unittest discover -s tests` (126 tests); `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; rendered frame inspected at `%TEMP%\colony_frame.png` | pass | Sliced four front-facing pawn sprites (`pawn_a..d`) from the CC0 ansimuz `town_rpg_pack`, replacing the mood circles with style-matched townsfolk plus a mood dot. Repointed `test_assets.py` at the relocated Kenney source zips under `assets/`. Added `assets/colony/README.md` provenance. Held packs pending license: `32_Characters` (best pawn variety), `gfx` (possible rips), `FreePixelFood`. Unused CC0 adds still available: town well/bushes/fences (slice from `town_rpg_pack`), `trees_and_bushes_pack` |
 | 2026-06-28 | Confirm asset licenses and swap pawns to the Tiny Characters Set | `.\.venv\Scripts\python.exe -m unittest discover -s tests` (126 tests); `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; rendered frame inspected at `%TEMP%\colony_frame.png` | pass | Confirmed CC0 via source pages: Tiny Characters Set (Fleurman/GrafxKid, opengameart) and Free Pixel Food (Henry Software, itch). Sliced+trimmed all 24 characters from `32_Characters/All.png` into `pawn_00..23`, removed the four `pawn_a..d`, and load pawns by glob (each colonist now a distinct person). `gfx.zip` left unverified (possible rips). `FreePixelFood` now cleared for HUD good-icons. Updated `assets/colony/README.md` |
+| 2026-06-28 | Integration I2: headless LLM governor with hard fallback | `.\.venv\Scripts\python.exe -m unittest discover -s tests` (137 tests, was 126); `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; offline `scripts\llm_governor_run.py --hours 6` (hard-fallback path) | pass | Added `LocalLLMClient.complete_json` (generic schema chat) and `governor.LLMGovernor` (JSON-schema action list, `action_from_dict`/`parse_action_list`, hard fallback on any error; empty result defers to fallback). `test_llm_governor.py` (11 tests) covers parsing, hard fallback, injected-http client path, and a 3-day determinism proof that an always-failing LLM governor == fallback. Remaining: live Gemma run log + non-blocking integration into the real-time viewer |

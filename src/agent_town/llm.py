@@ -102,6 +102,53 @@ class LocalLLMClient:
 
         return parse_decision_response(response)
 
+    def complete_json(
+        self,
+        system: str,
+        user: Any,
+        *,
+        schema: dict[str, Any] | None = None,
+        name: str = "response",
+        temperature: float = 0.3,
+    ) -> dict[str, Any]:
+        """Generic structured chat call: return the model's JSON object.
+
+        Reuses the same transport and error wrapping as ``request_decision`` but
+        is decoupled from the social-sim ``DecisionResult`` so other callers
+        (e.g. the colony ``LLMGovernor``) can request their own JSON schema.
+        """
+        if not self.enabled:
+            raise LLMClientError("LLM disabled; set AGENT_TOWN_LLM_MODEL to enable local planning")
+
+        user_text = user if isinstance(user, str) else json.dumps(user, separators=(",", ":"))
+        payload: dict[str, Any] = {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user_text},
+            ],
+            "temperature": temperature,
+            "top_p": 0.9,
+            "max_tokens": self.max_tokens,
+            "stream": False,
+        }
+        if schema is not None:
+            payload["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {"name": name, "schema": schema},
+            }
+
+        try:
+            response = self._http_post(payload, self.timeout)
+        except LLMClientError:
+            raise
+        except (TimeoutError, socket.timeout) as exc:
+            raise LLMClientError("LLM request timed out") from exc
+        except (ConnectionError, OSError, urllib.error.URLError) as exc:
+            raise LLMClientError(f"LLM connection failed: {exc}") from exc
+
+        return _parse_json_object(_extract_content(response))
+
     def _build_payload(self, context: dict[str, Any]) -> dict[str, Any]:
         system = (
             "You are the local planning layer for a desktop town simulation. "
