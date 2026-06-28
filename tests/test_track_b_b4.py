@@ -3,6 +3,7 @@ import unittest
 from agent_town import governor
 from agent_town.core import (
     ACTION_ASSIGN_PAWN,
+    ACTION_PLACE_BUILDING,
     ACTION_SET_SCHEDULE,
     Building,
     FactionState,
@@ -44,6 +45,15 @@ class FallbackGovernorTests(unittest.TestCase):
         scheds = [a for a in actions if a.kind == ACTION_SET_SCHEDULE]
         self.assertTrue(any(a.group == "ben" and a.template == "rest" for a in scheds))
 
+    def test_requests_next_missing_chain_building(self):
+        state = FactionState()
+
+        actions = governor.FallbackGovernor().decide(governor.build_context(state))
+
+        places = [a for a in actions if a.kind == ACTION_PLACE_BUILDING]
+        self.assertEqual(len(places), 1)
+        self.assertEqual(places[0].building_kind, "Forester")
+
 
 class ApplyActionsTests(unittest.TestCase):
     def test_apply_assign_then_reject_full_building(self):
@@ -67,11 +77,17 @@ class ApplyActionsTests(unittest.TestCase):
         bad = GovernorAction.assign_pawn("ghost", "saw1", "woodcutting")
         self.assertEqual(governor.apply_actions(state, [bad]), [])
 
+    def test_place_building_action_is_returned_for_engine_realization(self):
+        state = FactionState()
+        action = GovernorAction.place_building("Forester", 1, 1)
+
+        self.assertEqual(governor.apply_actions(state, [action]), [action])
+
 
 class ContextTests(unittest.TestCase):
     def test_context_has_summary_roster_buildings_exceptions(self):
         ctx = governor.build_context(town())
-        for key in ("faction", "roster", "buildings", "exceptions"):
+        for key in ("faction", "roster", "buildings", "construction", "exceptions"):
             self.assertIn(key, ctx)
         self.assertEqual(ctx["faction"]["population"], 2)
 

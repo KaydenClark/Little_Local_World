@@ -16,13 +16,26 @@ GridMap, ResourceNode, Stockpile, Recipe, Building, ConstructionSite, Pawn,
 JobRef, ScheduleTemplate, FactionState, ColonyException, GovernorAction), eight
 colony modules exist (world, economy, buildings, construction, pawns, mood,
 schedule, governor), and the `effective_work` cross-track seam is defined in
-`mood.py` (returns a 1.0 placeholder until milestone B2).
+`mood.py`.
+
+Track A is complete against the current PC contract (A1 to A4): stockpile
+operations, deterministic map and resource nodes, build-1 building definitions,
+production through the real `effective_work` seam, construction sites with
+delivery/work/completion, affordability, multi-chain production, and daily tax
+income.
 
 Track B is complete (B1 to B4): schedule templates and clock rollover in
 `schedule.py`; need decay/restoration and the break state machine in `pawns.py`;
 the real `effective_work` seam plus trait/want mood modifiers in `mood.py`; and
 the exception queue, context builders, action validation/application, and the
-deterministic `FallbackGovernor` in `governor.py`.
+deterministic `FallbackGovernor` in `governor.py`. The fallback now also emits
+the next missing build-1 chain building as a `place_building` action while
+leaving construction-site realization to Track A.
+
+Integration I1 has its first headless regression: a seeded 12-pawn colony runs
+for three simulated days under the fallback governor with production, needs,
+mood, bread meals, and daily tax staying above the asserted floors. This is
+still a test harness over the colony modules, not a reusable engine loop.
 
 Important drift or uncertainty:
 
@@ -30,38 +43,42 @@ Important drift or uncertainty:
   the current `app.py`, `persistence.py`, `spatial.py`) is intentionally kept
   importable and green so the existing Pygame viewer keeps working. It is
   retired when the viewer is rewritten to render colony state at milestone I3.
-- Track A (world/economy/buildings/construction) behavioural bodies are still
-  stubs raising NotImplementedError. Integration I1 (wiring `effective_work`
-  into real production and running the fallback governor for N days) is blocked
-  on Track A landing.
-- The fallback governor emits `place_building`, but applying it builds a
-  construction site, which is Track A; `apply_actions` validates and emits it
-  and leaves realisation to the engine at integration.
+- I1 is not yet a reusable engine object/function. The proof lives in
+  `tests/test_integration_i1.py`, which is enough to protect the seam but should
+  be extracted into a real headless stepper before viewer work.
 - Local LLM planning remains an optional local OpenAI-compatible adapter in
   `llm.py`, to be extended into the LLM governor at milestone I2.
 
 ## Current Goal
 
-Build the deterministic colony engine bottom-up under the Phase 0 contract:
-Track A (economy and world) and Track B (pawns and governor), then integrate so
-the fallback governor keeps about 12 pawns alive across simulated days headless.
+Turn the passing Track A + Track B module set into a reusable deterministic
+colony stepper, then extend it through I2/I3 so the local LLM governor and
+viewer run against real colony state.
 
 Done when:
 
-- Track A milestones A1 to A4 pass headless tests (map, one chain, construction,
-  multi-chain plus tax loop);
-- Track B milestones B1 to B4 pass headless tests (needs/schedule/mood,
-  effective_work, traits/wants/breaks, context plus fallback governor);
-- integration I1 shows the fallback governor sustaining the colony for N days
-  with no death spiral;
+- a reusable headless engine step replaces the I1 test harness while preserving
+  the three-day fallback survival proof;
+- the LLM governor can drop in behind the fallback interface without blocking
+  the sim loop;
+- the viewer renders colony state instead of the legacy social-sim state;
 - the smoke test still exits successfully and workbench validation passes.
 
 ## Next Tasks
 
-1. **Run and record scale baselines** - run `scripts\benchmark_scaling.py` after each major simulation change and compare 100, 500, and 1,000 agent results. Proof: benchmark output copied into the relevant task notes or verification row.
-2. **Manual LM Studio/Ollama tuning pass** - run Gemma 4 E4B-it, Qwen3.5-4B, and Phi-4-mini-instruct locally and record which model gives the best speed/personality balance. Proof: manual notes with model status and responsiveness.
-3. **Viewer save/load command** - wire the tested SQLite helper into an explicit local save/load path. Proof: manual viewer check plus persistence tests.
-4. **Deeper objects and places** - add usable objects and location-specific tasks. Proof: deterministic simulation tests and viewer smoke test.
+1. **Extract the I1 headless stepper** - move the test-harness loop into a
+   reusable colony engine function that applies fallback actions, realizes
+   construction, advances production/needs/mood/tax, and preserves the
+   three-day survival test.
+2. **LLM governor I2** - add the local LLM governor behind the fallback
+   interface with schema validation and hard fallback. Proof: manual Gemma 4
+   E4B run log plus deterministic fallback tests still green.
+3. **Viewer I3** - render colony buildings, pawns, stockpile, mood, and
+   construction state in `app.py`, then retire the legacy social-sim only after
+   the new viewer smoke test is green.
+4. **Manual LM Studio/Ollama tuning pass** - run Gemma 4 E4B-it, Qwen3.5-4B,
+   and Phi-4-mini-instruct locally and record which model gives the best
+   speed/personality balance.
 
 ## Blocked Or Deferred
 
@@ -113,3 +130,4 @@ Append a row when a task changes durable project state. Use actual results, not 
 | 2026-06-27 | Phase 0: freeze colony-builder contract and stub module skeletons | `.\.venv\Scripts\python.exe -m unittest discover -s tests`; `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1` | pass | Added the frozen colony contract to `core.py`, eight stubbed colony modules (world, economy, buildings, construction, pawns, mood, schedule, governor), and contract tests (65 tests, was 55). Behavioural bodies are stubbed for Track A and Track B; the `effective_work` seam returns a 1.0 placeholder. Legacy social-sim kept importable until the viewer is rewritten at milestone I3 |
 | 2026-06-27 | Track B B1: pawn needs, schedules, clock, and base mood | `.\.venv\Scripts\python.exe -m unittest tests.test_track_b_b1`; `.\.venv\Scripts\python.exe -m unittest tests.test_colony_contract tests.test_track_b_b1`; `.\.venv\Scripts\python.exe -m unittest discover -s tests`; `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1` | pass | Added 11 B1 tests. Implemented default/night/rest schedules, clock rollover, build-1 need decay/restoration, schedule-block restoration, and base mood from need satisfaction. B2 effective-work factors, B3 breaks/exceptions, and B4 governor remain pending |
 | 2026-06-27 | Track B B2 to B4: effective_work, breaks/exceptions, fallback governor | `.\.venv\Scripts\python.exe -m unittest discover -s tests`; `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1` | pass | Added 18 tests (94 total, was 76). Implemented the real `effective_work` seam (skill/mood/trait/schedule factors), trait/want mood modifiers, the break state machine, the governor exception queue, faction/roster/buildings context, action validate/apply, and the deterministic `FallbackGovernor`. Repointed the contract stub test at the remaining Track A stubs. Remaining gap: `place_building` is emitted but realised by Track A construction at integration I1 |
+| 2026-06-28 | Port Track A into current Track B contract and add I1 regression | `.\.venv\Scripts\python.exe -m unittest tests.test_track_a_current_contract tests.test_track_b_b4 tests.test_integration_i1 tests.test_colony_contract`; `.\.venv\Scripts\python.exe -m unittest discover -s tests`; `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; `.\.venv\Scripts\python.exe .\scripts\benchmark_scaling.py --agents 100 500 1000` | pass | Ported PR #5 Track A behavior into the current dict-based PC contract instead of merging old files. Added stockpile/world/building/economy/construction tests, updated the Track B fallback place-building handoff, and added a seeded three-day I1 survival regression. Remaining gap: I1 is still a test harness, not a reusable headless engine stepper |

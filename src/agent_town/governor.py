@@ -39,6 +39,14 @@ MISMATCH_SKILL = 2
 BROKEN_STATES = (pawns.STATE_SLACKING, pawns.STATE_WANDERING)
 RESCHEDULE_KINDS = ("unhappy_pawn", "pawn_breaking", "pawn_break")
 RESTORATIVE_SCHEDULE = "rest"
+BUILD_ORDER: tuple[tuple[str, int, int], ...] = (
+    ("Forester", 1, 1),
+    ("Sawmill", 2, 1),
+    ("Farm", 1, 3),
+    ("Mill", 2, 3),
+    ("Bakery", 3, 3),
+    ("Quarry", 4, 1),
+)
 
 
 class Governor(Protocol):
@@ -113,6 +121,23 @@ def build_buildings_summary(state: FactionState) -> list[dict[str, Any]]:
     return summary
 
 
+def build_construction_summary(state: FactionState) -> list[dict[str, Any]]:
+    """Pending construction sites, sorted by id."""
+    return [
+        {
+            "site_id": site.id,
+            "building_kind": site.building_kind,
+            "x": site.x,
+            "y": site.y,
+            "goods_satisfied": all(
+                site.delivered.get(good, 0) >= amount for good, amount in site.required.items()
+            ),
+            "work_remaining": site.work_remaining,
+        }
+        for site in sorted(state.construction_sites.values(), key=lambda s: s.id)
+    ]
+
+
 def build_exception_queue(state: FactionState) -> list[ColonyException]:
     """Per-problem detail: unstaffed/missing-inputs/idle/unhappy/break/mismatch."""
     exceptions: list[ColonyException] = []
@@ -173,6 +198,7 @@ def build_context(state: FactionState) -> dict[str, Any]:
         "faction": build_faction_summary(state),
         "roster": build_roster_summary(state),
         "buildings": build_buildings_summary(state),
+        "construction": build_construction_summary(state),
         "exceptions": [
             {
                 "kind": exc.kind,
@@ -248,7 +274,10 @@ def apply_actions(state: FactionState, actions: list[GovernorAction]) -> list[Go
             if action.tech not in state.research:
                 state.research = state.research + (action.tech,)
             applied.append(action)
-        # ACTION_PLACE_BUILDING is realised by the engine (Track A construction).
+        elif action.kind == ACTION_PLACE_BUILDING:
+            # Realized by Track A construction; returning it lets the engine do
+            # that without the governor mutating construction state directly.
+            applied.append(action)
     return applied
 
 
@@ -264,6 +293,7 @@ class FallbackGovernor:
         actions: list[GovernorAction] = []
         roster = context.get("roster", [])
         buildings = context.get("buildings", [])
+        construction = context.get("construction", [])
         exceptions = context.get("exceptions", [])
 
         # 1) Assign available pawns to their best-skill open slots.
@@ -293,5 +323,14 @@ class FallbackGovernor:
             if exc["kind"] in RESCHEDULE_KINDS and pawn_id and pawn_id not in rescheduled:
                 actions.append(GovernorAction.set_schedule(pawn_id, RESTORATIVE_SCHEDULE))
                 rescheduled.add(pawn_id)
+
+        # 3) Ask the engine to place the next missing build-1 chain link. The
+        # engine/Track A owns cost checks and construction-site realization.
+        existing = {building["kind"] for building in buildings}
+        pending = {site["building_kind"] for site in construction}
+        for kind, x, y in BUILD_ORDER:
+            if kind not in existing and kind not in pending:
+                actions.append(GovernorAction.place_building(kind, x, y))
+                break
 
         return actions

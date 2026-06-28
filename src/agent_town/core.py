@@ -74,6 +74,14 @@ class GridMap:
     height: int
     tiles: tuple[tuple[str, ...], ...] = ()
 
+    def __post_init__(self) -> None:
+        if self.width <= 0 or self.height <= 0:
+            raise ValueError("GridMap width and height must be positive")
+        if len(self.tiles) != self.height:
+            raise ValueError("GridMap tiles must have one row per height")
+        if any(len(row) != self.width for row in self.tiles):
+            raise ValueError("GridMap tile rows must match width")
+
     def in_bounds(self, x: int, y: int) -> bool:
         return 0 <= x < self.width and 0 <= y < self.height
 
@@ -100,13 +108,33 @@ class Stockpile:
     counts: dict[Good, int] = field(default_factory=dict)
 
     def add(self, good: Good, amount: int) -> None:
-        raise NotImplementedError("Stockpile.add - Track A, milestone A1")
+        _validate_good_amount(good, amount)
+        self.counts[good] = self.counts.get(good, 0) + amount
 
     def remove(self, good: Good, amount: int) -> None:
-        raise NotImplementedError("Stockpile.remove - Track A, milestone A1")
+        _validate_good_amount(good, amount)
+        available = self.counts.get(good, 0)
+        if available < amount:
+            raise ValueError(f"Insufficient {good.value}: need {amount}, have {available}")
+        remaining = available - amount
+        if remaining:
+            self.counts[good] = remaining
+        else:
+            self.counts.pop(good, None)
 
     def has(self, good: Good, amount: int) -> bool:
-        raise NotImplementedError("Stockpile.has - Track A, milestone A1")
+        if not isinstance(good, Good):
+            raise TypeError("Stockpile goods must use Good enum values")
+        if amount < 0:
+            raise ValueError("Stockpile required amounts must be non-negative")
+        return self.counts.get(good, 0) >= amount
+
+
+def _validate_good_amount(good: Good, amount: int) -> None:
+    if not isinstance(good, Good):
+        raise TypeError("Stockpile goods must use Good enum values")
+    if amount <= 0:
+        raise ValueError("Stockpile amounts must be positive")
 
 
 @dataclass

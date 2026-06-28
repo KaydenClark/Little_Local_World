@@ -24,20 +24,77 @@ class BuildingDef:
     build_work: float
 
 
-# Populated in A2: Forester, Sawmill, Farm, Mill, Bakery, Quarry.
-BUILDING_DEFS: dict[str, BuildingDef] = {}
+BUILDING_DEFS: dict[str, BuildingDef] = {
+    "forester": BuildingDef(
+        kind="Forester",
+        recipe=Recipe(inputs={}, outputs={Good.LOGS: 1}, work_units=1.0, skill="forestry"),
+        job_slots=1,
+        build_cost={Good.PLANKS: 4, Good.STONE: 2},
+        build_work=4.0,
+    ),
+    "sawmill": BuildingDef(
+        kind="Sawmill",
+        recipe=Recipe(inputs={Good.LOGS: 2}, outputs={Good.PLANKS: 1}, work_units=1.0, skill="woodworking"),
+        job_slots=1,
+        build_cost={Good.PLANKS: 4, Good.STONE: 2},
+        build_work=4.0,
+    ),
+    "farm": BuildingDef(
+        kind="Farm",
+        recipe=Recipe(inputs={}, outputs={Good.GRAIN: 1}, work_units=1.0, skill="farming"),
+        job_slots=1,
+        build_cost={Good.PLANKS: 4, Good.STONE: 2},
+        build_work=4.0,
+    ),
+    "mill": BuildingDef(
+        kind="Mill",
+        recipe=Recipe(inputs={Good.GRAIN: 2}, outputs={Good.FLOUR: 1}, work_units=1.0, skill="milling"),
+        job_slots=1,
+        build_cost={Good.PLANKS: 4, Good.STONE: 2},
+        build_work=4.0,
+    ),
+    "bakery": BuildingDef(
+        kind="Bakery",
+        recipe=Recipe(inputs={Good.FLOUR: 2}, outputs={Good.BREAD: 1}, work_units=1.0, skill="baking"),
+        job_slots=1,
+        build_cost={Good.PLANKS: 4, Good.STONE: 2},
+        build_work=4.0,
+    ),
+    "quarry": BuildingDef(
+        kind="Quarry",
+        recipe=Recipe(inputs={}, outputs={Good.STONE: 1}, work_units=1.0, skill="mining"),
+        job_slots=1,
+        build_cost={Good.PLANKS: 4, Good.STONE: 2},
+        build_work=4.0,
+    ),
+}
 
 
 def building_def(kind: str) -> BuildingDef:
     """Look up a building definition by kind."""
-    raise NotImplementedError("building_def - Track A, milestone A2")
+    normalized = kind.strip().lower()
+    try:
+        return BUILDING_DEFS[normalized]
+    except KeyError as exc:
+        raise ValueError(f"Unknown building kind: {kind}") from exc
 
 
 def make_building(kind: str, x: int, y: int, *, building_id: str, built: bool = True) -> Building:
     """Instantiate a Building of ``kind`` from its definition."""
-    raise NotImplementedError("make_building - Track A, milestone A2")
+    if not building_id:
+        raise ValueError("building_id is required")
+    definition = building_def(kind)
+    return Building(
+        id=building_id,
+        kind=definition.kind,
+        x=x,
+        y=y,
+        recipe=definition.recipe,
+        job_slots=definition.job_slots,
+        built=built,
+    )
 
 
 def open_slots(building: Building) -> int:
     """How many unfilled job slots ``building`` has."""
-    raise NotImplementedError("open_slots - Track A, milestone A2")
+    return max(0, building.job_slots - len(building.staffed_by))
