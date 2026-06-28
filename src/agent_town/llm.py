@@ -221,9 +221,20 @@ class LLMDecisionScheduler:
             model=self.client.model,
             base_url=self.client.base_url,
         )
-        self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="agent-town-llm")
+        self._executor = self._create_executor()
         self._future: Future[tuple[str, DecisionResult, float]] | None = None
         self._next_global_time = 0.0
+
+    def connect_from_env(self, *, model_discovery: ModelDiscovery | None = None) -> bool:
+        client = LocalLLMClient.from_env(model_discovery=model_discovery)
+        if client.enabled:
+            self._replace_client(client)
+            return True
+        self._replace_client(client, last_error="No local chat model found. Start LM Studio, load a model, then retry.")
+        return False
+
+    def disable(self, reason: str = "Disconnected in game.") -> None:
+        self._replace_client(LocalLLMClient(model=None), last_error=reason)
 
     def update(self, sim: Simulation) -> None:
         if self._finish_if_ready(sim):
@@ -259,6 +270,26 @@ class LLMDecisionScheduler:
 
     def shutdown(self, *, wait: bool = False) -> None:
         self._executor.shutdown(wait=wait, cancel_futures=not wait)
+
+    @staticmethod
+    def _create_executor() -> ThreadPoolExecutor:
+        return ThreadPoolExecutor(max_workers=1, thread_name_prefix="agent-town-llm")
+
+    def _replace_client(self, client: LocalLLMClient, *, last_error: str = "") -> None:
+        if self._future is not None:
+            self._future.cancel()
+            self._future = None
+        self._executor.shutdown(wait=False, cancel_futures=True)
+        self.client = client
+        self._executor = self._create_executor()
+        self._next_global_time = 0.0
+        self.status = LLMRuntimeStatus(
+            enabled=client.enabled,
+            state="idle" if client.enabled else "disabled",
+            model=client.model,
+            base_url=client.base_url,
+            last_error=last_error,
+        )
 
     def _select_due_agent(self, sim: Simulation) -> Agent | None:
         due_agents = [

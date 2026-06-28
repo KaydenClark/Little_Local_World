@@ -26,6 +26,8 @@ PANEL_BG = (25, 25, 25)
 TEXT = (247, 247, 247)
 MUTED = (168, 174, 180)
 ACCENT = (58, 124, 165)
+SUCCESS = (77, 153, 100)
+WARNING = (175, 125, 61)
 
 EMOTE_TO_ATLAS_NAME = {
     "dots": "emote_dots3.png",
@@ -289,6 +291,7 @@ class App:
         self.selected_id = next(iter(sim.agents))
         self.input_active = False
         self.input_text = ""
+        self.llm_button_rect = pygame.Rect(0, 0, 0, 0)
         llm_client = LocalLLMClient(model=None) if smoke_test else LocalLLMClient.from_env()
         self.llm_scheduler = LLMDecisionScheduler(llm_client)
 
@@ -324,10 +327,13 @@ class App:
             self._zoom_at(event.pos, 1.12)
         elif event.button == 5:
             self._zoom_at(event.pos, 1 / 1.12)
-        elif event.button == 1 and event.pos[0] < SCREEN_WIDTH - PANEL_WIDTH:
-            clicked = self._agent_at_screen(event.pos)
-            if clicked is not None:
-                self.selected_id = clicked.id
+        elif event.button == 1:
+            if self.llm_button_rect.collidepoint(event.pos):
+                self._toggle_llm()
+            elif event.pos[0] < SCREEN_WIDTH - PANEL_WIDTH:
+                clicked = self._agent_at_screen(event.pos)
+                if clicked is not None:
+                    self.selected_id = clicked.id
 
     def _handle_key(self, event: pygame.event.Event) -> None:
         if self.input_active:
@@ -354,10 +360,18 @@ class App:
         elif event.key == pygame.K_SLASH:
             self.input_active = True
             self.input_text = ""
+        elif event.key == pygame.K_l:
+            self._toggle_llm()
         elif event.key in (pygame.K_EQUALS, pygame.K_PLUS):
             self.speed = min(8.0, self.speed * 1.35)
         elif event.key == pygame.K_MINUS:
             self.speed = max(0.25, self.speed / 1.35)
+
+    def _toggle_llm(self) -> None:
+        if self.llm_scheduler.status.enabled:
+            self.llm_scheduler.disable("Disconnected in game.")
+        else:
+            self.llm_scheduler.connect_from_env()
 
     def _handle_camera_keys(self, dt: float) -> None:
         keys = pygame.key.get_pressed()
@@ -561,7 +575,9 @@ class App:
         y = 24
         y = self._panel_text(agent.name, y, self.title_font, TEXT)
         y = self._panel_text(f"{self.sim.agent_location_name(agent)}", y, self.font, ACCENT)
-        y += 10
+        y += 8
+        y = self._draw_llm_toggle(y)
+        y += 12
         y = self._panel_text(f"Goal: {agent.goal}", y, self.small_font, TEXT, wrap=True)
         y = self._panel_text(f"Activity: {agent.activity}", y, self.small_font, TEXT, wrap=True)
         if agent.last_speech:
@@ -602,7 +618,29 @@ class App:
         color = TEXT if self.input_active else MUTED
         self._draw_text(prompt, panel_x + 30, footer_y + 16, self.small_font, color, max_width=PANEL_WIDTH - 60)
         status = "Paused" if self.paused else f"{self.speed:.2f}x"
-        self._draw_text(f"P pause  Tab select  Wheel zoom  Speed {status}", panel_x + 30, footer_y + 46, self.small_font, MUTED)
+        self._draw_text(f"P pause  Tab select  L toggles LM  Speed {status}", panel_x + 30, footer_y + 46, self.small_font, MUTED)
+
+    def _draw_llm_toggle(self, y: int) -> int:
+        x = SCREEN_WIDTH - PANEL_WIDTH + 24
+        width = PANEL_WIDTH - 48
+        height = 54
+        self.llm_button_rect = pygame.Rect(x, y, width, height)
+        status_text, action_text, color = self._llm_toggle_labels()
+
+        pygame.draw.rect(self.screen, (34, 39, 45), self.llm_button_rect, border_radius=6)
+        pygame.draw.rect(self.screen, color, self.llm_button_rect, width=2, border_radius=6)
+        pygame.draw.circle(self.screen, color, (x + 15, y + 18), 5)
+        self._draw_text(status_text, x + 28, y + 9, self.small_font, TEXT, max_width=width - 42)
+        self._draw_text(action_text, x + 28, y + 31, self.small_font, color, max_width=width - 42)
+        return y + height
+
+    def _llm_toggle_labels(self) -> tuple[str, str, tuple[int, int, int]]:
+        status = self.llm_scheduler.status
+        if status.enabled:
+            if status.state == "thinking":
+                return "LM Studio connected", "Thinking now - click or press L to disconnect", SUCCESS
+            return "LM Studio connected", "Click or press L to disconnect", SUCCESS
+        return "LM Studio disconnected", "Click or press L to connect", WARNING
 
     def _panel_text(
         self,
@@ -712,17 +750,20 @@ class App:
     def _llm_status_text(self) -> str:
         status = self.llm_scheduler.status
         if not status.enabled:
-            return "Disabled. Set AGENT_TOWN_LLM_MODEL to use LM Studio or Ollama."
+            message = "Disconnected. Press L to connect to LM Studio."
+            if status.last_error:
+                message = f"{message} {status.last_error}"
+            return message
         if status.state == "thinking":
             agent_name = self.sim.agents.get(status.in_flight_agent_id).name if status.in_flight_agent_id in self.sim.agents else "agent"
-            return f"Thinking for {agent_name} with {status.model}."
+            return f"Thinking for {agent_name} with {status.model}. Press L to disconnect."
         if status.state == "offline":
-            return f"Offline: {status.last_error}"
+            return f"Offline: {status.last_error} Press L to disconnect, then L again to retry."
         if status.state == "invalid":
-            return f"Invalid model reply: {status.last_error}"
+            return f"Invalid model reply: {status.last_error} Press L to disconnect, then L again to retry."
         if status.last_latency:
-            return f"Idle. Last thought {status.last_latency:.2f}s for {status.last_agent_id}."
-        return f"Idle. Model: {status.model}."
+            return f"Connected. Last thought {status.last_latency:.2f}s for {status.last_agent_id}. Press L to disconnect."
+        return f"Connected. Model: {status.model}. Press L to disconnect."
 
     def _draw_text(
         self,

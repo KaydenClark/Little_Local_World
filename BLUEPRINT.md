@@ -1,6 +1,6 @@
 # Local Agent Town - Blueprint
 
-**Last reviewed:** 2026-06-27
+**Last reviewed:** 2026-06-28
 **Status:** active
 **Source root:** `E:\GPTCode\local-agent-town`
 
@@ -87,6 +87,18 @@ Architecture constraints (hard):
 - Determinism: same seed plus same policy equals same outcome. The LLM is the
   only nondeterministic layer and must be swappable for the deterministic
   fallback.
+
+Operator interaction principles:
+
+- User-facing features should be reachable through visible UI controls first:
+  buttons, toggles, segmented controls, sliders, or panel actions as fits the
+  feature. Keyboard shortcuts may exist, but they are secondary accelerators,
+  not the only way to discover or use the feature.
+- Important state changes need visible status treatment: use compact icons,
+  color indicators, borders, or badges so the operator can tell at a glance
+  whether a feature is on, off, pending, blocked, or degraded.
+- Be creative but practical. Prefer small, game-readable controls that match
+  the desktop settlement UI over plain text instructions buried in a footer.
 
 ## Module Layout
 

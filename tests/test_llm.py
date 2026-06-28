@@ -220,6 +220,40 @@ class LLMDecisionSchedulerTests(unittest.TestCase):
         self.assertIn(scheduler.status.state, {"offline", "invalid"})
         self.assertEqual(sim.agents["mira"].destination, original_destination)
 
+    def test_scheduler_can_be_disabled_and_reconnected_at_runtime(self):
+        scheduler = LLMDecisionScheduler(LocalLLMClient(model=None))
+
+        self.assertFalse(scheduler.status.enabled)
+
+        with patch.dict(os.environ, {}, clear=True):
+            connected = scheduler.connect_from_env(
+                model_discovery=lambda base_url, timeout: "google/gemma-4-e4b"
+            )
+
+        self.assertTrue(connected)
+        self.assertTrue(scheduler.status.enabled)
+        self.assertEqual(scheduler.status.state, "idle")
+        self.assertEqual(scheduler.status.model, "google/gemma-4-e4b")
+
+        scheduler.disable("Turned off in game.")
+
+        self.assertFalse(scheduler.status.enabled)
+        self.assertEqual(scheduler.status.state, "disabled")
+        self.assertEqual(scheduler.status.last_error, "Turned off in game.")
+        scheduler.shutdown(wait=True)
+
+    def test_scheduler_reports_runtime_connect_failure_as_disabled(self):
+        scheduler = LLMDecisionScheduler(LocalLLMClient(model=None))
+
+        with patch.dict(os.environ, {}, clear=True):
+            connected = scheduler.connect_from_env(model_discovery=lambda base_url, timeout: "")
+
+        self.assertFalse(connected)
+        self.assertFalse(scheduler.status.enabled)
+        self.assertEqual(scheduler.status.state, "disabled")
+        self.assertIn("No local chat model", scheduler.status.last_error)
+        scheduler.shutdown(wait=True)
+
 
 if __name__ == "__main__":
     unittest.main()

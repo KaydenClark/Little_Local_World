@@ -108,6 +108,7 @@ Expected result:
 - `WASD` or arrow keys pan.
 - Clicking an NPC updates the inspection panel.
 - Pressing `/`, typing a suggestion, and pressing `Enter` queues the suggestion for the selected NPC.
+- Clicking the `LM Studio` control in the side panel, or pressing `L`, connects to or disconnects from LM Studio/Ollama while the game is running.
 - The inspection panel shows local model state: disabled, idle, thinking, offline, or invalid.
 
 ## Test And Build
@@ -177,7 +178,7 @@ There is no deployment target. The project runs locally through PowerShell.
 | Double-click does nothing visible | Windows did not execute the PowerShell script directly | Open `Launch Local Agent Town.cmd` | Use the `.cmd` launcher, which calls the PowerShell launcher with the right policy |
 | Window does not open | Display or Pygame issue | `.\.venv\Scripts\python.exe -m agent_town --smoke-test` | Reinstall through `.\setup.ps1`; check local graphics environment |
 | Agent does not follow a suggestion | Suggestion did not include a known place or supported keyword | Inspect pending suggestions in the panel | Use place names like `Archive Library` or keywords like `study`, `eat`, `talk`, `rest`, `work` |
-| Local model shows disabled | No model variable was set and startup discovery found no local chat model, or `AGENT_TOWN_LLM_AUTO_DISCOVER=0` | Inspect the Local Model row | Start LM Studio/Ollama before launching, or set `AGENT_TOWN_LLM_MODEL` exactly as the local server expects it |
+| Local model shows disconnected | The in-game toggle is off, no local chat model was found, or `AGENT_TOWN_LLM_AUTO_DISCOVER=0` | Inspect the Local Model row | Start LM Studio/Ollama, load a model, then press `L`; or set `AGENT_TOWN_LLM_MODEL` exactly as the local server expects it |
 | Local model shows offline | LM Studio/Ollama server is not running or URL is wrong | Check `AGENT_TOWN_LLM_BASE_URL` | Start the local server or change the URL |
 | Local model shows invalid reply | Model returned malformed JSON, unknown destination/agent, or the server rejected the request payload | Inspect the Local Model row | Use a smaller/faster instruct model and keep max tokens low |
 | Workbench validation fails | Required docs missing headings or unresolved placeholders | `.\scripts\validate-workbench.ps1` | Update the named doc and rerun validation |
