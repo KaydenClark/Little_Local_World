@@ -110,13 +110,21 @@ Do not let labels and bubbles cover each other. At zoomed-out views, reduce text
 
 Use a restrained simulation HUD:
 
-- **Right inspection panel:** selected agent, task, needs, memories, relationships, suggestions, local model state.
+- **Top pawn roster:** compact colonist cards with portrait, name, mood dot, and
+  selected border so the operator can scan the colony like a RimWorld pawn bar.
+- **Right inspection panel:** selected pawn, task, status, needs, skills, traits,
+  and later memories, relationships, suggestions, and local model detail.
 - **Bottom event strip:** recent incidents and social events, compact and timestamped.
 - **Top-left sim controls:** pause, speed, tick/day, population, and later storage or food counts.
 - **Future minimap:** useful only after the world is larger than one screen.
 - **Future tool belt:** build, assign, zone, inspect, and priority tools with icon-first controls.
 
 Panel styling should stay flat and low-contrast. The sprites and map state should carry the mood.
+
+The current build-1 viewer uses a pawn-sheet layout: top roster, right-side
+status/needs/skills/traits sheet, and bottom command/status strip. Future UI
+work should extend those surfaces with real controls and event history rather
+than returning to a plain text inspector.
 
 ## Color Use
 

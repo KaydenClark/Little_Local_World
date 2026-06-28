@@ -140,7 +140,8 @@ Architecture constraints (hard):
   tick.
 - Determinism: same seed plus same policy equals same outcome. The LLM is the
   only nondeterministic layer and must be swappable for the deterministic
-  fallback.
+  fallback. Mood and mental-break timing use a seeded PRNG keyed to the colony
+  seed, which is still deterministic per seed.
 
 Operator interaction principles:
 
@@ -253,6 +254,95 @@ Mood and breaks: `mood = base + needs_satisfaction + trait_modifiers +
 want_progress`. Below a threshold the pawn breaks: it slacks (effective_work
 drops), then wanders off the job. The break, surfaced as a `ColonyException`, is
 the Governor's early-warning signal.
+
+### Mood: the RimWorld model (build 1 foundation)
+
+We adopt RimWorld's mood model as closely as the engine allows. Mood is a
+story-generating system, not a cosmetic meter: logistics (food, rest,
+recreation, later clothes/death/etc.) become emotion, and emotion feeds back into
+work, breaks, and tax. Shape:
+
+> mood_target = base mood + expectations + sum of active thoughts
+> actual mood drifts toward the target over time
+> low actual mood risks a mental break; high mood (later) enables inspirations
+
+Build 1 builds the foundation; the deferred pieces below slot into the same
+architecture rather than replacing it.
+
+- **Two layers (target vs actual).** Each tick we compute `mood_target` from the
+  ledger; the displayed `pawn.mood` (actual) drifts toward it at +0.12 per hour
+  rising and -0.08 per hour falling, and is frozen while the pawn sleeps. The
+  buffer means one bad event does not instabreak a pawn, but sustained misery
+  does - and fixing a problem lifts the target at once while the pawn recovers
+  gradually. `Pawn.mood_target` is added to the frozen contract for the readout.
+- **Thoughts are the ledger.** Mood is the sum of named moodlets - `Thought
+  {kind, label, value, age, stack}`, in a `Pawn.thoughts` list (contract change)
+  - sourced from needs, traits, wants, and later events. Many small negatives
+  stack into a crisis. The pawn inspector shows the list, RimWorld-style. Values
+  are point-equivalents on the 0-1 scale (-5% = -0.05).
+- **Base mood from difficulty.** The base is a storyteller/difficulty setting
+  (RimWorld uses ~42 down to ~22); build 1 ships one default and exposes the
+  knob later.
+- **Hunger is the first real thought.** Read off the food need (100% = full):
+  food >= 15% none; 5-15% -5%; 0-5% -10%; 0% -15% ("Hungry" / "Starving"). Food
+  is pulled out of the blended needs term so hunger hits mood exactly once. This
+  is the primary near-term incentive to keep pawns fed; starvation death (below)
+  is sequenced after it.
+- **Breaks are band + roll.** Three bands replace the old single threshold:
+  minor < 35%, major < 20%, extreme < 5%. A break fires on a mean-time-between
+  roll that is faster in lower bands, off a seeded PRNG keyed to a colony seed -
+  so the engine stays reproducible (same seed + same policy = same outcome) while
+  still feeling unpredictable, the way RimWorld's "story generator" does. Traits
+  shift a pawn's break thresholds (iron-willed vs volatile). After a break ends
+  the pawn gets a large Catharsis thought, so colonies are not trapped in endless
+  consecutive breaks. Breaks remain the Governor's early-warning exceptions and
+  still cut `effective_work`.
+- **Civ stats bar.** "Civ" (Civilization, the renamed colony) mood is the average
+  of all pawns; a Civ stats bar shows four Civ-wide averages - Mood, Food,
+  Recreation, Rest - as coloured percentages. Build 1 adds a mood consequence
+  only for food; the other three are readouts.
+
+Deferred to build 2, in the same architecture: **expectations** (a wealth-driven
+mood treadmill, +30 early to 0 when rich - needs wealth valuation; stubbed
+"extremely low" until then); **richer thoughts** (meal quality, recreation
+variety, slept-outside, darkness, social fights, death/corpse); and
+**inspirations** (the positive mirror of breaks, mood > ~49%, once there are
+systems - craft / recruit / trade - for them to boost). Rooms/beauty and
+prisoners are out of build-1 scope.
+
+Note: adopting base + expectations + thoughts changes absolute mood numbers, and
+mood feeds `daily_tax_income`, so the tax constant is rebalanced in the same pass,
+not silently.
+
+### Starvation and pawn loss (build 1)
+
+Food is the first need with a lethal failure mode and the build-1 reason to keep
+the supply chain fed - but it is sequenced *after* the mood foundation above (the
+hunger thought is the primary near-term incentive). Rules:
+
+- Food is restored only by eating bread (a `Good`). No schedule block, building,
+  or idle hour grants food for free - this is the conservation law applied to
+  hunger ("nothing from nothing"). The current free off-shift food restoration is
+  removed as part of this work.
+- Each pawn tracks `hours_since_meal`, reset to 0 when it eats and incremented
+  every hour otherwise. A pawn that goes 72 hours (three game-days) without a
+  meal dies and is removed from the colony; the engine scrubs it from every
+  building's `staffed_by`. (Optional follow-on: a witnessed-death colony-wide
+  mood debuff, RimWorld-style.)
+- The Governor gets an early-warning `starving_pawn` exception well before the
+  72-hour mark plus a colony food readout (bread on hand / days of food /
+  starving count), so policy - build and staff Farm -> Mill -> Bakery - can
+  respond before anyone dies. The deterministic fallback prioritises the food
+  chain under starvation, keeping it a valid winnability oracle.
+- The viewer surfaces hunger as visible status: a starvation badge on the pawn,
+  a "starving / Nd since food" line and death countdown in the inspector, a
+  colony food/starving readout in the HUD, and a death line in the event log.
+
+This pulls a narrow slice of the build-3 pawn lifecycle (death) forward into
+build 1: starvation death only. Aging, productivity bands, and birth stay in
+build 3. Adding `Pawn.hours_since_meal` is a deliberate post-freeze change to the
+frozen contract in `core.py`, made via the documented one-file-PR process, not a
+silent edit.
 
 ## Target content design (full game)
 
@@ -462,6 +552,10 @@ Rules:
 | Keep the legacy social-sim importable during the refactor | Keeps the existing viewer and tests green until milestone I3 | 2026-06-27 Phase 0 |
 | Deterministic fallback governor before the LLM governor | The fallback is the winnability oracle and the safety net | 2026-06-27 refactor plan |
 | Retire the legacy social-sim after I3 parity | Removes obsolete viewer/runtime code once the colony viewer, LLM governor, smoke test, and benchmarks cover the current product | 2026-06-28 I3 cleanup |
+| Pull starvation death into build 1 (72h since last meal -> pawn dies) | Food had no lethal consequence, so the food economy carried no stakes; death by starvation is the build-1 incentive to keep pawns fed. Aging/birth stay in build 3 | 2026-06-28 user request |
+| Hunger as an explicit -5/-10/-15 mood modifier; death deferred behind it | Makes the mood hit the near-term feed-your-pawns incentive; food is pulled out of the blended needs term so hunger is one clean RimWorld-style modifier, not a double drag | 2026-06-28 user request |
+| Rename "colony" -> "Civilization (Civ)" everywhere | One consistent player-facing and code vocabulary; done as an isolated behaviour-preserving commit (~327 refs / 32 files) before the mood work | 2026-06-28 user request |
+| Adopt RimWorld's mood model (two-layer target/actual, thoughts ledger, break bands), foundation-first | Mood is the game's story engine; building it RimWorld-shaped now means later thoughts/expectations/inspirations slot in without rework. Break timing uses a seeded PRNG so runs stay reproducible per seed | 2026-06-28 user request |
 
 ## Health Criteria
 

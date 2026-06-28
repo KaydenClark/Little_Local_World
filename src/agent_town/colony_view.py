@@ -38,8 +38,9 @@ from .governor import (
 from .pawns import STATE_WANDERING, STATE_SLACKING
 
 MARGIN = 12
-HUD_HEIGHT = 92
-INSPECTOR_WIDTH = 232
+HUD_HEIGHT = 118
+INSPECTOR_WIDTH = 288
+PAWN_ROSTER_HEIGHT = 66
 STEP_INTERVAL = 0.6  # real seconds per simulated hour at normal speed
 SMOKE_FRAMES = 8
 BUILDING_TILE_WIDTH = 2  # buildings are scaled to this many tiles wide
@@ -52,11 +53,19 @@ CAMERA_PAN_PX = 70
 BACKGROUND = (38, 44, 38)
 HUD_BG = (18, 20, 18)
 HUD_TEXT = (226, 230, 220)
-INSPECTOR_BG = (24, 28, 24)
-INSPECTOR_BORDER = (72, 82, 70)
+PANEL_BG = (18, 23, 25)
+PANEL_BG_2 = (25, 31, 34)
+PANEL_BG_3 = (35, 40, 43)
+PANEL_BORDER = (85, 96, 100)
+PANEL_HILITE = (142, 112, 65)
+INSPECTOR_BG = PANEL_BG
+INSPECTOR_BORDER = PANEL_BORDER
 INSPECTOR_TEXT = (222, 228, 216)
 INSPECTOR_MUTED = (158, 166, 154)
 SELECTION = (245, 220, 92)
+NEED_GOOD = (69, 205, 214)
+NEED_WARN = (232, 150, 79)
+NEED_BAD = (214, 84, 73)
 WATER_TINT = (54, 104, 168, 150)
 LABEL_BG = (0, 0, 0, 140)
 LABEL_TEXT = (240, 240, 230)
@@ -233,6 +242,34 @@ def _mood_color(mood: float) -> tuple[int, int, int]:
     return (int(210 - 140 * t), 210, int(60 + 30 * t))
 
 
+def _need_bar_color(value: float) -> tuple[int, int, int]:
+    """Readable need bar color: red danger, amber pressure, cyan stable."""
+    value = max(0.0, min(1.0, value))
+    if value < 0.25:
+        return NEED_BAD
+    if value < 0.55:
+        return NEED_WARN
+    return NEED_GOOD
+
+
+def _top_skills(pawn, limit: int = 10) -> list[tuple[str, int]]:
+    """Highest skills first, with stable alphabetical ordering for ties."""
+    return sorted(pawn.skills.items(), key=lambda item: (-item[1], item[0]))[:limit]
+
+
+def _pawn_status_label(pawn) -> str:
+    """Short health-style badge for the pawn sheet."""
+    if pawn.state == STATE_WANDERING:
+        return "Breaking"
+    if pawn.state == STATE_SLACKING:
+        return "Stressed"
+    if pawn.mood < 0.35:
+        return "Unhappy"
+    if min(pawn.needs.values(), default=1.0) < 0.25:
+        return "Needs care"
+    return "Healthy"
+
+
 def render_colony(
     surface: pygame.Surface,
     state: FactionState,
@@ -252,7 +289,12 @@ def render_colony(
     base_ts = assets.tile_size
     ts = camera.scaled_tile_size(base_ts)
     ox, oy = origin
-    map_rect = pygame.Rect(0, 0, surface.get_width(), surface.get_height() - HUD_HEIGHT)
+    map_rect = pygame.Rect(
+        0,
+        PAWN_ROSTER_HEIGHT,
+        surface.get_width(),
+        surface.get_height() - HUD_HEIGHT - PAWN_ROSTER_HEIGHT,
+    )
     inspector_rect = None
     if show_inspector:
         inspector_rect = pygame.Rect(
@@ -304,6 +346,7 @@ def render_colony(
         )
 
     surface.set_clip(previous_clip)
+    _draw_pawn_roster(surface, state, assets, font, selected_pawn_id, map_rect.width)
     if inspector_rect is not None:
         _draw_inspector(surface, state, font, selected_pawn_id, inspector_rect)
     _draw_hud(surface, state, font, status_line)
@@ -412,6 +455,123 @@ def _draw_label(surface, font, text: str, center_x: int, bottom_y: int) -> None:
     surface.blit(box, (center_x - box.get_width() // 2, bottom_y - box.get_height()))
 
 
+def _draw_text(
+    surface: pygame.Surface,
+    font: pygame.font.Font,
+    text: str,
+    color: tuple[int, int, int],
+    pos: tuple[int, int],
+    max_width: int | None = None,
+) -> None:
+    """Render one line, trimming only when the panel is too narrow."""
+    display = text
+    if max_width is not None and font.size(display)[0] > max_width:
+        while display and font.size(display + "...")[0] > max_width:
+            display = display[:-1]
+        display = display + "..." if display else "..."
+    surface.blit(font.render(display, True, color), pos)
+
+
+def _draw_value_bar(
+    surface: pygame.Surface,
+    font: pygame.font.Font,
+    label: str,
+    value: float,
+    rect: pygame.Rect,
+    *,
+    color: tuple[int, int, int] | None = None,
+) -> None:
+    value = max(0.0, min(1.0, value))
+    color = color or _need_bar_color(value)
+    label_w = 86
+    _draw_text(surface, font, label, INSPECTOR_TEXT, (rect.x, rect.y + 1), label_w - 8)
+    bar = pygame.Rect(rect.x + label_w, rect.y + 4, rect.width - label_w - 40, 12)
+    pygame.draw.rect(surface, (5, 7, 8), bar)
+    fill = pygame.Rect(bar.x, bar.y, round(bar.width * value), bar.height)
+    pygame.draw.rect(surface, color, fill)
+    for tick in range(1, 5):
+        tx = bar.x + round(bar.width * tick / 5)
+        pygame.draw.line(surface, (23, 28, 30), (tx, bar.y), (tx, bar.bottom), 1)
+    pygame.draw.rect(surface, PANEL_BORDER, bar, 1)
+    _draw_text(surface, font, f"{round(value * 100)}%", INSPECTOR_MUTED, (bar.right + 7, rect.y + 1), 34)
+
+
+def _draw_chip(
+    surface: pygame.Surface,
+    font: pygame.font.Font,
+    text: str,
+    pos: tuple[int, int],
+    *,
+    color: tuple[int, int, int] = PANEL_BG_3,
+) -> pygame.Rect:
+    glyph = font.render(text, True, INSPECTOR_TEXT)
+    rect = pygame.Rect(pos[0], pos[1], glyph.get_width() + 12, glyph.get_height() + 6)
+    pygame.draw.rect(surface, color, rect, border_radius=2)
+    pygame.draw.rect(surface, (55, 62, 65), rect, 1, border_radius=2)
+    surface.blit(glyph, (rect.x + 6, rect.y + 3))
+    return rect
+
+
+def _draw_tab_strip(surface: pygame.Surface, font: pygame.font.Font, rect: pygame.Rect) -> None:
+    tabs = ("Log", "Gear", "Social", "Bio", "Needs", "Health")
+    tab_w = rect.width // len(tabs)
+    for index, tab in enumerate(tabs):
+        tab_rect = pygame.Rect(rect.x + index * tab_w, rect.y, tab_w, rect.height)
+        fill = (101, 75, 43) if tab == "Needs" else (70, 56, 38)
+        pygame.draw.rect(surface, fill, tab_rect)
+        pygame.draw.rect(surface, PANEL_HILITE, tab_rect, 1)
+        glyph = font.render(tab, True, (238, 230, 210))
+        surface.blit(
+            glyph,
+            (
+                tab_rect.centerx - glyph.get_width() // 2,
+                tab_rect.centery - glyph.get_height() // 2,
+            ),
+        )
+
+
+def _draw_pawn_roster(
+    surface: pygame.Surface,
+    state: FactionState,
+    assets: ColonyAssets,
+    font: pygame.font.Font,
+    selected_pawn_id: str | None,
+    width: int,
+) -> None:
+    rect = pygame.Rect(0, 0, width, PAWN_ROSTER_HEIGHT)
+    pygame.draw.rect(surface, PANEL_BG, rect)
+    pygame.draw.line(surface, PANEL_BORDER, rect.bottomleft, rect.bottomright, 1)
+
+    pawn_keys = sorted(assets.pawns_scaled)
+    if not pawn_keys:
+        return
+
+    card_w = 58
+    gap = 8
+    x = MARGIN
+    y = 7
+    for pawn in state.pawns.values():
+        if x + card_w > width - MARGIN:
+            break
+        selected = pawn.id == selected_pawn_id
+        card = pygame.Rect(x, y, card_w, PAWN_ROSTER_HEIGHT - 14)
+        pygame.draw.rect(surface, PANEL_BG_2, card, border_radius=3)
+        pygame.draw.rect(surface, SELECTION if selected else PANEL_BORDER, card, 2 if selected else 1, border_radius=3)
+
+        sprite = assets.pawns_scaled[_pawn_sprite_key(pawn, pawn_keys)]
+        portrait_h = 30
+        scale = portrait_h / sprite.get_height()
+        portrait = pygame.transform.scale(sprite, (max(1, round(sprite.get_width() * scale)), portrait_h))
+        px = card.centerx - portrait.get_width() // 2
+        surface.blit(portrait, (px, card.y + 5))
+        pygame.draw.circle(surface, (7, 9, 9), (card.right - 8, card.y + 9), 5)
+        pygame.draw.circle(surface, _mood_color(pawn.mood), (card.right - 8, card.y + 9), 4)
+
+        short_name = pawn.name.split()[0]
+        _draw_text(surface, font, short_name, INSPECTOR_TEXT, (card.x + 4, card.bottom - 15), card.width - 8)
+        x += card_w + gap
+
+
 def _draw_inspector(
     surface: pygame.Surface,
     state: FactionState,
@@ -425,38 +585,67 @@ def _draw_inspector(
     x = rect.x + 14
     y = rect.y + 14
 
-    def line(text: str, color: tuple[int, int, int] = INSPECTOR_TEXT, gap: int = 21) -> None:
+    def line(text: str, color: tuple[int, int, int] = INSPECTOR_TEXT, gap: int = 21, *, max_width: int | None = None) -> None:
         nonlocal y
-        surface.blit(font.render(text, True, color), (x, y))
+        _draw_text(surface, font, text, color, (x, y), max_width or rect.width - 28)
         y += gap
-
-    line("Inspector")
-    line(f"Pawns {len(state.pawns)}", INSPECTOR_MUTED)
 
     pawn = state.pawns.get(selected_pawn_id or "")
     if pawn is None:
+        line("Inspector", gap=25)
         line("No pawn selected", INSPECTOR_MUTED, gap=26)
         line(f"Mood {round(economy.average_mood(state) * 100)}%", INSPECTOR_MUTED)
         line(f"Coin {state.coin}", INSPECTOR_MUTED)
         return
 
-    line(pawn.name, SELECTION, gap=25)
-    line(f"State {pawn.state}")
-    line(f"Schedule {pawn.schedule}")
+    status = _pawn_status_label(pawn)
+    line(pawn.name, INSPECTOR_TEXT, gap=25)
+    _draw_chip(surface, font, status, (x, y), color=(62, 78, 66) if status == "Healthy" else (94, 56, 46))
+    _draw_chip(surface, font, pawn.schedule, (x + 94, y), color=PANEL_BG_3)
+    y += 32
+
+    line(f"State  {pawn.state}", INSPECTOR_MUTED)
     if pawn.assignment is None:
-        line("Assignment none", INSPECTOR_MUTED)
+        line("Job    none", INSPECTOR_MUTED)
     else:
         building = state.buildings.get(pawn.assignment.building_id)
         building_name = building.kind if building else pawn.assignment.building_id
-        line(f"Job {building_name}")
-    line(f"Mood {round(pawn.mood * 100)}%")
-    y += 4
+        line(f"Job    {building_name}", INSPECTOR_MUTED)
+
+    tab_rect = pygame.Rect(rect.x, y + 5, rect.width, 28)
+    _draw_tab_strip(surface, font, tab_rect)
+    y = tab_rect.bottom + 14
+
+    line("Needs", SELECTION, gap=24)
+    _draw_value_bar(surface, font, "Mood", pawn.mood, pygame.Rect(x, y, rect.width - 28, 22), color=_mood_color(pawn.mood))
+    y += 24
     for need, value in sorted(pawn.needs.items()):
-        line(f"{need.title()} {round(value * 100)}%", INSPECTOR_MUTED)
-    if pawn.skills:
-        y += 4
-        skill, score = max(pawn.skills.items(), key=lambda item: item[1])
-        line(f"Top skill {skill} {score}", INSPECTOR_MUTED)
+        _draw_value_bar(surface, font, need.title(), value, pygame.Rect(x, y, rect.width - 28, 22))
+        y += 24
+
+    y += 8
+    line("Skills", SELECTION, gap=23)
+    skill_x = x + 98
+    max_score = 20
+    for skill, score in _top_skills(pawn, limit=8):
+        _draw_text(surface, font, skill.title(), INSPECTOR_TEXT, (x, y), 90)
+        bar = pygame.Rect(skill_x, y + 4, rect.width - 140, 12)
+        pygame.draw.rect(surface, PANEL_BG_3, bar)
+        pygame.draw.rect(surface, (86, 91, 97), (bar.x, bar.y, round(bar.width * min(score, max_score) / max_score), bar.height))
+        pygame.draw.rect(surface, (50, 57, 60), bar, 1)
+        _draw_text(surface, font, str(score), INSPECTOR_TEXT, (bar.right + 8, y), 24)
+        y += 22
+
+    y += 8
+    line("Traits", SELECTION, gap=22)
+    chip_x = x
+    chip_y = y
+    for trait in pawn.traits:
+        chip = _draw_chip(surface, font, trait.replace("_", " ").title(), (chip_x, chip_y))
+        chip_x = chip.right + 6
+        if chip_x > rect.right - 78:
+            chip_x = x
+            chip_y += chip.height + 6
 
 
 def _draw_hud(
@@ -468,21 +657,52 @@ def _draw_hud(
     width = surface.get_width()
     top = surface.get_height() - HUD_HEIGHT
     pygame.draw.rect(surface, HUD_BG, (0, top, width, HUD_HEIGHT))
+    pygame.draw.line(surface, PANEL_BORDER, (0, top), (width, top), 1)
 
     population = len(state.pawns)
     avg_mood = economy.average_mood(state)
     sites = len(state.construction_sites)
-    line1 = (
-        f"Day {state.day}   {state.time_of_day:02d}:00   "
-        f"Pop {population}   Mood {round(avg_mood * 100)}%   "
-        f"Coin {state.coin}   Sites {sites}"
+    stat_items = (
+        f"Day {state.day}",
+        f"{state.time_of_day:02d}:00",
+        f"Pop {population}",
+        f"Mood {round(avg_mood * 100)}%",
+        f"Coin {state.coin}",
+        f"Sites {sites}",
     )
-    goods = "   ".join(f"{label} {state.stockpile.counts.get(good, 0)}" for label, good in HUD_GOODS)
 
     text, color = status_line or ("Governor: fallback (autopilot)   pawns coloured by mood", HUD_MUTED)
-    surface.blit(font.render(line1, True, HUD_TEXT), (MARGIN, top + 14))
-    surface.blit(font.render(goods, True, HUD_TEXT), (MARGIN, top + 44))
-    surface.blit(font.render(text, True, color), (MARGIN, top + 68))
+    x = MARGIN
+    for item in stat_items:
+        glyph = font.render(item, True, HUD_TEXT)
+        box = pygame.Rect(x, top + 10, glyph.get_width() + 16, 24)
+        pygame.draw.rect(surface, PANEL_BG_2, box, border_radius=2)
+        pygame.draw.rect(surface, (58, 67, 69), box, 1, border_radius=2)
+        surface.blit(glyph, (box.x + 8, box.y + 5))
+        x = box.right + 8
+
+    x = MARGIN
+    for label, good in HUD_GOODS:
+        amount = state.stockpile.counts.get(good, 0)
+        text_chip = f"{label} {amount}"
+        glyph = font.render(text_chip, True, HUD_TEXT)
+        box = pygame.Rect(x, top + 41, glyph.get_width() + 16, 24)
+        pygame.draw.rect(surface, (31, 36, 34), box, border_radius=2)
+        pygame.draw.rect(surface, (56, 64, 58), box, 1, border_radius=2)
+        surface.blit(glyph, (box.x + 8, box.y + 5))
+        x = box.right + 8
+
+    _draw_text(surface, font, text, color, (MARGIN, top + 72), width - MARGIN * 2)
+
+    buttons = ("Architect", "Work", "Assign", "Research", "History", "Menu")
+    button_y = top + HUD_HEIGHT - 28
+    button_w = 104
+    for index, label in enumerate(buttons):
+        button = pygame.Rect(index * (button_w + 2), button_y, button_w, 28)
+        pygame.draw.rect(surface, (31, 42, 45), button)
+        pygame.draw.rect(surface, PANEL_BORDER, button, 1)
+        glyph = font.render(label, True, HUD_TEXT)
+        surface.blit(glyph, (button.centerx - glyph.get_width() // 2, button.centery - glyph.get_height() // 2))
 
 
 class ColonyViewer:
@@ -516,7 +736,7 @@ class ColonyViewer:
         grid = self.state.grid
         ts = load_colony_manifest().tile_size
         width = (grid.width * ts if grid else 600) + 2 * MARGIN + INSPECTOR_WIDTH
-        height = (grid.height * ts if grid else 400) + 2 * MARGIN + HUD_HEIGHT
+        height = (grid.height * ts if grid else 400) + 2 * MARGIN + HUD_HEIGHT + PAWN_ROSTER_HEIGHT
         self.screen = pygame.display.set_mode((width, height))
         pygame.display.set_caption("Local Agent Town - Colony")
 
@@ -576,10 +796,15 @@ class ColonyViewer:
             self._select_next_pawn()
 
     def _map_rect(self) -> pygame.Rect:
-        return pygame.Rect(0, 0, self.screen.get_width() - INSPECTOR_WIDTH, self.screen.get_height() - HUD_HEIGHT)
+        return pygame.Rect(
+            0,
+            PAWN_ROSTER_HEIGHT,
+            self.screen.get_width() - INSPECTOR_WIDTH,
+            self.screen.get_height() - HUD_HEIGHT - PAWN_ROSTER_HEIGHT,
+        )
 
     def _map_origin(self) -> tuple[int, int]:
-        return (MARGIN, MARGIN)
+        return (MARGIN, PAWN_ROSTER_HEIGHT + MARGIN)
 
     def _pan_camera(self, screen_dx: float, screen_dy: float) -> None:
         self.camera.pan(screen_dx, screen_dy)

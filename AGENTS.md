@@ -35,6 +35,7 @@ The agent may edit:
 - `src\agent_town`;
 - `tests`;
 - `scripts`;
+- `docs\screenshots` when updating checked-in visual proof for the README;
 - project docs: `README.md`, `AGENTS.md`, `BLUEPRINT.md`, `ROADMAP.md`, `RUNBOOK.md`, `BOOTSTRAP_CHECKLIST.md`, `UNATTENDED_WORK_POLICY.md`, `VISUAL_DESIGN.md`;
 - dependency manifests only when the dependency change is necessary and explained.
 
@@ -126,6 +127,12 @@ Then for every task:
 3. Run baseline verification when practical.
 4. Implement with tests or a named manual check.
 5. Append to `ROADMAP.md` Verification Log if state changed.
+
+For visual changes to the game viewer:
+
+- Render and inspect a fresh screenshot after the change.
+- Replace `docs\screenshots\current-state.png` when the visible current state changed.
+- Keep the README screenshot caption honest about what is current, mocked, placeholder, or not interactive yet.
 
 ## Output Format
 
