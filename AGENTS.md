@@ -76,6 +76,19 @@ Default responsibilities:
 - update `BLUEPRINT.md` and `RUNBOOK.md` when the task directly touches their content;
 - leave the project easier for the next agent to verify.
 
+## Asset Workflow
+
+When visual work needs a new asset, search for a license-safe free asset before drawing or kitbashing one locally.
+
+Rules:
+
+- Prefer CC0 or public domain assets. CC-BY assets are acceptable only when attribution is recorded near the imported files.
+- Verify the source URL, license, author, and attribution requirements before adding files to the repo.
+- Keep original downloaded asset files or source zips untouched, then derive runtime sheets or cropped sprites from them.
+- Do not use copyrighted franchise screenshots, rips, AI copies of protected styles, or assets with non-commercial-only terms unless the user explicitly approves that scope.
+- Match the target mood: medieval fantasy village or settlement, with classic adventure-fantasy flavor. If uncertain, default to Age of Empires-style readable RTS buildings and terrain.
+- Start with these sources when relevant: OpenGameArt, Screaming Brain Studios, Summer Engine asset packs, Kenney, and other clearly licensed free game-art libraries.
+
 ## Verification And Proof
 
 For behavior changes, use red, green, refactor:

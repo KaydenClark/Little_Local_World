@@ -4,6 +4,7 @@ import argparse
 import os
 import sys
 from dataclasses import dataclass
+from math import floor
 import xml.etree.ElementTree as ET
 
 import pygame
@@ -47,9 +48,9 @@ LOCATION_TILE_INDEX = {
 
 @dataclass
 class Camera:
-    x: float = 760
-    y: float = 500
-    zoom: float = 0.72
+    x: float = 1180
+    y: float = 820
+    zoom: float = 0.56
 
     def world_to_screen(self, x: float, y: float) -> tuple[int, int]:
         return (
@@ -80,11 +81,171 @@ class SpriteAssets:
     tiles: pygame.Surface | None = None
     emotes: pygame.Surface | None = None
     emote_rects: dict[str, pygame.Rect] | None = None
+    scaled_cache: dict[tuple[str, int, int], pygame.Surface] | None = None
+
+
+@dataclass(frozen=True)
+class TileStamp:
+    dx: int
+    dy: int
+    index: int
+    role: str
+
+
+@dataclass(frozen=True)
+class LocationFootprint:
+    tiles: tuple[TileStamp, ...]
+    label_offset_y: int
+
+
+@dataclass(frozen=True)
+class SceneryStamp:
+    x: int
+    y: int
+    index: int
+    role: str
+    size: int = 44
+    shadow: bool = True
+
+
+TERRAIN_TILE_INDEXES = {
+    "grass": (5, 62, 5, 62),
+    "field": (7, 64, 6, 63),
+    "water": (0, 1, 57, 58, 114, 115, 171, 172),
+    "stone": (120, 177, 704, 705),
+    "path": (6, 63, 119, 176),
+}
+
+
+def _room_footprint(
+    *,
+    floor: int,
+    wall: int,
+    prop: int,
+    door: int,
+    roof: tuple[int, ...] = (1207, 1208, 1264, 1265),
+    width: int = 4,
+    height: int = 3,
+    extra_props: tuple[tuple[int, int, int], ...] = (),
+) -> LocationFootprint:
+    tiles: list[TileStamp] = []
+    left = -(width // 2)
+    top = -(height // 2)
+    for row in range(height):
+        for column in range(width):
+            dx = left + column
+            dy = top + row
+            edge = row in (0, height - 1) or column in (0, width - 1)
+            role = "wall" if edge else "floor"
+            tiles.append(TileStamp(dx, dy, wall if edge else floor, role))
+    for column in range(width):
+        tiles.append(TileStamp(left + column, top - 1, roof[column % len(roof)], "roof"))
+    tiles.append(TileStamp(0, top + height - 1, door, "prop"))
+    tiles.append(TileStamp(left + width - 2, top + 1, prop, "prop"))
+    for dx, dy, index in extra_props:
+        tiles.append(TileStamp(dx, dy, index, "prop"))
+    return LocationFootprint(tuple(tiles), label_offset_y=(height + 2) * 18)
+
+
+LOCATION_FOOTPRINTS = {
+    "home": _room_footprint(floor=694, wall=751, prop=79, door=80, extra_props=((-2, -2, 473), (1, -2, 472))),
+    "food": _room_footprint(
+        floor=779,
+        wall=723,
+        prop=317,
+        door=80,
+        roof=(1142, 1143, 1199, 1200),
+        extra_props=((-1, 0, 376), (-3, 1, 513), (-3, 2, 570), (2, 1, 514), (2, 2, 571)),
+    ),
+    "social": LocationFootprint(
+        (
+            TileStamp(-2, -1, 570, "floor"),
+            TileStamp(-1, -1, 571, "floor"),
+            TileStamp(0, -1, 572, "floor"),
+            TileStamp(1, -1, 627, "floor"),
+            TileStamp(-2, 0, 628, "floor"),
+            TileStamp(-1, 0, 527, "prop"),
+            TileStamp(0, 0, 528, "prop"),
+            TileStamp(1, 0, 629, "floor"),
+            TileStamp(-2, 1, 798, "floor"),
+            TileStamp(-1, 1, 799, "floor"),
+            TileStamp(0, 1, 480, "prop"),
+            TileStamp(1, 1, 570, "floor"),
+        ),
+        label_offset_y=72,
+    ),
+    "knowledge": _room_footprint(
+        floor=753,
+        wall=695,
+        prop=20,
+        door=80,
+        roof=(1212, 1213, 1269, 1270),
+        extra_props=((-1, 0, 77), (2, -2, 1125)),
+    ),
+    "work": _room_footprint(
+        floor=779,
+        wall=723,
+        prop=148,
+        door=80,
+        roof=(1207, 1208, 1264, 1265),
+        extra_props=((-1, 0, 149), (2, 0, 659), (-3, 1, 656)),
+    ),
+    "quiet": LocationFootprint(
+        (
+            TileStamp(-2, -1, 570, "floor"),
+            TileStamp(-1, -1, 571, "floor"),
+            TileStamp(0, -1, 572, "floor"),
+            TileStamp(1, -1, 627, "floor"),
+            TileStamp(-2, 0, 628, "floor"),
+            TileStamp(-1, 0, 595, "prop"),
+            TileStamp(0, 0, 596, "prop"),
+            TileStamp(1, 0, 629, "floor"),
+            TileStamp(-2, 1, 798, "floor"),
+            TileStamp(-1, 1, 799, "floor"),
+            TileStamp(0, 1, 536, "prop"),
+            TileStamp(1, 1, 570, "floor"),
+        ),
+        label_offset_y=72,
+    ),
+}
+
+VISUAL_TILE_WORLD_SIZE = 54
+PATH_TILE_WORLD_SIZE = 42
+
+SCENERY_STAMPS = (
+    SceneryStamp(330, 260, 586, "tree", 58),
+    SceneryStamp(405, 315, 590, "tree", 54),
+    SceneryStamp(300, 915, 589, "tree", 58),
+    SceneryStamp(515, 1325, 586, "tree", 58),
+    SceneryStamp(1015, 300, 590, "tree", 54),
+    SceneryStamp(1445, 315, 586, "tree", 58),
+    SceneryStamp(2110, 500, 590, "tree", 54),
+    SceneryStamp(2140, 1080, 586, "tree", 58),
+    SceneryStamp(1615, 1400, 590, "tree", 54),
+    SceneryStamp(220, 720, 476, "rock", 42),
+    SceneryStamp(280, 760, 477, "rock", 42),
+    SceneryStamp(1360, 335, 476, "rock", 42),
+    SceneryStamp(1420, 385, 477, "rock", 42),
+    SceneryStamp(2050, 250, 620, "rock", 42),
+    SceneryStamp(2120, 305, 621, "rock", 42),
+    SceneryStamp(1720, 725, 669, "resource", 38),
+    SceneryStamp(1765, 760, 670, "resource", 38),
+    SceneryStamp(1810, 800, 671, "resource", 38),
+    SceneryStamp(690, 970, 513, "farm", 44, False),
+    SceneryStamp(745, 970, 514, "farm", 44, False),
+    SceneryStamp(800, 970, 515, "farm", 44, False),
+    SceneryStamp(690, 1025, 570, "farm", 44, False),
+    SceneryStamp(745, 1025, 571, "farm", 44, False),
+    SceneryStamp(800, 1025, 572, "farm", 44, False),
+    SceneryStamp(690, 1080, 627, "farm", 44, False),
+    SceneryStamp(745, 1080, 628, "farm", 44, False),
+    SceneryStamp(800, 1080, 629, "farm", 44, False),
+)
 
 
 def load_sprite_assets() -> SpriteAssets:
     manifest = load_kenney_manifest()
-    assets = SpriteAssets(tile_size=manifest.tile_size, margin=manifest.margin, emote_rects={})
+    assets = SpriteAssets(tile_size=manifest.tile_size, margin=manifest.margin, emote_rects={}, scaled_cache={})
     try:
         assets.characters = pygame.image.load(str(manifest.characters_path)).convert_alpha()
         assets.tiles = pygame.image.load(str(manifest.tiles_path)).convert_alpha()
@@ -246,18 +407,50 @@ class App:
         size = (int(WORLD_WIDTH * self.camera.zoom), int(WORLD_HEIGHT * self.camera.zoom))
         pygame.draw.rect(self.screen, WORLD_BG, (*top_left, *size), border_radius=4)
         pygame.draw.rect(self.screen, (83, 97, 88), (*top_left, *size), width=2, border_radius=4)
-
-        grid_step = 160
-        for x in range(0, WORLD_WIDTH + 1, grid_step):
-            start = self.camera.world_to_screen(x, 0)
-            end = self.camera.world_to_screen(x, WORLD_HEIGHT)
-            pygame.draw.line(self.screen, GRID, start, end, 1)
-        for y in range(0, WORLD_HEIGHT + 1, grid_step):
-            start = self.camera.world_to_screen(0, y)
-            end = self.camera.world_to_screen(WORLD_WIDTH, y)
-            pygame.draw.line(self.screen, GRID, start, end, 1)
-
+        self._draw_terrain_tiles()
+        self._draw_scenery_stamps()
         self._draw_paths()
+
+    def _draw_terrain_tiles(self) -> None:
+        if self.assets.tiles is None:
+            return
+
+        tile_size = max(10, int(VISUAL_TILE_WORLD_SIZE * self.camera.zoom) + 1)
+        visible_left, visible_top = self.camera.screen_to_world(0, 0)
+        visible_right, visible_bottom = self.camera.screen_to_world(SCREEN_WIDTH - PANEL_WIDTH, SCREEN_HEIGHT)
+        start_x = max(0, floor(visible_left / VISUAL_TILE_WORLD_SIZE) - 1)
+        end_x = min(WORLD_WIDTH // VISUAL_TILE_WORLD_SIZE + 1, floor(visible_right / VISUAL_TILE_WORLD_SIZE) + 2)
+        start_y = max(0, floor(visible_top / VISUAL_TILE_WORLD_SIZE) - 1)
+        end_y = min(WORLD_HEIGHT // VISUAL_TILE_WORLD_SIZE + 1, floor(visible_bottom / VISUAL_TILE_WORLD_SIZE) + 2)
+
+        for gy in range(start_y, end_y):
+            for gx in range(start_x, end_x):
+                wx = gx * VISUAL_TILE_WORLD_SIZE
+                wy = gy * VISUAL_TILE_WORLD_SIZE
+                palette = self._terrain_palette_for(wx, wy)
+                index = palette[(gx * 3 + gy * 5) % len(palette)]
+                self._draw_tile_at(index, wx, wy, tile_size)
+
+    def _terrain_palette_for(self, wx: int, wy: int) -> tuple[int, ...]:
+        if wx < 230 and wy < 680:
+            return TERRAIN_TILE_INDEXES["water"]
+        if 560 <= wx <= 980 and 900 <= wy <= 1280:
+            return TERRAIN_TILE_INDEXES["field"]
+        if 1010 <= wx <= 1400 and 620 <= wy <= 940:
+            return TERRAIN_TILE_INDEXES["stone"]
+        return TERRAIN_TILE_INDEXES["grass"]
+
+    def _draw_scenery_stamps(self) -> None:
+        for stamp in sorted(SCENERY_STAMPS, key=lambda item: item.y):
+            sx, sy = self.camera.world_to_screen(stamp.x, stamp.y)
+            size = max(14, int(stamp.size * self.camera.zoom))
+            if stamp.shadow:
+                pygame.draw.ellipse(
+                    self.screen,
+                    (20, 28, 18),
+                    (sx - size // 3, sy + size // 4, size * 2 // 3, max(4, size // 6)),
+                )
+            self._draw_tile_sprite(self.assets.tiles, "tiles", stamp.index, sx, sy, size)
 
     def _draw_paths(self) -> None:
         paths = [
@@ -274,37 +467,79 @@ class App:
             end = self.sim.locations[end_name]
             pygame.draw.line(
                 self.screen,
-                (91, 84, 72),
+                (64, 54, 42),
+                self.camera.world_to_screen(start.x, start.y),
+                self.camera.world_to_screen(end.x, end.y),
+                max(3, int(18 * self.camera.zoom)),
+            )
+            pygame.draw.line(
+                self.screen,
+                (124, 104, 72),
                 self.camera.world_to_screen(start.x, start.y),
                 self.camera.world_to_screen(end.x, end.y),
                 max(2, int(10 * self.camera.zoom)),
             )
+            self._draw_path_tiles(start.x, start.y, end.x, end.y)
+
+    def _draw_path_tiles(self, start_x: float, start_y: float, end_x: float, end_y: float) -> None:
+        steps = max(1, int(max(abs(end_x - start_x), abs(end_y - start_y)) / PATH_TILE_WORLD_SIZE))
+        tile_size = max(12, int(PATH_TILE_WORLD_SIZE * self.camera.zoom))
+        palette = TERRAIN_TILE_INDEXES["path"]
+        for step in range(steps + 1):
+            t = step / steps
+            wx = start_x + (end_x - start_x) * t - PATH_TILE_WORLD_SIZE / 2
+            wy = start_y + (end_y - start_y) * t - PATH_TILE_WORLD_SIZE / 2
+            index = palette[step % len(palette)]
+            self._draw_tile_at(index, int(wx), int(wy), tile_size)
 
     def _draw_locations(self) -> None:
         for location in self.sim.locations.values():
             sx, sy = self.camera.world_to_screen(location.x, location.y)
-            radius = max(10, int(location.radius * self.camera.zoom))
-            color = self._location_color(location)
-            pygame.draw.circle(self.screen, color, (sx, sy), radius)
-            pygame.draw.circle(self.screen, (218, 224, 210), (sx, sy), radius, width=2)
-            self._draw_tile_sprite(
-                self.assets.tiles,
-                LOCATION_TILE_INDEX.get(location.kind, 4),
-                sx,
-                sy,
-                max(22, int(38 * self.camera.zoom)),
-            )
-            self._draw_text(location.name, sx - radius, sy + radius + 6, self.small_font, MUTED)
+            footprint = LOCATION_FOOTPRINTS.get(location.kind)
+            if footprint is None:
+                self._draw_tile_sprite(
+                    self.assets.tiles,
+                    "tiles",
+                    LOCATION_TILE_INDEX.get(location.kind, 4),
+                    sx,
+                    sy,
+                    max(22, int(38 * self.camera.zoom)),
+                )
+                self._draw_text(location.name, sx - 34, sy + 40, self.small_font, MUTED)
+                continue
+
+            tile_size = max(18, int(44 * self.camera.zoom))
+            role_order = {"floor": 0, "wall": 1, "roof": 2, "resource": 3, "prop": 4}
+            for tile in sorted(footprint.tiles, key=lambda stamp: (role_order.get(stamp.role, 5), stamp.dy, stamp.dx)):
+                self._draw_tile_sprite(
+                    self.assets.tiles,
+                    "tiles",
+                    tile.index,
+                    sx + tile.dx * tile_size,
+                    sy + tile.dy * tile_size,
+                    tile_size,
+                )
+            label_y = sy + int(footprint.label_offset_y * self.camera.zoom)
+            self._draw_label(location.name, sx, label_y)
 
     def _draw_agents(self) -> None:
         for agent in self.sim.agents.values():
             sx, sy = self.camera.world_to_screen(agent.x, agent.y)
             selected = agent.id == self.selected_id
             if selected:
-                pygame.draw.circle(self.screen, ACCENT, (sx, sy), 17)
-            pygame.draw.circle(self.screen, agent.color, (sx, sy), 13)
+                destination = self.sim.locations[agent.destination]
+                pygame.draw.line(
+                    self.screen,
+                    ACCENT,
+                    (sx, sy),
+                    self.camera.world_to_screen(destination.x, destination.y),
+                    2,
+                )
+                pygame.draw.rect(self.screen, ACCENT, (sx - 18, sy - 20, 36, 36), width=2, border_radius=3)
+            pygame.draw.ellipse(self.screen, (8, 11, 10), (sx - 13, sy + 8, 26, 8))
             drew_sprite = self._draw_tile_sprite(
                 self.assets.characters,
+                "characters",
                 agent.sprite_index,
                 sx,
                 sy,
@@ -315,15 +550,6 @@ class App:
                 pygame.draw.circle(self.screen, (13, 18, 22), (sx, sy), 12, width=2)
             self._draw_text(agent.name, sx - 16, sy - 34, self.small_font, TEXT)
             self._draw_agent_emote(agent, sx, sy)
-            if selected:
-                destination = self.sim.locations[agent.destination]
-                pygame.draw.line(
-                    self.screen,
-                    ACCENT,
-                    (sx, sy),
-                    self.camera.world_to_screen(destination.x, destination.y),
-                    2,
-                )
 
     def _draw_panel(self) -> None:
         panel_x = SCREEN_WIDTH - PANEL_WIDTH
@@ -409,24 +635,51 @@ class App:
     def _draw_tile_sprite(
         self,
         sheet: pygame.Surface | None,
+        sheet_key: str,
         index: int,
         center_x: int,
         center_y: int,
         size: int,
     ) -> bool:
-        if sheet is None:
+        sprite = self._scaled_sprite(sheet, sheet_key, index, size)
+        if sprite is None:
             return False
+        self.screen.blit(sprite, (center_x - size // 2, center_y - size // 2))
+        return True
+
+    def _draw_tile_at(self, index: int, world_x: int, world_y: int, size: int) -> bool:
+        sprite = self._scaled_sprite(self.assets.tiles, "tiles", index, size)
+        if sprite is None:
+            return False
+        sx, sy = self.camera.world_to_screen(world_x, world_y)
+        self.screen.blit(sprite, (sx, sy))
+        return True
+
+    def _scaled_sprite(
+        self,
+        sheet: pygame.Surface | None,
+        sheet_key: str,
+        index: int,
+        size: int,
+    ) -> pygame.Surface | None:
+        if sheet is None:
+            return None
+        cache = self.assets.scaled_cache
+        cache_key = (sheet_key, index, size)
+        if cache is not None and cache_key in cache:
+            return cache[cache_key]
         step = self.assets.tile_size + self.assets.margin
         columns = max(1, (sheet.get_width() + self.assets.margin) // step)
         source_x = (index % columns) * step
         source_y = (index // columns) * step
         rect = pygame.Rect(source_x, source_y, self.assets.tile_size, self.assets.tile_size)
         if rect.right > sheet.get_width() or rect.bottom > sheet.get_height():
-            return False
+            return None
         sprite = sheet.subsurface(rect)
         scaled = pygame.transform.scale(sprite, (size, size))
-        self.screen.blit(scaled, (center_x - size // 2, center_y - size // 2))
-        return True
+        if cache is not None:
+            cache[cache_key] = scaled
+        return scaled
 
     def _draw_agent_emote(self, agent: Agent, sx: int, sy: int) -> None:
         if not agent.emote or self.assets.emotes is None or self.assets.emote_rects is None:
@@ -441,6 +694,20 @@ class App:
         sprite = self.assets.emotes.subsurface(rect)
         scaled = pygame.transform.scale(sprite, (size, size))
         self.screen.blit(scaled, (sx + 10, sy - size - 12))
+
+    def _draw_label(self, text: str, center_x: int, y: int) -> None:
+        surface = self.small_font.render(text, True, TEXT)
+        padding_x = 7
+        padding_y = 3
+        rect = pygame.Rect(
+            center_x - surface.get_width() // 2 - padding_x,
+            y,
+            surface.get_width() + padding_x * 2,
+            surface.get_height() + padding_y * 2,
+        )
+        pygame.draw.rect(self.screen, (18, 22, 20), rect, border_radius=3)
+        pygame.draw.rect(self.screen, (73, 82, 72), rect, width=1, border_radius=3)
+        self.screen.blit(surface, (rect.x + padding_x, rect.y + padding_y))
 
     def _llm_status_text(self) -> str:
         status = self.llm_scheduler.status

@@ -148,6 +148,29 @@ class SimulationTests(unittest.TestCase):
             self.assertGreaterEqual(agent.y, 0)
             self.assertLessEqual(agent.y, 1600)
 
+    def test_social_phase_uses_spatial_candidates(self):
+        agents = []
+        for index in range(300):
+            agents.append(
+                Agent(
+                    f"a{index}",
+                    f"Agent {index}",
+                    (index % 30) * 90,
+                    (index // 30) * 90,
+                    (255, 255, 255),
+                    (),
+                    destination="Square",
+                )
+            )
+        sim = Simulation([Location("Square", 1200, 800, "social", 4000)], agents)
+
+        sim.step(0.1)
+
+        metrics = sim.last_step_metrics
+        self.assertEqual(metrics["agents"], 300)
+        self.assertLess(metrics["social_candidate_visits"], 300 * 299 // 2)
+        self.assertLess(metrics["social_distance_checks"], 7000)
+
 
 if __name__ == "__main__":
     unittest.main()

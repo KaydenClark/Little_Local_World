@@ -1,6 +1,6 @@
 # Local Agent Town - Runbook
 
-**Last reviewed:** 2026-06-26  
+**Last reviewed:** 2026-06-27
 **Runtime owner:** Kayden  
 **Environment:** local desktop
 
@@ -61,6 +61,28 @@ Expected result:
 - The package installs editable into `.venv`.
 - Pygame is available inside `.venv`.
 
+## Asset Preparation
+
+The app uses selected Kenney runtime sheets under `src\agent_town\assets\kenney`. Verify or prepare them from the root zip files with:
+
+```powershell
+.\scripts\prepare-kenney-assets.ps1
+```
+
+Expected result:
+
+- `characters.png`, `rpg_tiles.png`, `emotes.png`, and `emotes.xml` exist.
+- Existing matching files are verified without being overwritten.
+- Changed files are not overwritten unless the command is run with `-Force`.
+
+When adding a new free asset:
+
+- Verify the source URL, license, author, and attribution requirements before download.
+- Prefer CC0 or public domain. Use CC-BY only when attribution is recorded next to the imported files.
+- Keep the original download or source zip untouched and generate runtime files from it.
+- Update nearby asset notes, the preparation script, and asset tests when the runtime asset set changes.
+- If no license-safe asset fits, use the smallest temporary placeholder and record that it should be replaced.
+
 ## Run Locally
 
 ```powershell
@@ -115,14 +137,32 @@ Expected result:
 - Core tests pass.
 - Smoke test exits without import or display errors.
 - Workbench validation passes.
+- Asset checks prove the runtime sheets match the Kenney source zips.
+
+Scaling benchmark:
+
+```powershell
+.\.venv\Scripts\python.exe .\scripts\benchmark_scaling.py --agents 100 500 1000
+```
+
+Expected result:
+
+- A CSV-style table reports core tick time, LLM context build time, dummy draw time, SQLite save/load time, snapshot size, event count, memory count, and social-scan metrics.
+- Use this before increasing default population size or deciding whether Pygame is the scaling blocker.
 
 ## Data Operations
 
-There are no seed, migration, backup, or restore commands yet.
+There is no automatic viewer save/load UI yet.
+
+SQLite snapshot and event-log helper:
+
+- `agent_town.persistence.SQLiteSimulationStore(path).save_snapshot(sim)` writes a labeled local snapshot and replayable event log.
+- `load_snapshot()` restores tick, elapsed time, agents, locations, memories, relationships, events, and random state.
+- `load_event_log()` returns the saved event feed in replay order.
 
 Safety rules:
 
-- Do not add persistent local databases without updating `BLUEPRINT.md`, `RUNBOOK.md`, and tests.
+- Do not wire persistent local databases into automatic viewer behavior without updating `BLUEPRINT.md`, `RUNBOOK.md`, and tests.
 - Do not store real private data in agent memories unless the user explicitly approves that use.
 
 ## Deployment Or Startup
