@@ -22,7 +22,7 @@ def _small_context():
         name="Pat",
         skills={"farming": 12},
         needs={need: 1.0 for need in pawns.BUILD1_NEEDS},
-        mood=0.8,
+        mood=80.0,
     )
     state.buildings["b1"] = buildings.make_building("Farm", 0, 0, building_id="b1")
     return state, governor.build_context(state)

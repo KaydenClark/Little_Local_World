@@ -150,14 +150,21 @@ The bridge order is I1 -> I3 -> I2 (see the civilization render before adding th
       historical `Local_little_world_refactor1.md` as a frozen artifact; the
       `assets/colony/` directory rename is optional (asset-path risk) and may
       trail.
-   2. **Nutrition + RimWorld mood foundation on a 0-100 scale** (the priority,
-      current task). Locked design in `BLUEPRINT.md` "Mood: the RimWorld model"
+   2. **(done) Nutrition + RimWorld mood foundation on a 0-100 scale.** Food is a
+      nutrition reserve (eat bread, overeating waste, no free restoration); mood
+      is 0-100 with a Thought ledger, +12/-8 drift (frozen asleep), hunger
+      thoughts, and seeded mean-time-between break bands (35/20/5) + Catharsis.
+      Per the build-1 stakes decision the food sink is left as a deliberate hunger
+      pressure: the default viewer civ can run dry while the I1 survival civ
+      sustains; starvation death stays deferred to step 4. Locked design in
+      `BLUEPRINT.md` "Mood: the RimWorld model"
       and the "Pawn needs" / Design Decisions rows (nutrition reserve,
       opportunistic eating, 0-100 mood). File-by-file:
-      - **`core.py` (frozen-contract change, one-file-PR).** Add `Thought
-        {kind, label, value, age, stack}`; `Pawn.thoughts: list[Thought]`;
-        `Pawn.mood_target: float`; a `FactionState.seed: int` for the break PRNG.
-        `Pawn.mood` default moves from 0.5 to the 0-100 base.
+      - **`core.py` (frozen-contract change, one-file-PR).** Add a `Thought`
+        dataclass (kind, label, value, age, stack, duration); `Pawn.thoughts` (a
+        list of `Thought`); `Pawn.mood_target` (float); a `FactionState.seed`
+        (int) for the break PRNG. `Pawn.mood` default moves from 0.5 to the 0-100
+        base.
       - **`mood.py`.** Replace `compute_mood` with `mood_target` (= base + sum of
         thought values) plus the thought builders: a hunger thought from food
         saturation (Fed >=25% 0; Hungry 25-12.5% -6; Ravenous 12.5-0% -12;
@@ -319,3 +326,4 @@ Append a row when a task changes durable project state. Use actual results, not 
 | 2026-06-28 | Adopt the RimWorld mood model (foundation-first, seeded-RNG breaks) into the design | `.\scripts\validate-workbench.ps1` | pass | Docs only. Per user: adopt RimWorld's mood system as close as the engine allows. Replaced the `BLUEPRINT.md` mood subsection with "Mood: the RimWorld model (build 1 foundation)" - two-layer target/actual mood (drift +0.12/-0.08 per hour, frozen asleep), a `Thought` ledger, base-from-difficulty, hunger as the first thought, three break bands (35/20/5%) fired on a seeded PRNG keyed to a colony seed, per-trait break thresholds, and Catharsis; expectations/richer-thoughts/inspirations deferred to build 2; rooms/prisoners out of scope. Updated the determinism constraint to allow a seeded PRNG, added a Design Decisions row, and rewrote ROADMAP Next Task #5 step 2 into the mood foundation (contract adds: `Pawn.thoughts`, `Pawn.mood_target`, a `FactionState` seed). No code yet |
 | 2026-06-28 | Move colony UI into resizable in-map overlays | `.\.venv\Scripts\python.exe -m unittest tests.test_colony_view` (20 tests); `.\.venv\Scripts\python.exe -m unittest discover -s tests` (111 tests); `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; `git diff --check`; refreshed and inspected `docs\screenshots\current-state.png` | pass | The map now fills a larger resizable window with stats, roster/pawn sheet, and command strip rendered inside the map viewport; local model status remains in a slim footer outside the map. Command buttons are still visual placeholders |
 | 2026-06-28 | Build-1 stakes step 1: rename colony -> Civilization across code and active docs (behaviour-preserving) | `.\.venv\Scripts\python.exe -m unittest discover -s tests` (108 tests); `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; renamed-symbol import check | pass | Renamed every `colony`/`Colony`/`COLONY` code symbol and active-doc term to civilization; `git mv` of `colony.py`/`colony_view.py`/`test_colony_*.py` to `civilization*`; `ColonyException` -> `CivilizationException` (frozen-contract change, still avoids shadowing builtin `Exception`); updated `pyproject.toml` entry point. Intentionally kept as `colony`: the on-disk `assets/colony/` directory and its path string (asset-path rename trails per the roadmap), the frozen `Local_little_world_refactor1.md`, local-only `HANDOFF.md`, and the append-only Verification Log history. Not committed pending review. Next: Next Task #5 step 2 (RimWorld mood foundation + hunger thought) |
+| 2026-06-28 | Build-1 stakes step 2: nutrition reserve + RimWorld 0-100 mood/break foundation (continues the RED WIP checkpoint to green) | `.\.venv\Scripts\python.exe -m unittest discover -s tests` (124 tests, was 108); `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; `git diff --check`; 3-day bread/mood trajectory inspected | pass | Drove the RED foundation (core.py Thought/mood_target/seed + mood.py 0-100, from the prior WIP) to green. `pawns.py`: food is a nutrition reserve with `eat()` (bread 0.9, overeating waste) and the free `SCHEDULE_ANY` food restoration removed (conservation fix); break bands 35/20/5 fire on a seeded mean-time-between roll + per-trait offsets; `Catharsis` + thought stack/age/expire. `engine.py`: opportunistic eat at <=30% any waking hour, then mood_target -> drift -> age thoughts -> seeded break roll (`random.Random(f"{seed}:{id}:{day}:{hour}")`, process-stable). `economy.py`: `average_mood` un-clamped to 0-100, tax recalibrated (/100) so day-1 coin is unchanged. `governor.py`/`civilization_view.py`: bands + 0-100 mood, plus a thought ledger in the inspector. Added `test_step2_hunger_mood.py` and migrated every [0,1] mood assertion to 0-100. Per user the food sink is left as a deliberate hunger pressure (default viewer civ can run dry; I1 survival civ sustains). Next: step 3 Civ stats bar |

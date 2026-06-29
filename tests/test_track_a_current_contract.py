@@ -10,7 +10,7 @@ def worker(pawn_id: str, skill: str, level: int = 10) -> Pawn:
         name=pawn_id.title(),
         skills={skill: level},
         needs={},
-        mood=0.8,
+        mood=80.0,
         schedule="default",
     )
 

@@ -72,7 +72,7 @@ class PawnNeedsTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             pawns.restore_need(pawn, NEED_FOOD, -0.1)
 
-    def test_schedule_blocks_restore_matching_needs(self):
+    def test_schedule_blocks_restore_rest_and_recreation_but_not_food(self):
         pawn = Pawn(
             id="p1",
             name="Ada",
@@ -87,7 +87,8 @@ class PawnNeedsTests(unittest.TestCase):
 
         self.assertGreater(pawn.needs[NEED_REST], 0.2)
         self.assertGreater(pawn.needs[NEED_RECREATION], 0.2)
-        self.assertGreater(pawn.needs[NEED_FOOD], 0.2)
+        # Food is a nutrition reserve now: no schedule block restores it for free.
+        self.assertEqual(pawn.needs[NEED_FOOD], 0.2)
         self.assertEqual(pawn.needs, before_work)
 
     def test_needs_satisfaction_is_mean_of_tracked_needs(self):
@@ -105,7 +106,7 @@ class PawnNeedsTests(unittest.TestCase):
 
 
 class MoodTests(unittest.TestCase):
-    def test_compute_mood_tracks_needs_satisfaction(self):
+    def test_mood_target_tracks_needs_satisfaction(self):
         rested = Pawn(
             id="rested",
             name="Rested",
@@ -117,9 +118,10 @@ class MoodTests(unittest.TestCase):
             needs={NEED_REST: 0.0, NEED_FOOD: 0.0, NEED_RECREATION: 0.0},
         )
 
-        self.assertGreater(mood.compute_mood(rested), mood.compute_mood(strained))
-        self.assertGreaterEqual(mood.compute_mood(strained), 0.0)
-        self.assertLessEqual(mood.compute_mood(rested), 1.0)
+        # Mood is now on a 0-100 scale (mood_target replaces compute_mood).
+        self.assertGreater(mood.mood_target(rested), mood.mood_target(strained))
+        self.assertGreaterEqual(mood.mood_target(strained), 0.0)
+        self.assertLessEqual(mood.mood_target(rested), 100.0)
 
 
 if __name__ == "__main__":

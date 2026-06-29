@@ -30,7 +30,7 @@ def make_state() -> FactionState:
             skills={specialty: 20},
             traits=("industrious", "optimist", "tough"),
             needs={need: 1.0 for need in pawns.BUILD1_NEEDS},
-            mood=1.0,
+            mood=80.0,
             schedule="default",
         )
         state.pawns[pawn.id] = pawn
@@ -52,7 +52,7 @@ class IntegrationI1Tests(unittest.TestCase):
 
         engine.run_days(state, days=3)
 
-        self.assertGreaterEqual(economy.average_mood(state), 0.45)
+        self.assertGreaterEqual(economy.average_mood(state), 45)
         self.assertGreaterEqual(state.stockpile.counts.get(Good.BREAD, 0), 1)
         self.assertGreater(state.coin, 0)
         self.assertFalse([pawn for pawn in state.pawns.values() if pawn.state == pawns.STATE_WANDERING])

@@ -67,19 +67,23 @@ def production_tick(state: FactionState, *, work_fn: WorkFn = mood.effective_wor
 
 
 def average_mood(state: FactionState) -> float:
-    """Mean pawn mood across the civilization (0.0 if empty)."""
+    """Mean pawn mood across the civilization on the 0-100 scale (0.0 if empty)."""
     if not state.pawns:
         return 0.0
-    return sum(max(0.0, min(1.0, pawn.mood)) for pawn in state.pawns.values()) / len(state.pawns)
+    return sum(pawn.mood for pawn in state.pawns.values()) / len(state.pawns)
 
 
 def daily_tax_income(state: FactionState) -> int:
-    """Coin earned for one day from ``f(avg_mood, population, tax_rate)``."""
+    """Coin earned for one day from ``f(avg_mood, population, tax_rate)``.
+
+    ``average_mood`` is now 0-100, so it is normalised back to [0, 1] here; this
+    keeps the day-1 coin output identical to the pre-0-100 calibration.
+    """
     population = len(state.pawns)
     if population == 0:
         return 0
     tax_rate = max(0.0, state.tax_rate)
-    return int(population * average_mood(state) * tax_rate * 10)
+    return int(population * (average_mood(state) / mood.MOOD_MAX) * tax_rate * 10)
 
 
 def apply_daily_tax(state: FactionState) -> int:

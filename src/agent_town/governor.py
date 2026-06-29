@@ -35,8 +35,9 @@ from .core import (
 )
 from .llm import LLMClientError, LocalLLMClient, ModelDiscovery
 
-# A pawn this unhappy (but not yet breaking) is flagged for the governor.
-UNHAPPY_THRESHOLD = 0.4
+# A pawn this unhappy (but not yet in a break band) is flagged for the governor.
+# On the 0-100 mood scale, just above the minor break band (35).
+UNHAPPY_THRESHOLD = 45.0
 # An assigned pawn with role skill below this is a skill mismatch.
 MISMATCH_SKILL = 2
 
@@ -169,7 +170,7 @@ def build_exception_queue(state: FactionState) -> list[CivilizationException]:
         broken = pawn.state in BROKEN_STATES
         if broken:
             exceptions.append(CivilizationException("pawn_break", pawn_id=pawn.id, detail=pawn.state))
-        elif pawn.mood < pawns.BREAK_THRESHOLD:
+        elif pawn.mood < pawns.BREAK_MINOR:
             exceptions.append(
                 CivilizationException("pawn_breaking", pawn_id=pawn.id, detail=f"mood {round(pawn.mood, 2)}")
             )
@@ -392,6 +393,8 @@ GOVERNOR_SYSTEM_PROMPT = (
     "pawns yourself. Each turn you read a JSON summary of the civilization and reply with "
     "a JSON object {\"actions\": [...]} of zero or more policy actions. Valid action "
     "kinds and their fields:\n"
+    "Mood is on a 0-100 scale (about 50 is neutral; below 35 a pawn starts to "
+    "break).\n"
     "- assign_pawn {pawn_id, building_id, role}: staff an idle pawn into an open "
     "building slot whose skill matches the pawn.\n"
     "- set_schedule {group, template}: group is a pawn_id or \"all\"; template is "

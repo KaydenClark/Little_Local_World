@@ -167,8 +167,12 @@ def current_thoughts(pawn: Pawn, met_wants: frozenset[str] = frozenset()) -> lis
 
 
 def mood_target(pawn: Pawn, met_wants: frozenset[str] = frozenset()) -> float:
-    """The mood the pawn is heading toward: base + sum of active thoughts (0-100)."""
-    total = BASE_MOOD + sum(thought.value for thought in current_thoughts(pawn, met_wants))
+    """The mood the pawn is heading toward: base + sum of active thoughts (0-100).
+
+    Stacked event thoughts (e.g. Catharsis felt twice) contribute ``value * stack``;
+    situational thoughts always have ``stack == 1``.
+    """
+    total = BASE_MOOD + sum(t.value * t.stack for t in current_thoughts(pawn, met_wants))
     return _clamp_mood(total)
 
 

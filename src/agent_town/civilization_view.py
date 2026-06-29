@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 
 import pygame
 
-from . import economy, engine
+from . import economy, engine, mood
 from .assets import CivilizationAssetManifest, load_civilization_manifest
 from .core import FactionState, Good
 from .civilization import create_default_civilization
@@ -263,7 +263,7 @@ def _pawn_status_label(pawn) -> str:
         return "Breaking"
     if pawn.state == STATE_SLACKING:
         return "Stressed"
-    if pawn.mood < 0.35:
+    if pawn.mood < 35:
         return "Unhappy"
     if min(pawn.needs.values(), default=1.0) < 0.25:
         return "Needs care"
@@ -423,7 +423,7 @@ def _draw_pawn(
     # Mood dot above the head keeps mood readable at a glance.
     dot_y = top - 3
     pygame.draw.circle(surface, (20, 24, 20), (cx, dot_y), 4)
-    pygame.draw.circle(surface, _mood_color(pawn.mood), (cx, dot_y), 3)
+    pygame.draw.circle(surface, _mood_color(pawn.mood / 100), (cx, dot_y), 3)
 
 
 def find_pawn_at_screen(
@@ -496,6 +496,32 @@ def _draw_value_bar(
     _draw_text(surface, font, f"{round(value * 100)}%", INSPECTOR_MUTED, (bar.right + 7, rect.y + 1), 34)
 
 
+def _draw_thoughts(
+    surface: pygame.Surface,
+    font: pygame.font.Font,
+    pawn,
+    x: int,
+    y: int,
+    width: int,
+) -> int:
+    """Render the pawn's RimWorld-style mood thought ledger; return the new y."""
+    thoughts = sorted(mood.current_thoughts(pawn), key=lambda t: (t.value * t.stack, t.label))
+    y += 8
+    _draw_text(surface, font, "Thoughts", SELECTION, (x, y), width)
+    y += 22
+    if not thoughts:
+        _draw_text(surface, font, "Content", INSPECTOR_MUTED, (x, y), width)
+        return y + 20
+    for thought in thoughts:
+        total = thought.value * thought.stack
+        label = thought.label if thought.stack == 1 else f"{thought.label} x{thought.stack}"
+        color = (110, 175, 120) if total >= 0 else (205, 110, 92)
+        _draw_text(surface, font, label, INSPECTOR_TEXT, (x, y), width - 52)
+        _draw_text(surface, font, f"{total:+.0f}", color, (x + width - 46, y), 46)
+        y += 19
+    return y
+
+
 def _draw_chip(
     surface: pygame.Surface,
     font: pygame.font.Font,
@@ -565,7 +591,7 @@ def _draw_pawn_roster(
         px = card.centerx - portrait.get_width() // 2
         surface.blit(portrait, (px, card.y + 5))
         pygame.draw.circle(surface, (7, 9, 9), (card.right - 8, card.y + 9), 5)
-        pygame.draw.circle(surface, _mood_color(pawn.mood), (card.right - 8, card.y + 9), 4)
+        pygame.draw.circle(surface, _mood_color(pawn.mood / 100), (card.right - 8, card.y + 9), 4)
 
         short_name = pawn.name.split()[0]
         _draw_text(surface, font, short_name, INSPECTOR_TEXT, (card.x + 4, card.bottom - 15), card.width - 8)
@@ -594,7 +620,7 @@ def _draw_inspector(
     if pawn is None:
         line("Inspector", gap=25)
         line("No pawn selected", INSPECTOR_MUTED, gap=26)
-        line(f"Mood {round(economy.average_mood(state) * 100)}%", INSPECTOR_MUTED)
+        line(f"Mood {round(economy.average_mood(state))}", INSPECTOR_MUTED)
         line(f"Coin {state.coin}", INSPECTOR_MUTED)
         return
 
@@ -617,11 +643,15 @@ def _draw_inspector(
     y = tab_rect.bottom + 14
 
     line("Needs", SELECTION, gap=24)
-    _draw_value_bar(surface, font, "Mood", pawn.mood, pygame.Rect(x, y, rect.width - 28, 22), color=_mood_color(pawn.mood))
+    _draw_value_bar(
+        surface, font, "Mood", pawn.mood / 100, pygame.Rect(x, y, rect.width - 28, 22), color=_mood_color(pawn.mood / 100)
+    )
     y += 24
     for need, value in sorted(pawn.needs.items()):
         _draw_value_bar(surface, font, need.title(), value, pygame.Rect(x, y, rect.width - 28, 22))
         y += 24
+
+    y = _draw_thoughts(surface, font, pawn, x, y, rect.width - 28)
 
     y += 8
     line("Skills", SELECTION, gap=23)
@@ -666,7 +696,7 @@ def _draw_hud(
         f"Day {state.day}",
         f"{state.time_of_day:02d}:00",
         f"Pop {population}",
-        f"Mood {round(avg_mood * 100)}%",
+        f"Mood {round(avg_mood)}",
         f"Coin {state.coin}",
         f"Sites {sites}",
     )

@@ -10,8 +10,9 @@ civilization by one simulated hour:
    when the civilization can afford them;
 2. pending construction hauls its required goods and spends build work, flipping
    to a built ``Building`` when ready;
-3. each pawn decays its needs, restores from its schedule block, eats when
-   hungry and off-shift, recomputes mood, and advances its break state;
+3. each pawn decays its needs, restores rest/recreation from its schedule block,
+   eats bread opportunistically when its nutrition reserve runs low, drifts its
+   mood toward the thought-driven target, and advances its mental-break state;
 4. staffed, input-satisfied buildings produce through the ``effective_work``
    seam;
 5. the clock advances one hour, and tax is collected on a day rollover.
@@ -24,16 +25,17 @@ layer and drops in behind the same ``Governor`` protocol.
 
 from __future__ import annotations
 
+import random
 from dataclasses import dataclass
 
 from . import buildings, construction, economy, governor as governor_mod, mood, pawns, schedule
 from .core import (
     ACTION_PLACE_BUILDING,
     FactionState,
-    Good,
     GovernorAction,
     NEED_FOOD,
-    SCHEDULE_ANY,
+    Pawn,
+    SCHEDULE_SLEEP,
 )
 
 # Build work spent against a goods-satisfied construction site per hour. Build 1
@@ -41,8 +43,9 @@ from .core import (
 # build-2 refinement. Kept a deterministic constant here.
 CONSTRUCTION_WORK_PER_HOUR = 1.0
 
-# A pawn eats one bread when off-shift (an "any" block) and at least this hungry.
-EAT_FOOD_THRESHOLD = 0.65
+# A pawn eats opportunistically (any waking hour) once its nutrition reserve falls
+# to this saturation, if bread is on hand - RimWorld has no meal schedule block.
+EAT_FOOD_THRESHOLD = 0.30
 
 
 @dataclass(frozen=True)
@@ -134,20 +137,29 @@ def _advance_construction(state: FactionState) -> list[str]:
 
 
 def _advance_pawns(state: FactionState) -> None:
-    """Per-pawn need decay, schedule restoration, eating, mood, and break state."""
+    """Per-pawn need decay, restoration, opportunistic eating, mood drift, and breaks."""
     for pawn in state.pawns.values():
         block = schedule.block_for(pawn.schedule, state.time_of_day)
+        asleep = block == SCHEDULE_SLEEP
         pawns.decay_needs(pawn, 1.0)
         pawns.apply_schedule_block(pawn, block, 1.0)
-        if (
-            block == SCHEDULE_ANY
-            and pawn.needs[NEED_FOOD] < EAT_FOOD_THRESHOLD
-            and state.stockpile.counts.get(Good.BREAD, 0) > 0
-        ):
-            state.stockpile.remove(Good.BREAD, 1)
-            pawns.restore_need(pawn, NEED_FOOD, 1.0)
-        pawn.mood = mood.compute_mood(pawn)
-        pawns.update_break_state(pawn)
+        # Opportunistic eating: any waking hour, hungry enough, bread on hand.
+        if not asleep and pawn.needs[NEED_FOOD] <= EAT_FOOD_THRESHOLD:
+            pawns.eat(pawn, state.stockpile)
+        pawn.mood_target = mood.mood_target(pawn)
+        pawn.mood = mood.drift_mood(pawn.mood, pawn.mood_target, asleep=asleep)
+        pawns.age_thoughts(pawn)
+        pawns.advance_break_state(pawn, _break_roll(state, pawn))
+
+
+def _break_roll(state: FactionState, pawn: Pawn) -> float:
+    """A reproducible uniform roll in [0, 1) keyed to the faction seed and the clock.
+
+    Derived from a string seed so it is identical across processes and runs (a raw
+    ``hash`` of a tuple is salted per-process and would break determinism).
+    """
+    rng = random.Random(f"{state.seed}:{pawn.id}:{state.day}:{state.time_of_day}")
+    return rng.random()
 
 
 def _unique_site_id(state: FactionState, kind: str) -> str:

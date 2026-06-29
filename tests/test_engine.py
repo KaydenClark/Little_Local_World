@@ -23,7 +23,7 @@ def _farm_civilization() -> FactionState:
         skills={"farming": 18},
         traits=("industrious", "optimist", "tough"),
         needs={need: 1.0 for need in pawns.BUILD1_NEEDS},
-        mood=1.0,
+        mood=80.0,
         schedule="default",
     )
     farm = buildings.make_building("Farm", 0, 0, building_id="farm1")

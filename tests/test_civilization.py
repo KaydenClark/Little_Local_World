@@ -36,7 +36,7 @@ class DefaultCivilizationTests(unittest.TestCase):
 
         engine.run_days(state, days=3)
 
-        self.assertGreaterEqual(economy.average_mood(state), 0.45)
+        self.assertGreaterEqual(economy.average_mood(state), 45)
         self.assertGreater(state.coin, 0)
         self.assertFalse([p for p in state.pawns.values() if p.state == pawns.STATE_WANDERING])
         # Pawns were assigned to building slots by the fallback governor.
