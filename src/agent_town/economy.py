@@ -16,7 +16,7 @@ from __future__ import annotations
 from typing import Callable
 
 from . import mood
-from .core import FactionState, Good, Pawn, Recipe, Stockpile
+from .core import BUILD1_NEEDS, FactionState, Good, Pawn, Recipe, Stockpile
 
 # Base output rate per unit of summed effective work, per tick.
 BASE_RATE = 1.0
@@ -71,6 +71,20 @@ def average_mood(state: FactionState) -> float:
     if not state.pawns:
         return 0.0
     return sum(pawn.mood for pawn in state.pawns.values()) / len(state.pawns)
+
+
+def average_need(state: FactionState, need: str) -> float:
+    """Mean satisfaction of ``need`` across the civilization, in [0, 1] (0.0 if empty).
+
+    Powers the viewer's Civ stats bar. A pawn missing the need reads as satisfied
+    (1.0), matching the "needs start full" convention in ``pawns.decay_needs``.
+    """
+    if need not in BUILD1_NEEDS:
+        raise ValueError(f"unknown build-1 need: {need!r}")
+    if not state.pawns:
+        return 0.0
+    total = sum(max(0.0, min(1.0, pawn.needs.get(need, 1.0))) for pawn in state.pawns.values())
+    return total / len(state.pawns)
 
 
 def daily_tax_income(state: FactionState) -> int:

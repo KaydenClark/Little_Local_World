@@ -23,7 +23,7 @@ import pygame
 
 from . import economy, engine, mood
 from .assets import CivilizationAssetManifest, load_civilization_manifest
-from .core import FactionState, Good
+from .core import FactionState, Good, NEED_FOOD, NEED_RECREATION, NEED_REST
 from .civilization import create_default_civilization
 from .governor import (
     GOV_DISABLED,
@@ -104,6 +104,15 @@ HUD_GOODS = (
     ("Planks", Good.PLANKS),
     ("Stone", Good.STONE),
 )
+
+# Civ-wide need readouts shown in the top-left Civ stats panel. Mood is drawn
+# first (own colour); these three are pure readouts in build 1.
+CIV_STATS_NEEDS = (
+    ("Food", NEED_FOOD),
+    ("Recreation", NEED_RECREATION),
+    ("Rest", NEED_REST),
+)
+CIV_STATS_WIDTH = 224
 
 HUD_MUTED = (150, 156, 148)
 GOVERNOR_STATUS_COLOR = {
@@ -346,6 +355,7 @@ def render_civilization(
         )
 
     surface.set_clip(previous_clip)
+    _draw_civ_stats(surface, font, state, (map_rect.x + MARGIN, map_rect.y + MARGIN))
     _draw_pawn_roster(surface, state, assets, font, selected_pawn_id, map_rect.width)
     if inspector_rect is not None:
         _draw_inspector(surface, state, font, selected_pawn_id, inspector_rect)
@@ -494,6 +504,39 @@ def _draw_value_bar(
         pygame.draw.line(surface, (23, 28, 30), (tx, bar.y), (tx, bar.bottom), 1)
     pygame.draw.rect(surface, PANEL_BORDER, bar, 1)
     _draw_text(surface, font, f"{round(value * 100)}%", INSPECTOR_MUTED, (bar.right + 7, rect.y + 1), 34)
+
+
+def _draw_civ_stats(
+    surface: pygame.Surface,
+    font: pygame.font.Font,
+    state: FactionState,
+    topleft: tuple[int, int],
+) -> pygame.Rect:
+    """Draw the top-left Civ stats panel: Civ-wide Mood, Food, Recreation, Rest."""
+    bar_h = 22
+    rows = 1 + len(CIV_STATS_NEEDS)  # mood + the three need readouts
+    width = CIV_STATS_WIDTH
+    height = 30 + rows * bar_h + 6
+    x0, y0 = topleft
+
+    panel = pygame.Surface((width, height), pygame.SRCALPHA)
+    panel.fill((14, 18, 20, 210))
+    surface.blit(panel, (x0, y0))
+    pygame.draw.rect(surface, PANEL_BORDER, (x0, y0, width, height), 1)
+
+    x = x0 + 10
+    y = y0 + 8
+    _draw_text(surface, font, "Civilization", SELECTION, (x, y), width - 20)
+    y += 22
+    bar_rect = lambda: pygame.Rect(x, y, width - 20, 18)
+
+    avg_mood = economy.average_mood(state) / 100
+    _draw_value_bar(surface, font, "Mood", avg_mood, bar_rect(), color=_mood_color(avg_mood))
+    y += bar_h
+    for label, need in CIV_STATS_NEEDS:
+        _draw_value_bar(surface, font, label, economy.average_need(state, need), bar_rect())
+        y += bar_h
+    return pygame.Rect(x0, y0, width, height)
 
 
 def _draw_thoughts(
