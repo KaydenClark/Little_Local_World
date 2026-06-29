@@ -370,9 +370,10 @@ architecture rather than replacing it.
   drained by hunger and refilled only by eating: a pawn opportunistically eats
   one or more bread when it drops to ~30% saturation, capping at 1.0 with excess
   wasted. There is no meal schedule block (RimWorld has none) and no free
-  off-shift restoration. The current code has the conservation fix; the research
-  reconciliation still needs to retune bread from the earlier large-unit value to
-  the recommended 0.25 nutrition unit with up to four units per eat job.
+  off-shift restoration. Bread is a 0.25 nutrition portion and pawns eat a
+  rounded portion count, up to four bread per eat job. The Bakery outputs four
+  bread portions per cycle so the production chain stays balanced after the
+  smaller food unit.
   Saturation drives one hunger thought: Fed (>=24%) none; Hungry (24-12%) -6;
   Ravenously hungry (12-0%) -12; Malnourished/Starving (0%) -20 until the
   starvation system lands. Food is pulled out of the blended needs term so hunger
@@ -406,11 +407,10 @@ mood feeds `daily_tax_income`, so the tax constant is rebalanced in the same pas
 not silently.
 
 Productivity note from the mood research: vanilla RimWorld does not use a simple
-generic mood-to-work-speed multiplier. Productivity changes mostly through
-hunger, exhaustion, break downtime, and optional inspirations. Local Agent Town's
-existing `mood_factor` can remain only as an explicit town-design choice, and it
-should be reviewed before the Build-2 work-priority arbiter becomes the primary
-productivity model.
+generic mood-to-work-speed multiplier. Local Agent Town follows that: the legacy
+`mood_factor` hook is neutral, while `effective_work` is reduced directly by
+hunger and break state. High-mood upside remains deferred to explicit inspiration
+events once there are systems worth boosting.
 
 ### Starvation and pawn loss (build 1)
 
@@ -686,11 +686,11 @@ Rules:
 | Hunger as an explicit -5/-10/-15 mood modifier; death deferred behind it | Makes the mood hit the near-term feed-your-pawns incentive; food is pulled out of the blended needs term so hunger is one clean RimWorld-style modifier, not a double drag | 2026-06-28 user request |
 | Rename "civilization" -> "Civilization (Civ)" everywhere | One consistent player-facing and code vocabulary; done as an isolated behaviour-preserving commit (~327 refs / 32 files) before the mood work | 2026-06-28 user request |
 | Adopt RimWorld's mood model (two-layer target/actual, thoughts ledger, break bands), foundation-first | Mood is the game's story engine; building it RimWorld-shaped now means later thoughts/expectations/inspirations slot in without rework. Break timing uses a seeded PRNG so runs stay reproducible per seed | 2026-06-28 user request |
-| Food is a nutrition/saturation reserve (max 1.0, current bread unit = 0.9 pending research retune), eaten opportunistically at ~30% with overeating waste | Authentic RimWorld hunger; makes the bread chain conservation-real instead of an abstract satisfaction bar; the 2026-06-29 hunger paper recommends retuning bread to 0.25 nutrition before starvation death | 2026-06-28 user decision, updated 2026-06-29 research intake |
+| Food is a nutrition/saturation reserve (max 1.0, bread unit = 0.25), eaten opportunistically below 30% with rounded portions up to four bread and overeating waste | Authentic RimWorld hunger; makes the bread chain conservation-real instead of an abstract satisfaction bar; Bakery output is four bread portions per cycle so the smaller unit does not break Build-1 food balance | 2026-06-28 user decision, updated 2026-06-29 research retune |
 | Pawns eat opportunistically when hungry, not on a meal schedule block; the free off-shift food restoration is removed | RimWorld has no meal block - pawns eat when they drop to ~30%; closes the "food from nothing" conservation gap | 2026-06-28 user decision |
 | Mood moves to a 0-100 scale (RimWorld 1:1); thoughts use RimWorld point values (Hungry -6 etc.); `daily_tax_income` recalibrated in the same pass | Hunger, break, and thought numbers match RimWorld exactly with no 0-1 translation; supersedes the earlier "-5/-10/-15 on 0-1" hunger sketch | 2026-06-28 user decision |
 | Research papers are implementation inputs, not automatic code truth | Papers in `research_papers` are converted into explicit tasks, tests, and deferrals; source-level constants are verified or marked research-derived before exact implementation | 2026-06-29 research intake |
-| Reconcile Build-1 hunger with the hunger paper before lethal starvation | The paper recommends bread as 0.25 nutrition with up to four units per eat job; current Build-1 uses a larger bread unit, so starvation death should wait until that food-unit choice is retuned or consciously retained | 2026-06-29 research intake |
+| Reconcile Build-1 hunger with the hunger paper before lethal starvation | Bread is now 0.25 nutrition with up to four units per eat job; starvation death remains deferred until malnutrition/death timing is implemented deliberately | 2026-06-29 research retune |
 | Build-2 pawn autonomy uses a lane-based arbiter, not full RimWorld think-tree parity | Forced/manual, hard-state, self-care, emergency, and normal-work lanes preserve the feel while keeping decisions inspectable and testable | 2026-06-29 research intake |
 | Build-2 economy starts with district logistics and essentials before comfort | Water, food, storage, repair, wages, spending, taxes, and trade should surface bottlenecks through days-of-cover, blocked time, travel share, queue wait, and reserve-aware export rules | 2026-06-29 research intake |
 | Viewer readability follows AoE-style silhouette/layer/status rules and observer UI density budgets | Identity should read through silhouette and anchor consistency first; state/cause/actionability stay visually separated; persistent UI stays compact while detail lives in inspectors | 2026-06-29 research intake |

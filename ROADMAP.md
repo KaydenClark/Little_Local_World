@@ -236,27 +236,27 @@ docs.
 1. **RimWorld mood reconciliation** -
    `research_papers/1.rimworld_mood-system-report.md`
    - Current status: the 0-100 mood ledger, target/current mood split, seeded
-     break bands, and Catharsis are already implemented.
-   - Next code task: decide whether `mood_factor` stays as a deliberate
-     non-vanilla Local Agent Town throughput choice or is replaced by
-     productivity effects from hunger, exhaustion, break downtime, and later
-     inspirations.
-   - Tests: preserve tax stability and production sanity after any
-     `effective_work` change; add a test that high mood alone does not create a
-     hidden productivity boost if the multiplier is removed.
+     break bands, Catharsis, and the productivity reconciliation are implemented.
+     The legacy `mood_factor` hook is neutral; `effective_work` now changes
+     through hunger and break state rather than high mood alone.
+   - Next code task: none for Build 1; carry expectations and inspirations into
+     the later richer-thought/inspiration slice.
+   - Tests: high mood alone does not create a hidden productivity boost, hunger
+     directly reduces work, and break state stops work.
    - Deferred: wealth-based expectations, richer event thoughts, inspiration
      events.
 2. **RimWorld hunger and nutrition retune** -
    `research_papers/2.rimworld_hunger-system-report.md`
-   - Current status: food is conserved and eaten opportunistically at ~30%, but
-     the implemented bread unit is larger than the paper's recommended 0.25
-     nutrition unit.
-   - Next code task: retune bread to 0.25 nutrition, let a pawn eat up to four
-     bread per eating job, keep the 30% eat threshold, and update default
-     production/bread balance before starvation death lands.
-   - Tests: 0.301 vs 0.299 eat threshold, one-day nutrition conservation ledger,
-     portion waste near threshold, bread-only deterministic choice, and no free
-     schedule restoration.
+   - Current status: food is conserved, pawns seek food below 30%, bread is a
+     0.25 nutrition portion, eating consumes a rounded portion count up to four
+     bread, and Bakery output/default setup were rebalanced so the 12-pawn civ
+     remains winnable.
+   - Next code task: keep lethal starvation deferred until the malnutrition/death
+     timing slice; then add starvation status, exceptions, viewer surfacing, and
+     fallback food-chain urgency.
+   - Tests: 0.301 vs 0.299 eat threshold, portion waste near threshold,
+     short-stock eating, bread-only deterministic choice, default-civ survival,
+     and no free schedule restoration.
    - Deferred: feed-by-other patient/prisoner logic, food policy variety,
      disease/traits/genes that change hunger.
 3. **RimWorld autonomous pawn priorities** -
@@ -449,3 +449,5 @@ Append a row when a task changes durable project state. Use actual results, not 
 | 2026-06-28 | Close completed build-1 bridge goal in ROADMAP/README | `.\.venv\Scripts\python.exe -m unittest tests.test_package_runtime tests.test_engine tests.test_llm_governor tests.test_civilization_view` (33 tests); `.\.venv\Scripts\python.exe -m unittest discover -s tests` (138 tests); `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; `git diff --check` | pass | Docs only. Removed stale "final viewer cleanup pending" language from the active roadmap goal and README next-up list. The I1/I2/I3 bridge is now recorded as closed; next code work starts from build-2 depth unless the deferred starvation-death stake is explicitly pulled forward. |
 | 2026-06-29 | Integrate research papers into workbench docs and implementation queue | `.\scripts\validate-workbench.ps1`; `git diff --check` | pass | Docs only. Wired `research_papers/1..6` into AGENTS, BLUEPRINT, ROADMAP, RUNBOOK, and README as source-input guidance; recorded the mood/hunger conflicts to reconcile (generic mood-to-work multiplier and bread 0.25 vs current larger bread unit); added paper-by-paper implementation slices for mood, hunger, work priorities, Townsmen economy depth, AoE readability, observer UI, and pending scale-paper intake. |
 | 2026-06-29 | Integrate Paper 7 scale research into the workbench queue | `.\scripts\validate-workbench.ps1`; `git diff --check` | pass | Docs only. Replaced the pending scale-paper slot with concrete scale architecture guidance: exact player-visible truth at 12 pawns, reachability regions and deterministic phases before larger populations, job indexes/cadence buckets by 16-64 pawns, path abstraction/shared routes by 64-150, district work packets/path budgets by 150-400, and offscreen ETA/far-needs/visual LOD by 400-1000. Added scale guidance to AGENTS, BLUEPRINT, ROADMAP, RUNBOOK, and README. |
+| 2026-06-29 | Research retune: bread portions and hunger/break productivity | `.\.venv\Scripts\python.exe -m unittest tests.test_step2_hunger_mood tests.test_track_b_b2 tests.test_track_a_current_contract tests.test_integration_i1 tests.test_civilization tests.test_engine` (41 tests); `.\.venv\Scripts\python.exe -m unittest discover -s tests` (143 tests); `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; `git diff --check` | pass | Bread is now a 0.25 nutrition portion; pawns eat a rounded portion count up to four bread below the strict 30% threshold; Bakery output is four bread portions per cycle; the default civ starts a fourth Farm and equivalent bread reserve so the 12-pawn viewer civ remains winnable for the 3-day fallback proof. `mood_factor` is neutral; `effective_work` now changes through hunger and break state rather than high mood alone. Starvation death remains deferred until the malnutrition/death timing slice. |
+| 2026-06-29 | Synthesize seven research papers into one Little Local World project paper | `.\scripts\validate-workbench.ps1`; `git diff --check` | pass | Docs only. Added `research_papers/8.little-local-world-research-synthesis.md`, combining mood, hunger, autonomy, Townsmen economy loops, AoE readability, observer UI, and scale architecture into one project-specific design paper. Strategic result: food was the right first conservation slice, but after the bread correction the next highest-leverage step is `set_work_priority` plus reservations, not deeper starvation or economy complexity. |

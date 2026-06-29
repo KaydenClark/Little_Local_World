@@ -114,12 +114,9 @@ Ollama can use the same adapter with
 
 ## Next Useful Upgrades
 
-- Reconcile the research-backed hunger model with the current bread unit before
-  implementing lethal starvation.
-- Decide whether the current generic mood-to-work multiplier stays as a
-  deliberate Local Agent Town rule or is replaced by hunger/break-driven
-  productivity only.
 - Add the Build 2 lane-based work-priority arbiter and reservation model.
+- Keep lethal starvation deferred until the malnutrition/death timing slice can
+  add status, exceptions, viewer surfacing, and food-chain urgency together.
 - Start the first Townsmen-style essentials slice: Water Well -> water need ->
   Civ readout -> governor exception.
 - Add the first Paper 7 scale foundations before larger populations:

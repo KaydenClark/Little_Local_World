@@ -164,7 +164,7 @@ class TrackA4Tests(unittest.TestCase):
         for _ in range(8):
             economy.production_tick(state)
 
-        self.assertEqual(state.stockpile.counts.get(Good.BREAD), 2)
+        self.assertEqual(state.stockpile.counts.get(Good.BREAD), 8)
         self.assertEqual(state.stockpile.counts.get(Good.STONE), 8)
         self.assertTrue(economy.can_afford(state, {Good.BREAD: 1}, coin_cost=0))
         self.assertFalse(economy.can_afford(state, {Good.PLANKS: 1}, coin_cost=0))
