@@ -6,15 +6,15 @@ from agent_town import pawns
 
 
 def _wood_ready_state() -> FactionState:
-    """A colony with the coin and goods to build the first chain link (Forester)."""
+    """A civilization with the coin and goods to build the first chain link (Forester)."""
     state = FactionState(day=0, time_of_day=7, coin=10)
     state.stockpile.add(Good.PLANKS, 4)
     state.stockpile.add(Good.STONE, 2)
     return state
 
 
-def _farm_colony() -> FactionState:
-    """A minimal deterministic colony: one farmer, one Farm, some bread on hand."""
+def _farm_civilization() -> FactionState:
+    """A minimal deterministic civilization: one farmer, one Farm, some bread on hand."""
     state = FactionState(day=0, time_of_day=7, tax_rate=0.2)
     state.stockpile.add(Good.BREAD, 4)
     state.pawns["farmer"] = Pawn(
@@ -59,8 +59,8 @@ class EngineConstructionTests(unittest.TestCase):
 
 class EngineDeterminismTests(unittest.TestCase):
     def test_same_setup_same_outcome(self):
-        first = _farm_colony()
-        second = _farm_colony()
+        first = _farm_civilization()
+        second = _farm_civilization()
 
         engine.run_days(first, days=2)
         engine.run_days(second, days=2)
@@ -74,7 +74,7 @@ class EngineDeterminismTests(unittest.TestCase):
         )
 
     def test_run_days_advances_whole_days(self):
-        state = _farm_colony()
+        state = _farm_civilization()
 
         results = engine.run_days(state, days=2)
 

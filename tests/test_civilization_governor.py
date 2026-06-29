@@ -1,4 +1,4 @@
-"""Tests for the non-blocking colony governor scheduler (integration I2).
+"""Tests for the non-blocking civilization governor scheduler (integration I2).
 
 The scheduler runs the LLM governor's model call off the render loop. These
 tests mirror ``test_llm.py``'s scheduler suite: an injected ``http_post`` stands
@@ -13,13 +13,13 @@ from unittest.mock import patch
 
 from agent_town import buildings, governor
 from agent_town.core import ACTION_SET_SCHEDULE, FactionState, Pawn
-from agent_town.governor import ColonyDecisionScheduler, FallbackGovernor
+from agent_town.governor import CivilizationDecisionScheduler, FallbackGovernor
 from agent_town.llm import LocalLLMClient
 from agent_town import pawns
 
 
 def _small_context():
-    """A colony with one idle, skilled pawn and one open Farm slot."""
+    """A civilization with one idle, skilled pawn and one open Farm slot."""
     state = FactionState()
     state.pawns["p1"] = Pawn(
         id="p1",
@@ -52,7 +52,7 @@ class SchedulerNonBlockingTests(unittest.TestCase):
             time.sleep(0.2)
             return _rest_all_post(payload, timeout)
 
-        sched = ColonyDecisionScheduler(
+        sched = CivilizationDecisionScheduler(
             LocalLLMClient(model="gemma-test", http_post=slow_post), interval=0.0
         )
 
@@ -62,7 +62,7 @@ class SchedulerNonBlockingTests(unittest.TestCase):
 
         try:
             self.assertLess(elapsed, 0.05)
-            # The model is still thinking, so the colony runs on the fallback.
+            # The model is still thinking, so the civilization runs on the fallback.
             self.assertEqual(first, FallbackGovernor().decide(context))
             self.assertEqual(sched.status.state, "thinking")
         finally:
@@ -73,7 +73,7 @@ class SchedulerNonBlockingTests(unittest.TestCase):
         _state, context = _small_context()
         # A real cooldown keeps the scheduler from instantly re-submitting after
         # it harvests, so the harvested "idle" state is observable.
-        sched = ColonyDecisionScheduler(
+        sched = CivilizationDecisionScheduler(
             LocalLLMClient(model="gemma-test", http_post=_rest_all_post), interval=10.0
         )
 
@@ -102,7 +102,7 @@ class SchedulerNonBlockingTests(unittest.TestCase):
             time.sleep(0.2)
             return _rest_all_post(payload, timeout)
 
-        sched = ColonyDecisionScheduler(
+        sched = CivilizationDecisionScheduler(
             LocalLLMClient(model="gemma-test", http_post=slow_post), interval=0.0
         )
 
@@ -123,7 +123,7 @@ class SchedulerFallbackTests(unittest.TestCase):
         def offline_post(payload, timeout):
             raise ConnectionError("server refused connection")
 
-        sched = ColonyDecisionScheduler(
+        sched = CivilizationDecisionScheduler(
             LocalLLMClient(model="gemma-test", http_post=offline_post), interval=10.0
         )
 
@@ -133,7 +133,7 @@ class SchedulerFallbackTests(unittest.TestCase):
             sched.decide(context)
             time.sleep(0.01)
 
-        # The colony keeps getting valid fallback actions regardless of the model.
+        # The civilization keeps getting valid fallback actions regardless of the model.
         fallback_actions = sched.decide(context)
         sched.shutdown(wait=True)
         self.assertEqual(sched.status.state, "offline")
@@ -141,7 +141,7 @@ class SchedulerFallbackTests(unittest.TestCase):
 
     def test_disabled_scheduler_always_uses_fallback(self):
         _state, context = _small_context()
-        sched = ColonyDecisionScheduler(LocalLLMClient(model=None))
+        sched = CivilizationDecisionScheduler(LocalLLMClient(model=None))
 
         self.assertFalse(sched.enabled)
         self.assertEqual(sched.status.state, "disabled")
@@ -151,7 +151,7 @@ class SchedulerFallbackTests(unittest.TestCase):
 
 class SchedulerToggleTests(unittest.TestCase):
     def test_can_be_disabled_and_reconnected_at_runtime(self):
-        sched = ColonyDecisionScheduler(LocalLLMClient(model=None))
+        sched = CivilizationDecisionScheduler(LocalLLMClient(model=None))
         self.assertFalse(sched.enabled)
 
         with patch.dict(os.environ, {}, clear=True):
@@ -171,7 +171,7 @@ class SchedulerToggleTests(unittest.TestCase):
         sched.shutdown(wait=True)
 
     def test_toggle_flips_between_llm_and_fallback(self):
-        sched = ColonyDecisionScheduler(LocalLLMClient(model=None))
+        sched = CivilizationDecisionScheduler(LocalLLMClient(model=None))
 
         with patch.dict(os.environ, {}, clear=True):
             now_on = sched.toggle(model_discovery=lambda base_url, timeout: "model-1")
@@ -184,7 +184,7 @@ class SchedulerToggleTests(unittest.TestCase):
         sched.shutdown(wait=True)
 
     def test_toggle_reports_failure_when_no_model_found(self):
-        sched = ColonyDecisionScheduler(LocalLLMClient(model=None))
+        sched = CivilizationDecisionScheduler(LocalLLMClient(model=None))
 
         with patch.dict(os.environ, {}, clear=True):
             now_on = sched.toggle(model_discovery=lambda base_url, timeout: "")

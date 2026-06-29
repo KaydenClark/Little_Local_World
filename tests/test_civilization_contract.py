@@ -1,4 +1,4 @@
-"""Colony contract proof: frozen core shapes import, instantiate, and the
+"""Civilization contract proof: frozen core shapes import, instantiate, and the
 cross-track seam is callable.
 
 Headless - no Pygame.
@@ -11,7 +11,7 @@ import unittest
 from agent_town import core
 
 
-COLONY_MODULES = [
+CIVILIZATION_MODULES = [
     "world",
     "buildings",
     "economy",
@@ -62,7 +62,7 @@ class ContractDataclassTests(unittest.TestCase):
         )
         self.assertEqual(site.delivered, {})
 
-        exc = core.ColonyException(kind="unstaffed", building_id="saw1", detail="empty")
+        exc = core.CivilizationException(kind="unstaffed", building_id="saw1", detail="empty")
         self.assertEqual(exc.pawn_id, None)
 
     def test_schedule_template_requires_24_blocks(self):
@@ -122,8 +122,8 @@ class SeamTests(unittest.TestCase):
 
 
 class SkeletonTests(unittest.TestCase):
-    def test_all_colony_modules_import(self):
-        for name in COLONY_MODULES:
+    def test_all_civilization_modules_import(self):
+        for name in CIVILIZATION_MODULES:
             with self.subTest(module=name):
                 importlib.import_module(f"agent_town.{name}")
 

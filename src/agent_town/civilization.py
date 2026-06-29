@@ -1,9 +1,9 @@
-"""Default colony scenario for the viewer (integration milestone I3).
+"""Default civilization scenario for the viewer (integration milestone I3).
 
 Seeds a deterministic build-1 ``FactionState`` the engine can step and the
 viewer can render: a tile world with resource nodes, the build-1 production
 buildings placed on the grid, and a dozen pawns skilled for them. It mirrors the
-seeded I1 survival colony so the rendered colony also sustains under the fallback
+seeded I1 survival civilization so the rendered civilization also sustains under the fallback
 governor.
 """
 
@@ -12,8 +12,8 @@ from __future__ import annotations
 from . import buildings, pawns, world
 from .core import FactionState, Good, Pawn
 
-COLONY_WIDTH = 24
-COLONY_HEIGHT = 16
+CIVILIZATION_WIDTH = 24
+CIVILIZATION_HEIGHT = 16
 
 # (kind, tile_x, tile_y) for the starting build-1 buildings. Positions are
 # visual only - build-1 recipes do not consume the underlying tile/node.
@@ -47,14 +47,14 @@ STARTING_PAWNS: tuple[tuple[str, str], ...] = (
     ("Hand Dob", "baking"),
 )
 
-# Mood-positive traits keep the seeded colony alive under the fallback governor,
-# matching the I1 survival colony.
+# Mood-positive traits keep the seeded civilization alive under the fallback governor,
+# matching the I1 survival civilization.
 PAWN_TRAITS = ("industrious", "optimist", "tough")
 
 
-def create_default_colony(*, seed: int = 7) -> FactionState:
-    """Build the seeded build-1 colony the viewer renders and the engine steps."""
-    grid, nodes = world.create_world(COLONY_WIDTH, COLONY_HEIGHT, seed=seed)
+def create_default_civilization(*, seed: int = 7) -> FactionState:
+    """Build the seeded build-1 civilization the viewer renders and the engine steps."""
+    grid, nodes = world.create_world(CIVILIZATION_WIDTH, CIVILIZATION_HEIGHT, seed=seed)
     state = FactionState(
         coin=20,
         tax_rate=0.2,

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 # ============================================================================
-# Colony contract (Build 1) - frozen Phase 0 deliverable.
+# Civilization contract (Build 1) - frozen Phase 0 deliverable.
 #
 # These dataclasses and the `effective_work` seam (in mood.py) are the shared
 # interface both build tracks depend on. See BLUEPRINT.md "Frozen contract".
@@ -14,7 +14,7 @@ from enum import Enum
 # schedule/governor) meet only at `effective_work(pawn, recipe, time_of_day)`.
 #
 # Naming note: the refactor plan calls the exception-queue entity "Exception".
-# It is implemented here as `ColonyException` so it never shadows the builtin
+# It is implemented here as `CivilizationException` so it never shadows the builtin
 # `Exception` - the LLM governor's hard fallback relies on `except Exception`.
 # ============================================================================
 
@@ -171,6 +171,25 @@ class ConstructionSite:
 
 
 @dataclass
+class Thought:
+    """A named moodlet on a pawn's mood ledger (RimWorld-style).
+
+    ``value`` is a point contribution on the 0-100 mood scale (e.g. Hungry = -6).
+    Situational thoughts (hunger, rest/rec, traits, wants) are recomputed each
+    tick; ``age``/``stack`` are used by persistent event thoughts (e.g. Catharsis)
+    that decay over time. ``duration`` is the lifetime in hours for event thoughts
+    (0 == situational, never stored/aged).
+    """
+
+    kind: str
+    label: str
+    value: float
+    age: int = 0
+    stack: int = 1
+    duration: int = 0
+
+
+@dataclass
 class Pawn:
     """A colonist. Owned by Track B; the engine reads it for production."""
 
@@ -180,7 +199,9 @@ class Pawn:
     traits: tuple[str, ...] = ()
     wants: tuple[str, ...] = ()
     needs: dict[str, float] = field(default_factory=dict)
-    mood: float = 0.5
+    mood: float = 50.0
+    mood_target: float = 50.0
+    thoughts: list[Thought] = field(default_factory=list)
     schedule: str = "default"
     assignment: JobRef | None = None
     x: int = 0
@@ -209,7 +230,7 @@ class FactionState:
 
     The refactor-plan table lists the economic/people fields; ``grid`` and
     ``resource_nodes`` are included here because build 1 is single-faction /
-    single-map, so this is the natural root container for the whole colony.
+    single-map, so this is the natural root container for the whole civilization.
     """
 
     stockpile: Stockpile = field(default_factory=Stockpile)
@@ -222,12 +243,13 @@ class FactionState:
     tax_rate: float = 0.1
     day: int = 0
     time_of_day: int = 0
+    seed: int = 0
     grid: GridMap | None = None
     resource_nodes: list[ResourceNode] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
-class ColonyException:
+class CivilizationException:
     """An item in the governor's exception queue (plan entity "Exception")."""
 
     kind: str

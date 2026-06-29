@@ -1,7 +1,7 @@
 import json
 import unittest
 
-from agent_town import buildings, colony, engine, governor
+from agent_town import buildings, civilization, engine, governor
 from agent_town.core import (
     ACTION_ASSIGN_PAWN,
     ACTION_SET_SCHEDULE,
@@ -15,7 +15,7 @@ from agent_town import pawns
 
 
 def _small_context():
-    """A colony with one idle, skilled pawn and one open Farm slot."""
+    """A civilization with one idle, skilled pawn and one open Farm slot."""
     state = FactionState()
     state.pawns["p1"] = Pawn(
         id="p1",
@@ -129,10 +129,10 @@ class LLMGovernorClientTests(unittest.TestCase):
 
 class LLMGovernorEngineTests(unittest.TestCase):
     def test_hard_fallback_governor_matches_fallback_over_three_days(self):
-        # An always-failing LLM governor must drive the colony identically to the
+        # An always-failing LLM governor must drive the civilization identically to the
         # deterministic fallback - proving the safety net is faithful.
-        llm_state = colony.create_default_colony()
-        fb_state = colony.create_default_colony()
+        llm_state = civilization.create_default_civilization()
+        fb_state = civilization.create_default_civilization()
 
         engine.run_days(llm_state, governor.LLMGovernor(propose=_raise), days=3)
         engine.run_days(fb_state, governor.FallbackGovernor(), days=3)

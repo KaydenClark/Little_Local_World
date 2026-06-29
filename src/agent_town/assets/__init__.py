@@ -27,11 +27,11 @@ def load_kenney_manifest() -> KenneyAssetManifest:
     )
 
 
-# Colony sprite set (authored for the colony viewer, milestone I3). 25px base
+# Civilization sprite set (authored for the civilization viewer, milestone I3). 25px base
 # tiles plus larger prop/building sprites anchored bottom-centre on a tile.
-COLONY_TILE_SIZE = 25
+CIVILIZATION_TILE_SIZE = 25
 
-COLONY_SPRITE_FILES = {
+CIVILIZATION_SPRITE_FILES = {
     # terrain (one tile each)
     "grass": "tile_grass.png",
     "dirt": "tile_dirt.png",
@@ -52,11 +52,11 @@ COLONY_SPRITE_FILES = {
 # Pawn sprites (``pawn_*.png``) are discovered by glob rather than listed here,
 # so the set scales without manifest churn. They are the CC0 "Tiny Characters
 # Set" by Fleurman (based on GrafxKid), sliced from All.png.
-COLONY_PAWN_GLOB = "pawn_*.png"
+CIVILIZATION_PAWN_GLOB = "pawn_*.png"
 
 
 @dataclass(frozen=True)
-class ColonyAssetManifest:
+class CivilizationAssetManifest:
     tile_size: int
     directory: Path
     sprite_files: dict[str, str]
@@ -65,10 +65,10 @@ class ColonyAssetManifest:
         return self.directory.joinpath(self.sprite_files[name])
 
 
-def load_colony_manifest() -> ColonyAssetManifest:
+def load_civilization_manifest() -> CivilizationAssetManifest:
     root = files("agent_town").joinpath("assets", "colony")
-    return ColonyAssetManifest(
-        tile_size=COLONY_TILE_SIZE,
+    return CivilizationAssetManifest(
+        tile_size=CIVILIZATION_TILE_SIZE,
         directory=Path(str(root)),
-        sprite_files=dict(COLONY_SPRITE_FILES),
+        sprite_files=dict(CIVILIZATION_SPRITE_FILES),
     )

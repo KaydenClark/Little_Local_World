@@ -1,7 +1,7 @@
 """Schedule templates and the day clock. [Track B]
 
 Defines named 24-hour schedules (which hours are work / sleep / rec / any) and
-advances the colony clock, rolling ``time_of_day`` over into a new ``day``.
+advances the civilization clock, rolling ``time_of_day`` over into a new ``day``.
 
 Phase 0 status: signatures frozen, bodies stubbed. Implemented in milestone B1.
 """
@@ -19,7 +19,7 @@ from .core import (
 
 HOURS_PER_DAY = 24
 
-# Build-1 schedules. Hours are local colony hours, 0-23.
+# Build-1 schedules. Hours are local civilization hours, 0-23.
 SCHEDULE_TEMPLATES: dict[str, ScheduleTemplate] = {
     "default": ScheduleTemplate(
         "default",

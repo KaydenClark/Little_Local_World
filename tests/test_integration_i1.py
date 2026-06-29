@@ -44,9 +44,9 @@ def make_state() -> FactionState:
 
 
 class IntegrationI1Tests(unittest.TestCase):
-    def test_fallback_governor_sustains_seeded_colony_for_three_days(self):
+    def test_fallback_governor_sustains_seeded_civilization_for_three_days(self):
         # The survival proof now runs through the reusable engine stepper rather
-        # than a test-local loop; the seeded food-only colony exercises the same
+        # than a test-local loop; the seeded food-only civilization exercises the same
         # assign/needs/mood/production/tax path.
         state = make_state()
 

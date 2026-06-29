@@ -7,7 +7,7 @@
 ## What This Project Is
 
 Local Agent Town is being refactored from an AI-Town social wander-sim into a
-single-faction, LLM-governed colony builder: a Townsmen-style town economy
+single-faction, LLM-governed civilization builder: a Townsmen-style town economy
 staffed by about a dozen RimWorld-style pawns, run by one Governor agent that
 sets policy and never micro-controls pawns.
 
@@ -19,7 +19,7 @@ One sentence:
 
 Primary users:
 
-- Kayden, as the local operator and designer of the colony.
+- Kayden, as the local operator and designer of the civilization.
 - Future coding agents extending the engine, governor, and viewer.
 
 Authoritative build plan: `Local_little_world_refactor1.md`. This blueprint is
@@ -35,7 +35,7 @@ the stable summary; the refactor plan is the milestone-by-milestone spec.
 - One Governor: a deterministic rule-based fallback first, a local LLM
   (Gemma 4 E4B) as a drop-in second.
 - The Governor reads summaries plus an exception queue, never raw pawn state.
-- The Pygame viewer renders the colony state and remains a smoke-test surface.
+- The Pygame viewer renders the civilization state and remains a smoke-test surface.
 
 ### Non-Goals
 
@@ -49,34 +49,34 @@ This project is not trying to:
 - let the Governor micromanage pawns - it issues policy commands only.
 
 "Multiplayer game" above means human multiplayer. Multiple AI agents each
-running their own colony on one map (below) is a planned later build, not a
+running their own civilization on one map (below) is a planned later build, not a
 non-goal.
 
 ## Long-term vision (beyond build 1)
 
-Build 1 is the foundation: one colony, one Governor, about 12 pawns, headless
+Build 1 is the foundation: one civilization, one Governor, about 12 pawns, headless
 then rendered. The product it grows into:
 
-- **Pure autopilot, watched not played.** The operator does not play the colony.
-  One Governor agent per colony runs it end to end; the operator spectates -
-  opening any colony and seeing its live state (pawn assignments, work
+- **Pure autopilot, watched not played.** The operator does not play the civilization.
+  One Governor agent per civilization runs it end to end; the operator spectates -
+  opening any civilization and seeing its live state (pawn assignments, work
   priorities, stockpiles, mood, construction) as if they were the one playing,
-  but only to confirm the agent is managing well. The colony is hands-off by
+  but only to confirm the agent is managing well. The civilization is hands-off by
   design.
-- **One voice per colony.** The Governor agent is the colony's single voice and
+- **One voice per civilization.** The Governor agent is the civilization's single voice and
   mind. Pawns have no voice; they have RimWorld-style free will - each pawn
   autonomously picks its highest-priority available job from a priority list the
   Governor tunes. The point of the spectator view is watching how the agent
   juggles those priorities across a dozen, then hundreds, of autonomous pawns.
 - **Scale arc:** 1 agent / about 12 pawns, then 1 agent / up to about 1000
-  pawns, then two agents each running their own colony on one shared map,
+  pawns, then two agents each running their own civilization on one shared map,
   competing for the same finite resources. Rivals do not know the other exists
   at first; contact is emergent.
 - **Victory is the Space Age.** The primary win is technological: research and
-  build a colony able to leave the planet (a launch / space-age milestone). The
-  secondary, implied win is to outlast the rival colony. Research is therefore a
+  build a civilization able to leave the planet (a launch / space-age milestone). The
+  secondary, implied win is to outlast the rival civilization. Research is therefore a
   core progression spine, not a stretch goal.
-- **A player avatar / "the keep."** Each colony has a seat of power in the world
+- **A player avatar / "the keep."** Each civilization has a seat of power in the world
   the agent is identified with, so the agent has visible stake. Revolution
   targets the keep; losing it is a fail state.
 - **Immortal agents, mortal pawns.** Real time maps to game time at roughly
@@ -84,7 +84,7 @@ then rendered. The product it grows into:
   about 80, productive about 16-60; the Space Age extends this to about 120,
   productive to about 80). The very old and very young are cared for, not worked.
 
-These are marked direction. Build 1 stays single-colony, single-map, no rival,
+These are marked direction. Build 1 stays single-civilization, single-map, no rival,
 no military; the roadmap sequences the rest, governed by the law below.
 
 ## Design north star: conservation ("nothing from nothing")
@@ -97,7 +97,7 @@ nothing; everything traces to a source.
 - Soldiers come from people: a soldier is a pawn who was born from two parent
   pawns, grew up, walked to a barracks, and trained. The barracks never spawns a
   unit from nothing.
-- Coin comes from circulation: taxes are collected from wages the colony already
+- Coin comes from circulation: taxes are collected from wages the civilization already
   paid out (see the money loop). The only external coin source is trade.
 
 When a new system is proposed, the test is: where does each thing come from, and
@@ -125,8 +125,8 @@ Pawns (autonomous, need-driven) on a tile map
 | Layer | Choice | Source or notes |
 |---|---|---|
 | Runtime | Python 3.11 or newer | Verified locally with Python 3.11.6 |
-| Simulation core | Deterministic, Pygame-free dataclasses and pure functions | `src\agent_town` colony modules |
-| Frontend | Pygame desktop window | Smoke test today; renders colony state at integration milestone I3 |
+| Simulation core | Deterministic, Pygame-free dataclasses and pure functions | `src\agent_town` civilization modules |
+| Frontend | Pygame desktop window | Smoke test today; renders civilization state at integration milestone I3 |
 | Optional local AI | OpenAI-compatible chat completions adapter | Governor backend; falls back to the rule-based governor on any error |
 | Testing | Standard library `unittest`, headless | Per-module tests, no Pygame for the core |
 
@@ -140,7 +140,7 @@ Architecture constraints (hard):
   tick.
 - Determinism: same seed plus same policy equals same outcome. The LLM is the
   only nondeterministic layer and must be swappable for the deterministic
-  fallback. Mood and mental-break timing use a seeded PRNG keyed to the colony
+  fallback. Mood and mental-break timing use a seeded PRNG keyed to the civilization
   seed, which is still deterministic per seed.
 
 Operator interaction principles:
@@ -169,14 +169,14 @@ src\agent_town\
   schedule.py        <- schedule templates, day clock           (Track B)
   governor.py        <- context builder + fallback governor     (Track B)
   llm.py             <- adapter, extended for the governor       (Track B)
-  colony_view.py    <- Pygame viewer for colony state            (integration)
+  civilization_view.py    <- Pygame viewer for civilization state            (integration)
 tests\               <- unittest, headless, per module
 ```
 
 Transition note: the legacy social-sim (`Agent`, `Simulation`, `Location`,
 `app.py`, `persistence.py`, and `spatial.py`) was retired after I3 reached
-colony-viewer parity. Current runtime code is the colony contract, engine,
-governor, local LLM client, and `colony_view.py`.
+civilization-viewer parity. Current runtime code is the civilization contract, engine,
+governor, local LLM client, and `civilization_view.py`.
 
 ## Frozen contract
 
@@ -197,11 +197,11 @@ that both tracks rebase on, never a unilateral edit.
 | `Pawn` | id, name, skills, traits, wants, needs, mood, schedule, assignment, x, y, state |
 | `ScheduleTemplate` | name, blocks (24 long); `block_at` |
 | `FactionState` | stockpile, coin, pawns, buildings, construction_sites, research, season, tax_rate, day, time_of_day, grid, resource_nodes |
-| `ColonyException` | kind, pawn_id or None, building_id or None, detail |
+| `CivilizationException` | kind, pawn_id or None, building_id or None, detail |
 | `GovernorAction` | kind plus the fields for that action (see Governor interface) |
 
 Naming decision: the refactor plan calls the exception-queue entity
-"Exception". It is implemented as `ColonyException` so it never shadows the
+"Exception". It is implemented as `CivilizationException` so it never shadows the
 builtin `Exception`; the LLM governor's hard fallback relies on a broad
 `except Exception`.
 
@@ -238,9 +238,14 @@ Production chains:
 Construction consumes planks plus stone. Bread is the consumable that feeds the
 food need.
 
-Pawn needs (build 1): rest, food, recreation. Each value is in the range 0.0 to
-1.0 where 1.0 means fully satisfied; needs decay toward 0.0 over time and are
-restored by the matching schedule block plus the right good or building.
+Pawn needs (build 1): rest, food, recreation. Rest and recreation are 0.0-1.0
+satisfaction values that decay over time and are restored by the matching
+schedule block. Food is different: it is a RimWorld-style **nutrition/saturation
+reserve** (0.0-1.0 nutrition, max 1.0) drained by hunger and refilled only by
+eating - a pawn opportunistically eats one bread (0.9 nutrition) when it drops to
+~30% saturation, capping at 1.0 with the excess wasted. No schedule block or idle
+hour grants food for free (conservation law); full design in "Mood: the RimWorld
+model" below.
 
 Trait subset: industrious or lazy (work speed), tough or frail (mood floor now,
 combat later), optimist or pessimist (mood floor), loner (solo jobs lift mood),
@@ -250,17 +255,19 @@ Wants subset: wants_outdoor_work, wants_own_house, wants_soldier (flagged,
 unused until build 2). A met want is a mood boost; an ignored one is a slow mood
 drag.
 
-Mood and breaks: `mood = base + needs_satisfaction + trait_modifiers +
-want_progress`. Below a threshold the pawn breaks: it slacks (effective_work
-drops), then wanders off the job. The break, surfaced as a `ColonyException`, is
-the Governor's early-warning signal.
+Mood and breaks use the RimWorld model on a **0-100 scale**: `mood_target = base +
+sum(thoughts)` and the displayed mood drifts toward it. Below the break bands a
+pawn slacks (effective_work drops), then wanders off the job. The break, surfaced
+as a `CivilizationException`, is the Governor's early-warning signal. Full design in
+"Mood: the RimWorld model (build 1 foundation)" below.
 
 ### Mood: the RimWorld model (build 1 foundation)
 
-We adopt RimWorld's mood model as closely as the engine allows. Mood is a
-story-generating system, not a cosmetic meter: logistics (food, rest,
-recreation, later clothes/death/etc.) become emotion, and emotion feeds back into
-work, breaks, and tax. Shape:
+We adopt RimWorld's mood model as closely as the engine allows, including its
+**0-100 mood scale** (replacing the earlier 0-1 mood, so thoughts and break bands
+use RimWorld's own point values directly). Mood is a story-generating system, not
+a cosmetic meter: logistics (food, rest, recreation, later clothes/death/etc.)
+become emotion, and emotion feeds back into work, breaks, and tax. Shape:
 
 > mood_target = base mood + expectations + sum of active thoughts
 > actual mood drifts toward the target over time
@@ -270,8 +277,9 @@ Build 1 builds the foundation; the deferred pieces below slot into the same
 architecture rather than replacing it.
 
 - **Two layers (target vs actual).** Each tick we compute `mood_target` from the
-  ledger; the displayed `pawn.mood` (actual) drifts toward it at +0.12 per hour
-  rising and -0.08 per hour falling, and is frozen while the pawn sleeps. The
+  ledger; the displayed `pawn.mood` (actual) drifts toward it at +12 per hour
+  rising and -8 per hour falling (on the 0-100 scale), and is frozen while the
+  pawn sleeps. The
   buffer means one bad event does not instabreak a pawn, but sustained misery
   does - and fixing a problem lifts the target at once while the pawn recovers
   gradually. `Pawn.mood_target` is added to the frozen contract for the readout.
@@ -279,25 +287,31 @@ architecture rather than replacing it.
   {kind, label, value, age, stack}`, in a `Pawn.thoughts` list (contract change)
   - sourced from needs, traits, wants, and later events. Many small negatives
   stack into a crisis. The pawn inspector shows the list, RimWorld-style. Values
-  are point-equivalents on the 0-1 scale (-5% = -0.05).
+  are RimWorld points on the 0-100 mood scale (e.g. Hungry = -6).
 - **Base mood from difficulty.** The base is a storyteller/difficulty setting
   (RimWorld uses ~42 down to ~22); build 1 ships one default and exposes the
   knob later.
-- **Hunger is the first real thought.** Read off the food need (100% = full):
-  food >= 15% none; 5-15% -5%; 0-5% -10%; 0% -15% ("Hungry" / "Starving"). Food
-  is pulled out of the blended needs term so hunger hits mood exactly once. This
-  is the primary near-term incentive to keep pawns fed; starvation death (below)
-  is sequenced after it.
+- **Food is a nutrition reserve, and hunger is the first real thought.** The food
+  need becomes a RimWorld-style saturation reserve (0-1 nutrition, max 1.0)
+  drained by hunger and refilled only by eating: a pawn opportunistically eats one
+  bread (0.9 nutrition) when it drops to ~30% saturation, capping at 1.0 with the
+  excess wasted. There is no meal schedule block (RimWorld has none) and no free
+  off-shift restoration - the conservation fix lands here, in step 2. Saturation
+  drives one hunger thought: Fed (>=25%) none; Hungry (25-12.5%) -6; Ravenously
+  hungry (12.5-0%) -12; Malnourished (0%) -20. Food is pulled out of the blended
+  needs term so hunger hits mood exactly once. The deeper bands (-26 / -32 / -38 /
+  -44) and the lethal malnutrition ailment arrive with starvation death (below,
+  step 4). This is the primary near-term incentive to keep pawns fed.
 - **Breaks are band + roll.** Three bands replace the old single threshold:
   minor < 35%, major < 20%, extreme < 5%. A break fires on a mean-time-between
-  roll that is faster in lower bands, off a seeded PRNG keyed to a colony seed -
+  roll that is faster in lower bands, off a seeded PRNG keyed to a civilization seed -
   so the engine stays reproducible (same seed + same policy = same outcome) while
   still feeling unpredictable, the way RimWorld's "story generator" does. Traits
   shift a pawn's break thresholds (iron-willed vs volatile). After a break ends
   the pawn gets a large Catharsis thought, so colonies are not trapped in endless
   consecutive breaks. Breaks remain the Governor's early-warning exceptions and
   still cut `effective_work`.
-- **Civ stats bar.** "Civ" (Civilization, the renamed colony) mood is the average
+- **Civ stats bar.** "Civ" (Civilization, the renamed civilization) mood is the average
   of all pawns; a Civ stats bar shows four Civ-wide averages - Mood, Food,
   Recreation, Rest - as coloured percentages. Build 1 adds a mood consequence
   only for food; the other three are readouts.
@@ -322,21 +336,24 @@ hunger thought is the primary near-term incentive). Rules:
 
 - Food is restored only by eating bread (a `Good`). No schedule block, building,
   or idle hour grants food for free - this is the conservation law applied to
-  hunger ("nothing from nothing"). The current free off-shift food restoration is
-  removed as part of this work.
+  hunger ("nothing from nothing"). The free off-shift food restoration is removed
+  with the nutrition reserve in the mood foundation (step 2); this section then
+  adds the lethal failure mode on top. At step 4 the flat "72h since last meal"
+  rule may be replaced by a RimWorld-style malnutrition ailment (severity accrues
+  while at zero nutrition, death ~6 days after) - finalised when step 4 lands.
 - Each pawn tracks `hours_since_meal`, reset to 0 when it eats and incremented
   every hour otherwise. A pawn that goes 72 hours (three game-days) without a
-  meal dies and is removed from the colony; the engine scrubs it from every
-  building's `staffed_by`. (Optional follow-on: a witnessed-death colony-wide
+  meal dies and is removed from the civilization; the engine scrubs it from every
+  building's `staffed_by`. (Optional follow-on: a witnessed-death civilization-wide
   mood debuff, RimWorld-style.)
 - The Governor gets an early-warning `starving_pawn` exception well before the
-  72-hour mark plus a colony food readout (bread on hand / days of food /
+  72-hour mark plus a civilization food readout (bread on hand / days of food /
   starving count), so policy - build and staff Farm -> Mill -> Bakery - can
   respond before anyone dies. The deterministic fallback prioritises the food
   chain under starvation, keeping it a valid winnability oracle.
 - The viewer surfaces hunger as visible status: a starvation badge on the pawn,
   a "starving / Nd since food" line and death countdown in the inspector, a
-  colony food/starving readout in the HUD, and a death line in the event log.
+  civilization food/starving readout in the HUD, and a death line in the event log.
 
 This pulls a narrow slice of the build-3 pawn lifecycle (death) forward into
 build 1: starvation death only. Aging, productivity bands, and birth stay in
@@ -426,7 +443,7 @@ Coin is conserved internally and only enters or leaves through trade.
   buys scarce goods for coin. This is the only external source and sink.
 
 So "where do taxes come from if you don't pay your people" resolves cleanly: you
-tax the wages you paid, and net colony wealth comes from selling what the pawns
+tax the wages you paid, and net civilization wealth comes from selling what the pawns
 produced. No wages means nothing to tax, plus a mood penalty.
 
 ### Healthcare (skill, not a punishing chain)
@@ -456,12 +473,12 @@ caps and hauling pressure land in build 2.
 Disasters (fire, lightning, cold snaps that freeze crops or kill unsheltered
 pawns) are operator-triggered, not random: the operator is the storyteller, via
 a deliberate UI action or a separate prompting model - never the Governor agent
-that is playing the colony.
+that is playing the civilization.
 
 ### Pets
 
 Decoration in build 1 (dogs/cats appear once population passes a threshold).
-Later, dogs gain a guard role: protecting the colony area alongside pawns.
+Later, dogs gain a guard role: protecting the civilization area alongside pawns.
 
 ## Governor interface
 
@@ -518,14 +535,14 @@ whoever finishes first.
 
 ## Core Logic And Invariants
 
-Core behavior lives in the colony modules under `src\agent_town`.
+Core behavior lives in the civilization modules under `src\agent_town`.
 
 Rules:
 
 - All economy, pawn, mood, schedule, and governor logic is testable without
   Pygame.
 - Governor actions are validated against state before they mutate it.
-- The viewer may read colony state but must not duplicate engine logic or block
+- The viewer may read civilization state but must not duplicate engine logic or block
   on model output.
 - The deterministic core and the fallback governor must pass tests before the
   LLM layer is built.
@@ -545,17 +562,20 @@ Rules:
 
 | Decision | Rationale | Date or source |
 |---|---|---|
-| Refactor the social-sim into an LLM-governed colony builder | New product direction; supersedes the social-sim blueprint | 2026-06-27 `Local_little_world_refactor1.md` |
+| Refactor the social-sim into an LLM-governed civilization builder | New product direction; supersedes the social-sim blueprint | 2026-06-27 `Local_little_world_refactor1.md` |
 | Freeze a shared contract in `core.py` first | Lets two tracks build in parallel without colliding | 2026-06-27 Phase 0 |
 | `effective_work` is the only cross-track seam | Keeps the parallel split clean and the integration point small | 2026-06-27 Phase 0 |
-| Name the exception entity `ColonyException` | Avoids shadowing the builtin `Exception` the LLM fallback relies on | 2026-06-27 Phase 0 |
+| Name the exception entity `CivilizationException` | Avoids shadowing the builtin `Exception` the LLM fallback relies on | 2026-06-27 Phase 0 |
 | Keep the legacy social-sim importable during the refactor | Keeps the existing viewer and tests green until milestone I3 | 2026-06-27 Phase 0 |
 | Deterministic fallback governor before the LLM governor | The fallback is the winnability oracle and the safety net | 2026-06-27 refactor plan |
-| Retire the legacy social-sim after I3 parity | Removes obsolete viewer/runtime code once the colony viewer, LLM governor, smoke test, and benchmarks cover the current product | 2026-06-28 I3 cleanup |
+| Retire the legacy social-sim after I3 parity | Removes obsolete viewer/runtime code once the civilization viewer, LLM governor, smoke test, and benchmarks cover the current product | 2026-06-28 I3 cleanup |
 | Pull starvation death into build 1 (72h since last meal -> pawn dies) | Food had no lethal consequence, so the food economy carried no stakes; death by starvation is the build-1 incentive to keep pawns fed. Aging/birth stay in build 3 | 2026-06-28 user request |
 | Hunger as an explicit -5/-10/-15 mood modifier; death deferred behind it | Makes the mood hit the near-term feed-your-pawns incentive; food is pulled out of the blended needs term so hunger is one clean RimWorld-style modifier, not a double drag | 2026-06-28 user request |
-| Rename "colony" -> "Civilization (Civ)" everywhere | One consistent player-facing and code vocabulary; done as an isolated behaviour-preserving commit (~327 refs / 32 files) before the mood work | 2026-06-28 user request |
+| Rename "civilization" -> "Civilization (Civ)" everywhere | One consistent player-facing and code vocabulary; done as an isolated behaviour-preserving commit (~327 refs / 32 files) before the mood work | 2026-06-28 user request |
 | Adopt RimWorld's mood model (two-layer target/actual, thoughts ledger, break bands), foundation-first | Mood is the game's story engine; building it RimWorld-shaped now means later thoughts/expectations/inspirations slot in without rework. Break timing uses a seeded PRNG so runs stay reproducible per seed | 2026-06-28 user request |
+| Food is a nutrition/saturation reserve (max 1.0, bread = 0.9), eaten opportunistically at ~30% with overeating waste | Authentic RimWorld hunger; makes the bread chain conservation-real (~2 bread/pawn/day is a load the bakeries must sustain) instead of an abstract satisfaction bar | 2026-06-28 user decision |
+| Pawns eat opportunistically when hungry, not on a meal schedule block; the free off-shift food restoration is removed | RimWorld has no meal block - pawns eat when they drop to ~30%; closes the "food from nothing" conservation gap | 2026-06-28 user decision |
+| Mood moves to a 0-100 scale (RimWorld 1:1); thoughts use RimWorld point values (Hungry -6 etc.); `daily_tax_income` recalibrated in the same pass | Hunger, break, and thought numbers match RimWorld exactly with no 0-1 translation; supersedes the earlier "-5/-10/-15 on 0-1" hunger sketch | 2026-06-28 user decision |
 
 ## Health Criteria
 

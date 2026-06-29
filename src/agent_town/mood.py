@@ -9,34 +9,60 @@ of ``effective_work`` over its staffed pawns:
 ``schedule_factor`` is 0 when the pawn's current hour is not a work block, so an
 off-shift or broken pawn contributes nothing.
 
-B2 lands the real formula; B1/B3 own ``compute_mood`` (base mood from needs plus
-trait and want modifiers).
+Mood is the RimWorld model on a **0-100 scale**: ``mood_target`` is the base mood
+plus the sum of active :class:`Thought` values, and the displayed ``pawn.mood``
+drifts toward the target each hour (see :func:`drift_mood`). Build-1 thoughts are
+hunger (from the food saturation reserve), a blended rest+rec thought, and the
+trait/want contributions. Event thoughts (e.g. Catharsis) live in
+``pawn.thoughts`` and are summed in too.
 """
 
 from __future__ import annotations
 
 from . import schedule
-from .core import Pawn, Recipe, SCHEDULE_WORK
-from .pawns import needs_satisfaction
+from .core import (
+    NEED_FOOD,
+    NEED_RECREATION,
+    NEED_REST,
+    Pawn,
+    Recipe,
+    SCHEDULE_WORK,
+    Thought,
+)
 
-BASE_MOOD = 0.2
-NEEDS_MOOD_WEIGHT = 0.7
+# Mood runs on a 0-100 scale (RimWorld 1:1).
+MOOD_MIN = 0.0
+MOOD_MAX = 100.0
+BASE_MOOD = 55.0  # storyteller/difficulty baseline before thoughts (RimWorld ~42-55)
+
+# Two-layer mood: the displayed mood chases mood_target, rising faster than it
+# falls, so one bad event does not instabreak a pawn but sustained misery does.
+MOOD_DRIFT_UP = 12.0
+MOOD_DRIFT_DOWN = 8.0
 
 # effective_work sub-factor tuning. Skills are assumed in RimWorld's 0-20 range.
 SKILL_BASE = 0.5
 SKILL_PER_LEVEL = 0.05
 SKILL_FACTOR_FLOOR = 0.4
-MOOD_BONUS_SLOPE = 0.4  # mood above 0.5 grants up to +20% work at mood 1.0
+MOOD_BONUS_SLOPE = 0.4  # mood above neutral (50) grants up to +20% work at 100
 TRAIT_WORK = {"industrious": 1.15, "lazy": 0.85}
 
-# compute_mood modifiers (B3). A met want lifts mood; an ignored want drags it.
-TRAIT_MOOD = {"optimist": 0.08, "pessimist": -0.08, "tough": 0.04, "frail": -0.04}
-WANT_MET_BONUS = 0.05
-WANT_UNMET_DRAG = -0.02
+# Thought point values on the 0-100 mood scale (RimWorld 1:1).
+TRAIT_MOOD = {"optimist": 8.0, "pessimist": -8.0, "tough": 4.0, "frail": -4.0}
+WANT_MET_BONUS = 5.0
+WANT_UNMET_DRAG = -2.0
+REST_REC_SWING = 40.0  # blended rest+rec thought spans [-20, +20] around 0.5
+
+# Hunger thought, read off the food saturation reserve (1.0 == full nutrition).
+HUNGER_FED_BAND = 0.25  # >= this: Fed, no thought
+HUNGER_RAVENOUS_BAND = 0.125  # below this (and > 0): Ravenously hungry
+HUNGER_HUNGRY_VALUE = -6.0
+HUNGER_RAVENOUS_VALUE = -12.0
+HUNGER_MALNOURISHED_VALUE = -20.0
 
 
-def _clamp01(value: float) -> float:
-    return max(0.0, min(1.0, value))
+def _clamp_mood(value: float) -> float:
+    return max(MOOD_MIN, min(MOOD_MAX, value))
 
 
 def skill_factor(skill_level: int) -> float:
@@ -45,10 +71,11 @@ def skill_factor(skill_level: int) -> float:
 
 
 def mood_factor(mood: float) -> float:
-    """Work multiplier from current mood (B2). Neutral mood 0.5 maps to 1.0."""
-    if mood >= 0.5:
-        return 1.0 + (mood - 0.5) * MOOD_BONUS_SLOPE
-    return max(0.1, mood / 0.5)
+    """Work multiplier from current mood (B2). Neutral mood 50 maps to 1.0."""
+    m = mood / MOOD_MAX
+    if m >= 0.5:
+        return 1.0 + (m - 0.5) * MOOD_BONUS_SLOPE
+    return max(0.1, m / 0.5)
 
 
 def trait_factor(traits: tuple[str, ...], recipe: Recipe) -> float:
@@ -79,27 +106,76 @@ def effective_work(pawn: Pawn, recipe: Recipe, time_of_day: int) -> float:
     )
 
 
-def trait_mood_modifier(traits: tuple[str, ...]) -> float:
-    """Mood floor/ceiling contribution from traits (optimist, pessimist, ...)."""
-    return sum(TRAIT_MOOD.get(trait, 0.0) for trait in traits)
+# --- The mood ledger -------------------------------------------------------
 
 
-def want_mood_modifier(wants: tuple[str, ...], met_wants: frozenset[str]) -> float:
-    """Mood contribution from wants: a boost when met, a slow drag when ignored."""
-    total = 0.0
-    for want in wants:
-        total += WANT_MET_BONUS if want in met_wants else WANT_UNMET_DRAG
-    return total
+def hunger_thought(pawn: Pawn) -> Thought | None:
+    """The single hunger thought from the food saturation reserve, or None when Fed."""
+    food = pawn.needs.get(NEED_FOOD, 1.0)
+    if food >= HUNGER_FED_BAND:
+        return None
+    if food <= 0.0:
+        return Thought("hunger", "Malnourished", HUNGER_MALNOURISHED_VALUE)
+    if food < HUNGER_RAVENOUS_BAND:
+        return Thought("hunger", "Ravenously hungry", HUNGER_RAVENOUS_VALUE)
+    return Thought("hunger", "Hungry", HUNGER_HUNGRY_VALUE)
 
 
-def compute_mood(pawn: Pawn, met_wants: frozenset[str] = frozenset()) -> float:
-    """base + needs_satisfaction + trait_modifiers + want_progress (B1/B3).
+def rest_rec_thought(pawn: Pawn) -> Thought:
+    """A blended rest+recreation thought (food is its own thought now)."""
+    rest = pawn.needs.get(NEED_REST, 1.0)
+    rec = pawn.needs.get(NEED_RECREATION, 1.0)
+    value = (((rest + rec) / 2.0) - 0.5) * REST_REC_SWING
+    return Thought("needs", "Rested & recreated", round(value, 2))
 
-    ``met_wants`` is the set of the pawn's wants currently satisfied, supplied by
-    the caller that has the world context (a pawn alone cannot tell whether, say,
-    ``wants_outdoor_work`` is met). Defaults to none met.
-    """
-    mood = BASE_MOOD + NEEDS_MOOD_WEIGHT * needs_satisfaction(pawn)
-    mood += trait_mood_modifier(pawn.traits)
-    mood += want_mood_modifier(pawn.wants, met_wants)
-    return _clamp01(mood)
+
+def trait_thoughts(pawn: Pawn) -> list[Thought]:
+    """Mood thoughts from mood-affecting traits (optimist, pessimist, ...)."""
+    return [
+        Thought("trait", trait, TRAIT_MOOD[trait])
+        for trait in pawn.traits
+        if trait in TRAIT_MOOD
+    ]
+
+
+def want_thoughts(pawn: Pawn, met_wants: frozenset[str]) -> list[Thought]:
+    """A thought per want: a boost when met, a slow drag when ignored."""
+    thoughts: list[Thought] = []
+    for want in pawn.wants:
+        if want in met_wants:
+            thoughts.append(Thought("want", f"{want} (met)", WANT_MET_BONUS))
+        else:
+            thoughts.append(Thought("want", f"{want} (unmet)", WANT_UNMET_DRAG))
+    return thoughts
+
+
+def situational_thoughts(pawn: Pawn, met_wants: frozenset[str] = frozenset()) -> list[Thought]:
+    """Thoughts derived from the pawn's current state (recomputed each tick)."""
+    thoughts: list[Thought] = []
+    hunger = hunger_thought(pawn)
+    if hunger is not None:
+        thoughts.append(hunger)
+    thoughts.append(rest_rec_thought(pawn))
+    thoughts.extend(trait_thoughts(pawn))
+    thoughts.extend(want_thoughts(pawn, met_wants))
+    return thoughts
+
+
+def current_thoughts(pawn: Pawn, met_wants: frozenset[str] = frozenset()) -> list[Thought]:
+    """Every active thought: situational ones plus persistent event thoughts."""
+    return situational_thoughts(pawn, met_wants) + list(pawn.thoughts)
+
+
+def mood_target(pawn: Pawn, met_wants: frozenset[str] = frozenset()) -> float:
+    """The mood the pawn is heading toward: base + sum of active thoughts (0-100)."""
+    total = BASE_MOOD + sum(thought.value for thought in current_thoughts(pawn, met_wants))
+    return _clamp_mood(total)
+
+
+def drift_mood(actual: float, target: float, asleep: bool = False) -> float:
+    """Move ``actual`` mood one hour toward ``target`` (+12 up / -8 down), frozen asleep."""
+    if asleep:
+        return _clamp_mood(actual)
+    if target > actual:
+        return _clamp_mood(actual + min(MOOD_DRIFT_UP, target - actual))
+    return _clamp_mood(actual - min(MOOD_DRIFT_DOWN, actual - target))

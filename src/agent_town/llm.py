@@ -22,7 +22,7 @@ class LLMClientError(RuntimeError):
 
 
 class LocalLLMClient:
-    """OpenAI-compatible local chat client used by the colony governor."""
+    """OpenAI-compatible local chat client used by the civilization governor."""
 
     def __init__(
         self,

@@ -8,13 +8,13 @@ This is the active work plan. Keep it forward-looking and proof-oriented.
 ## Current State
 
 The project is mid-refactor from the AI-Town social wander-sim into a
-single-faction, LLM-governed colony builder. The authoritative build plan is
+single-faction, LLM-governed civilization builder. The authoritative build plan is
 `Local_little_world_refactor1.md`; `BLUEPRINT.md` carries the stable summary.
 
-Phase 0 is complete: the frozen colony contract lives in `core.py` (Good,
+Phase 0 is complete: the frozen civilization contract lives in `core.py` (Good,
 GridMap, ResourceNode, Stockpile, Recipe, Building, ConstructionSite, Pawn,
-JobRef, ScheduleTemplate, FactionState, ColonyException, GovernorAction), eight
-colony modules exist (world, economy, buildings, construction, pawns, mood,
+JobRef, ScheduleTemplate, FactionState, CivilizationException, GovernorAction), eight
+civilization modules exist (world, economy, buildings, construction, pawns, mood,
 schedule, governor), and the `effective_work` cross-track seam is defined in
 `mood.py`.
 
@@ -45,30 +45,30 @@ Important drift or uncertainty:
 
 - The legacy social-sim (`Agent`, `Simulation`, `Location`, `app.py`,
   `persistence.py`, `spatial.py`, and their compatibility tests) has been
-  retired after I3 reached colony-viewer parity. The package now exports the
-  colony runtime (`FactionState`, `create_default_colony`) and the console
-  entrypoint goes directly to `colony_view.py`.
-- The default `python -m agent_town` view is now the colony viewer
-  (`colony_view.py`), which renders the colony `FactionState`, steps the
+  retired after I3 reached civilization-viewer parity. The package now exports the
+  civilization runtime (`FactionState`, `create_default_civilization`) and the console
+  entrypoint goes directly to `civilization_view.py`.
+- The default `python -m agent_town` view is now the civilization viewer
+  (`civilization_view.py`), which renders the civilization `FactionState`, steps the
   engine, supports camera pan/zoom, and has a RimWorld-style UI shell: top pawn
   roster, right pawn sheet with needs/skills/traits, and bottom command/status
   strip. The legacy social-sim entrypoints and tests are removed; final viewer
-  cleanup now means polishing the colony viewer itself, not keeping the old
+  cleanup now means polishing the civilization viewer itself, not keeping the old
   viewer alive.
 - The LLM governor (I2) is integrated: `governor.LLMGovernor` implements the
   same `decide(context)` interface backed by `LocalLLMClient.complete_json` with
   a JSON-schema action list and a hard fallback to `FallbackGovernor` on any
-  error. It is proven faithful (an always-failing LLM governor drives the colony
+  error. It is proven faithful (an always-failing LLM governor drives the civilization
   identically to the fallback over three days), has a live Gemma 4 E4B run log
   through `scripts/llm_governor_run.py --hours 6`, and is wired into the
-  real-time viewer through the non-blocking `ColonyDecisionScheduler`. Remaining
-  bridge work is final colony-viewer cleanup before build-2 depth begins.
+  real-time viewer through the non-blocking `CivilizationDecisionScheduler`. Remaining
+  bridge work is final civilization-viewer cleanup before build-2 depth begins.
 
 ## Current Goal
 
 Turn the passing Track A + Track B module set into a reusable deterministic
-colony stepper, then extend it through I2/I3 so the local LLM governor and
-viewer run against real colony state.
+civilization stepper, then extend it through I2/I3 so the local LLM governor and
+viewer run against real civilization state.
 
 Done when:
 
@@ -76,7 +76,7 @@ Done when:
   the three-day fallback survival proof;
 - the LLM governor can drop in behind the fallback interface without blocking
   the sim loop;
-- the viewer renders colony state instead of the legacy social-sim state;
+- the viewer renders civilization state instead of the legacy social-sim state;
 - the smoke test still exits successfully and workbench validation passes.
 
 ## Build arc (the long road)
@@ -86,15 +86,15 @@ each gated on the prior. Conservation ("nothing from nothing", `BLUEPRINT.md`)
 governs every system. The full content design lives in `BLUEPRINT.md`'s "Target
 content design"; this is the sequencing.
 
-- **Build 1 - one colony works (current).** About 12 pawns, 3 chains (wood,
+- **Build 1 - one civilization works (current).** About 12 pawns, 3 chains (wood,
   food, stone), construction, needs/mood/breaks, happiness-to-tax, deterministic
-  fallback Governor then the LLM Governor, viewer renders colony state.
+  fallback Governor then the LLM Governor, viewer renders civilization state.
 - **Build 2 - depth and the spectator.** Water and clothes/beauty chains; the
   full needs set (water, shelter, clothes, beauty); building quality to
   happiness; decay + repair as a material/coin sink; the wage money loop
   (wages -> spend -> tax) with the Market and Tavern; storage caps and a
   "storage full %" readout; RimWorld work priorities (`set_work_priority`) and
-  the per-colony spectator view; skill-based healthcare (Infirmary + optional
+  the per-civilization spectator view; skill-based healthcare (Infirmary + optional
   medicine); the Church as recreation/mood; operator-triggered disasters; the
   revolution meter plus the keep and fail state; pets as decor; save state.
 - **Build 3 - the people are real.** Pawn lifecycle: aging, productivity bands,
@@ -105,28 +105,28 @@ content design"; this is the sequencing.
 - **Build 4 - competition and the Space Age.** Two Governor agents, one shared
   map, finite contested resources, rivals unaware at first. The research spine
   to the industrial tier (components) and the space-program endgame: the first
-  colony to launch wins, and outlasting the rival is the implied secondary win.
-  Scale target up to about 1000 pawns per colony.
+  civilization to launch wins, and outlasting the rival is the implied secondary win.
+  Scale target up to about 1000 pawns per civilization.
 
 ## Next Tasks
 
-The bridge order is I1 -> I3 -> I2 (see the colony render before adding the LLM).
+The bridge order is I1 -> I3 -> I2 (see the civilization render before adding the LLM).
 
 1. **(done) Extract the I1 headless stepper** - `engine.py` is the reusable
-   colony engine; the three-day survival test runs through it. See the current
+   civilization engine; the three-day survival test runs through it. See the current
    state above.
-2. **(done, cleanup pending) Viewer I3** - `colony_view.py` renders the colony
+2. **(done, cleanup pending) Viewer I3** - `civilization_view.py` renders the civilization
    `FactionState` (tiles, buildings with staffing, pawns by mood, HUD) with the
    authored `assets/colony` sprites and steps `engine.step_hour`; it is now the
    default `python -m agent_town` view and its smoke test is green. Camera
    pan/zoom, pawn selection, the inspection panel, and the LLM toggle are now in
-   place. Remaining: final colony-viewer cleanup before build-2 depth begins.
+   place. Remaining: final civilization-viewer cleanup before build-2 depth begins.
 3. **(done) LLM governor I2** - `governor.LLMGovernor` is behind the fallback
    `decide` interface with JSON-schema output and a hard fallback;
    `test_llm_governor.py` is green, `scripts/llm_governor_run.py --hours 6`
    completed against live `google/gemma-4-e4b`, and the real-time viewer uses
-   `ColonyDecisionScheduler` so local model calls never block the sim loop.
-   Remaining: final colony-viewer cleanup before build-2 depth begins.
+   `CivilizationDecisionScheduler` so local model calls never block the sim loop.
+   Remaining: final civilization-viewer cleanup before build-2 depth begins.
 4. **Manual LM Studio/Ollama tuning pass** - run Gemma 4 E4B-it, Qwen3.5-4B,
    and Phi-4-mini-instruct locally and record which model gives the best
    speed/personality balance.
@@ -136,8 +136,8 @@ The bridge order is I1 -> I3 -> I2 (see the colony render before adding the LLM)
    (design in `BLUEPRINT.md` "Mood: the RimWorld model" and "Starvation and pawn
    loss"). Do these in order:
 
-   1. **Rename colony -> Civilization (Civ), everywhere** as one isolated,
-      behaviour-preserving commit (tests stay green before any behaviour
+   1. **(done) Rename colony -> Civilization (Civ), everywhere** as one isolated,
+      behaviour-preserving change (tests stay green before any behaviour
       changes). ~327 refs across 32 files: rename `colony.py` ->
       `civilization.py`, `colony_view.py` -> `civilization_view.py`, and the
       `test_colony_*.py` files; rename `ColonyException` ->
@@ -150,32 +150,50 @@ The bridge order is I1 -> I3 -> I2 (see the colony render before adding the LLM)
       historical `Local_little_world_refactor1.md` as a frozen artifact; the
       `assets/colony/` directory rename is optional (asset-path risk) and may
       trail.
-   2. **RimWorld mood foundation + Hunger as the first thought (the priority),**
-      across `mood.py` / `pawns.py` / `core.py`:
-      - **Thoughts ledger.** Add `Thought {kind, label, value, age, stack}` and a
-        `Pawn.thoughts` list (contract change, one-file-PR); `mood_target = base
-        + sum(thought values)`. Migrate the existing trait/want contributions
-        into thoughts; keep rest+rec as a blended thought.
-      - **Two-layer mood.** Compute `mood_target` each tick and drift the
-        displayed `pawn.mood` toward it at +0.12 / -0.08 per hour, frozen while
-        the pawn sleeps. Add `Pawn.mood_target` to the contract for the readout.
-      - **Hunger thought.** `0 / -0.05 / -0.10 / -0.15` at `>=15 / 5-15 / 0-5 /
-        0%` food becomes the first real thought ("Hungry" / "Starving"); food is
-        pulled out of the blended needs term so it hits mood once.
-      - **Break bands + seeded RNG.** Replace slack@0.25 / wander@0.12 with
-        minor<0.35 / major<0.20 / extreme<0.05; fire breaks on a seeded-PRNG
-        mean-time-between roll (faster in lower bands), keyed to a colony seed on
-        `FactionState`, so runs stay reproducible per seed. Add per-trait
+   2. **Nutrition + RimWorld mood foundation on a 0-100 scale** (the priority,
+      current task). Locked design in `BLUEPRINT.md` "Mood: the RimWorld model"
+      and the "Pawn needs" / Design Decisions rows (nutrition reserve,
+      opportunistic eating, 0-100 mood). File-by-file:
+      - **`core.py` (frozen-contract change, one-file-PR).** Add `Thought
+        {kind, label, value, age, stack}`; `Pawn.thoughts: list[Thought]`;
+        `Pawn.mood_target: float`; a `FactionState.seed: int` for the break PRNG.
+        `Pawn.mood` default moves from 0.5 to the 0-100 base.
+      - **`mood.py`.** Replace `compute_mood` with `mood_target` (= base + sum of
+        thought values) plus the thought builders: a hunger thought from food
+        saturation (Fed >=25% 0; Hungry 25-12.5% -6; Ravenous 12.5-0% -12;
+        Malnourished 0% -20), trait/want contributions as thoughts, and a blended
+        rest+rec thought. Add `drift_mood(actual, target, asleep)` (+12 / -8 per
+        hour, frozen asleep). Update `mood_factor` for the 0-100 scale (neutral 50
+        -> 1.0) so `effective_work` is behaviour-unchanged.
+      - **`pawns.py`.** Food becomes a nutrition reserve: drain it as saturation;
+        add `eat(pawn, stockpile)` (consume 1 bread = 0.9 nutrition, cap at 1.0,
+        excess wasted) and **remove the free `SCHEDULE_ANY` food restoration** (the
+        conservation fix). Replace slack@0.25 / wander@0.12 with break bands
+        minor<35 / major<20 / extreme<5 fired on a seeded-PRNG mean-time-between
+        roll (faster in lower bands) keyed to `FactionState.seed`; add per-trait
         break-threshold offsets and a Catharsis thought after a break ends.
-      - Recalibrate base mood and the `economy.daily_tax_income` constant
-        together (mood feeds tax).
-      - Tests: thought add/stack/expire; target-vs-actual drift (+0.12/-0.08,
-        frozen asleep); hunger bands; break bands fire at the right mood under a
-        fixed seed (determinism preserved); catharsis applied; tax stable after
+      - **`engine.py`.** In `_advance_pawns`, replace the off-shift
+        eat-at-<0.65->1.0 block with opportunistic eating (saturation <= ~30% and
+        bread on hand, any waking hour); compute `mood_target`, drift `pawn.mood`
+        toward it, then advance the break state under the seed.
+      - **`economy.py`.** Un-clamp `average_mood` (now 0-100) and recalibrate
+        `daily_tax_income` so day-1 coin output stays in the current range (it
+        currently multiplies avg_mood expressed in [0,1]).
+      - **`governor.py`.** Point the unhappy / about-to-break exceptions at the new
+        break bands; mood in the faction/roster summaries is now 0-100.
+      - **`civilization_view.py`.** Render mood on 0-100 (bars/colours) and show
+        the pawn's thought list in the inspector (RimWorld-style). The Civ stats
+        bar is step 3.
+      - **Tests.** Update every mood-in-[0,1] assertion to 0-100 (the I1 survival
+        regression, `average_mood`); add thought add/stack/expire; drift
+        (+12/-8, frozen asleep); hunger bands off saturation; nutrition eat +
+        overeating waste + no-free-restoration; break bands fire at the right mood
+        under a fixed seed (determinism preserved); catharsis; tax stable after
         recalibration.
       - Deferred to build 2 (same architecture): expectations (wealth treadmill;
-        stub "extremely low / +0.30"), richer thoughts (meal quality, recreation
-        variety, social, death), and inspirations (nothing to boost yet).
+        stub "extremely low"), richer thoughts (meal quality, ate-without-table,
+        recreation variety, social, death), and inspirations (nothing to boost
+        yet).
    3. **Civ stats bar.** Add Civ-wide need averages (Mood, Food, Recreation,
       Rest) alongside `economy.average_mood` (e.g. `average_need(state, need)`),
       and render a Civ stats bar in the viewer reusing the existing need-bar
@@ -198,7 +216,7 @@ Do not start these until their prerequisite is met.
 | Item | Blocked on | Why it matters |
 |---|---|---|
 | Hosted AI providers | explicit user approval | Avoids accidental paid or network-dependent behavior |
-| Human multiplayer or remote viewing | explicit product direction change | Local-only, not web based; AI-vs-AI multi-colony is build 4, not this |
+| Human multiplayer or remote viewing | explicit product direction change | Local-only, not web based; AI-vs-AI multi-civilization is build 4, not this |
 | Large map editor | stable core loop | Editing tools are less useful before agent behavior is interesting |
 | Engine migration | benchmark evidence that Pygame rendering or editor tooling is the blocker | Current measured risk is simulation scale, persistence, and future pathfinding before rendering |
 
@@ -217,7 +235,7 @@ Build 2 (depth and the spectator):
   tax the wages back; Market trades surplus with off-map caravans.
 - Storage caps + "storage full %" readout; Storehouse raises capacity.
 - `set_work_priority` action + RimWorld per-pawn work-priority model.
-- Per-colony spectator view: open a colony and see assignments, priorities,
+- Per-civilization spectator view: open a civilization and see assignments, priorities,
   stockpile, mood, construction live.
 - Skill-based healthcare: doctoring priority, Infirmary, optional medicine,
   skill grows by treating.
@@ -241,7 +259,7 @@ Build 4 (competition and the Space Age):
 
 - Two Governor agents, one shared map, contested finite resources.
 - Research spine to industrial components and the space-program launch victory.
-- Scale to ~1000 pawns per colony (this is where spatial indexing/benchmarks
+- Scale to ~1000 pawns per civilization (this is where spatial indexing/benchmarks
   earn their place).
 
 Carried from the social-sim era (revisit when relevant):
@@ -300,3 +318,4 @@ Append a row when a task changes durable project state. Use actual results, not 
 | 2026-06-28 | Re-scope build-1 stakes: Civilization rename + hunger mood debuff + Civ stats bar ahead of starvation death | `.\scripts\validate-workbench.ps1` | pass | Docs only. Per user: mood debuff is the priority (hunger as an explicit -5/-10/-15 modifier on the mood ledger, with food pulled out of the blended needs term so it is one clean modifier); full colony->Civilization rename chosen (~327 refs / 32 files) as an isolated first commit; a Civ stats bar shows Civ-wide avg Mood/Food/Rec/Rest. Starvation death kept but deferred behind these. Added `BLUEPRINT.md` "Hunger, mood, and the Civ stats readout" subsection + 2 Design Decisions rows and restructured ROADMAP Next Task #5 into four ordered steps. No code yet |
 | 2026-06-28 | Adopt the RimWorld mood model (foundation-first, seeded-RNG breaks) into the design | `.\scripts\validate-workbench.ps1` | pass | Docs only. Per user: adopt RimWorld's mood system as close as the engine allows. Replaced the `BLUEPRINT.md` mood subsection with "Mood: the RimWorld model (build 1 foundation)" - two-layer target/actual mood (drift +0.12/-0.08 per hour, frozen asleep), a `Thought` ledger, base-from-difficulty, hunger as the first thought, three break bands (35/20/5%) fired on a seeded PRNG keyed to a colony seed, per-trait break thresholds, and Catharsis; expectations/richer-thoughts/inspirations deferred to build 2; rooms/prisoners out of scope. Updated the determinism constraint to allow a seeded PRNG, added a Design Decisions row, and rewrote ROADMAP Next Task #5 step 2 into the mood foundation (contract adds: `Pawn.thoughts`, `Pawn.mood_target`, a `FactionState` seed). No code yet |
 | 2026-06-28 | Move colony UI into resizable in-map overlays | `.\.venv\Scripts\python.exe -m unittest tests.test_colony_view` (20 tests); `.\.venv\Scripts\python.exe -m unittest discover -s tests` (111 tests); `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; `git diff --check`; refreshed and inspected `docs\screenshots\current-state.png` | pass | The map now fills a larger resizable window with stats, roster/pawn sheet, and command strip rendered inside the map viewport; local model status remains in a slim footer outside the map. Command buttons are still visual placeholders |
+| 2026-06-28 | Build-1 stakes step 1: rename colony -> Civilization across code and active docs (behaviour-preserving) | `.\.venv\Scripts\python.exe -m unittest discover -s tests` (108 tests); `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; renamed-symbol import check | pass | Renamed every `colony`/`Colony`/`COLONY` code symbol and active-doc term to civilization; `git mv` of `colony.py`/`colony_view.py`/`test_colony_*.py` to `civilization*`; `ColonyException` -> `CivilizationException` (frozen-contract change, still avoids shadowing builtin `Exception`); updated `pyproject.toml` entry point. Intentionally kept as `colony`: the on-disk `assets/colony/` directory and its path string (asset-path rename trails per the roadmap), the frozen `Local_little_world_refactor1.md`, local-only `HANDOFF.md`, and the append-only Verification Log history. Not committed pending review. Next: Next Task #5 step 2 (RimWorld mood foundation + hunger thought) |

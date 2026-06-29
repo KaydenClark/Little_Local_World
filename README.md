@@ -1,9 +1,9 @@
 # Local Agent Town
 
-A local desktop prototype for watching one LLM-governed colony run on autopilot.
+A local desktop prototype for watching one LLM-governed civilization run on autopilot.
 
 This is intentionally not web based. The simulation core is deterministic Python;
-Pygame is the local viewer for the colony state.
+Pygame is the local viewer for the civilization state.
 
 ## Current State Screenshot
 
@@ -11,7 +11,7 @@ Pygame is the local viewer for the colony state.
 
 This is a screenshot of the current local viewer state. It shows the intended
 near-term direction: a RimWorld-style pawn roster, selected-pawn sheet,
-readable colony map, resource HUD, and bottom command strip. The bottom command
+readable civilization map, resource HUD, and bottom command strip. The bottom command
 buttons are visual placeholders right now; they do not trigger build, work,
 assign, research, history, or menu actions yet.
 
@@ -23,7 +23,7 @@ engine testable and measurable without the viewer.
 That means new scale work should start with evidence instead of an engine
 rewrite:
 
-- benchmark the headless colony engine, governor context building, and dummy
+- benchmark the headless civilization engine, governor context building, and dummy
   draw loop;
 - keep the Governor as policy only, never a pawn micromanager;
 - migrate engines only if benchmark evidence shows rendering, editor tooling,
@@ -64,7 +64,7 @@ Launch Local Agent Town.cmd
 
 ## Optional Local AI
 
-The colony runs without an LLM. To let a local model govern policy, start an
+The civilization runs without an LLM. To let a local model govern policy, start an
 OpenAI-compatible local server such as LM Studio, then set:
 
 ```powershell
@@ -78,24 +78,24 @@ Ollama can use the same adapter with
 
 ## What Exists Now
 
-- A deterministic build-1 colony engine.
+- A deterministic build-1 civilization engine.
 - Twelve pawns with skills, traits, needs, mood, schedule, assignments, and
   break states.
 - Production chains for logs, planks, stone, grain, flour, and bread.
-- Construction, daily tax, and a fallback Governor that keeps the colony moving.
+- Construction, daily tax, and a fallback Governor that keeps the civilization moving.
 - A local LLM Governor behind the same interface, with hard fallback on any
   error.
-- A Pygame colony viewer with camera pan/zoom, pawn selection, a top pawn
+- A Pygame civilization viewer with camera pan/zoom, pawn selection, a top pawn
   roster, right-side pawn sheet, HUD, and local model status.
 - A bottom command strip that shows the target control surface, but is not wired
   to gameplay actions yet.
-- CC0/provenance-tracked colony sprites under `src\agent_town\assets\colony`.
-- A repeatable colony scaling benchmark for 100, 500, and 1,000 pawns.
+- CC0/provenance-tracked civilization sprites under `src\agent_town\assets\colony`.
+- A repeatable civilization scaling benchmark for 100, 500, and 1,000 pawns.
 
 ## Next Useful Upgrades
 
 - Finish final viewer cleanup after the social-sim retirement.
 - Add build-2 depth: water, clothes/beauty, storage caps, repair, wages, and
   work priorities.
-- Add save state once the colony persistence model is designed.
+- Add save state once the civilization persistence model is designed.
 - Add pathfinding benchmarks before larger maps or blocked terrain.

@@ -5,36 +5,36 @@ os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 
 import pygame
 
-from agent_town import colony
-from agent_town.colony_view import (
+from agent_town import civilization
+from agent_town.civilization_view import (
     BUILDING_SPRITE,
     INSPECTOR_WIDTH,
     PAWN_ROSTER_HEIGHT,
     Camera,
-    ColonyViewer,
+    CivilizationViewer,
     _need_bar_color,
     _mood_color,
     _pawn_status_label,
     _top_skills,
     find_pawn_at_screen,
     governor_status_line,
-    load_colony_assets,
+    load_civilization_assets,
     parse_args,
-    render_colony,
+    render_civilization,
 )
 from agent_town.pawns import STATE_SLACKING
-from agent_town.governor import ColonyDecisionScheduler, FallbackGovernor
+from agent_town.governor import CivilizationDecisionScheduler, FallbackGovernor
 from agent_town.llm import LocalLLMClient
 
 
-class ColonyAssetTests(unittest.TestCase):
+class CivilizationAssetTests(unittest.TestCase):
     def setUp(self):
         pygame.display.init()
         pygame.font.init()
         pygame.display.set_mode((64, 64))
 
-    def test_load_colony_assets_loads_tiles_and_buildings(self):
-        assets = load_colony_assets()
+    def test_load_civilization_assets_loads_tiles_and_buildings(self):
+        assets = load_civilization_assets()
 
         self.assertEqual(assets.tile_size, 25)
         for name in ("grass", "dirt", "pavement", "tree", "house", "house2", "house3"):
@@ -49,18 +49,18 @@ class ColonyAssetTests(unittest.TestCase):
             self.assertEqual(sprite.get_height(), 26)
 
     def test_every_build1_building_kind_has_a_sprite(self):
-        state = colony.create_default_colony()
+        state = civilization.create_default_civilization()
         for building in state.buildings.values():
             with self.subTest(kind=building.kind):
                 self.assertIn(building.kind, BUILDING_SPRITE)
 
-    def test_render_colony_draws_a_frame_without_crashing(self):
-        assets = load_colony_assets()
+    def test_render_civilization_draws_a_frame_without_crashing(self):
+        assets = load_civilization_assets()
         font = pygame.font.Font(None, 16)
-        state = colony.create_default_colony()
+        state = civilization.create_default_civilization()
         surface = pygame.Surface((state.grid.width * 25 + 24, state.grid.height * 25 + 120))
 
-        render_colony(surface, state, assets, font, (12, 12))
+        render_civilization(surface, state, assets, font, (12, 12))
 
 
 class MoodColorTests(unittest.TestCase):
@@ -80,14 +80,14 @@ class MoodColorTests(unittest.TestCase):
 
 class PawnInspectorModelTests(unittest.TestCase):
     def test_top_skills_sorts_by_score_then_name(self):
-        state = colony.create_default_colony()
+        state = civilization.create_default_civilization()
         pawn = state.pawns["pawn00"]
         pawn.skills = {"mining": 12, "farming": 16, "baking": 16}
 
         self.assertEqual(_top_skills(pawn), [("baking", 16), ("farming", 16), ("mining", 12)])
 
     def test_pawn_status_label_prioritizes_break_states(self):
-        state = colony.create_default_colony()
+        state = civilization.create_default_civilization()
         pawn = state.pawns["pawn00"]
         pawn.state = STATE_SLACKING
 
@@ -104,7 +104,7 @@ class GovernorStatusLineTests(unittest.TestCase):
         self.assertIn("fallback", text.lower())
 
     def test_disabled_scheduler_prompts_to_connect(self):
-        sched = ColonyDecisionScheduler(LocalLLMClient(model=None))
+        sched = CivilizationDecisionScheduler(LocalLLMClient(model=None))
         text, _color = governor_status_line(sched)
         self.assertIn("press L", text)
         sched.shutdown(wait=True)
@@ -127,7 +127,7 @@ class CameraTests(unittest.TestCase):
 
 class PawnSelectionTests(unittest.TestCase):
     def test_find_pawn_at_screen_uses_camera_transform(self):
-        state = colony.create_default_colony()
+        state = civilization.create_default_civilization()
         camera = Camera(offset_x=25.0, offset_y=0.0, zoom=2.0)
         pawn = state.pawns["pawn00"]
 
@@ -147,21 +147,21 @@ class _RecordingGovernor:
         return []
 
 
-class ColonyViewerSmokeTests(unittest.TestCase):
+class CivilizationViewerSmokeTests(unittest.TestCase):
     def test_viewer_runs_a_few_frames_and_exits(self):
-        viewer = ColonyViewer(smoke_test=True)
+        viewer = CivilizationViewer(smoke_test=True)
         viewer.run()
         self.assertFalse(viewer.running)
-        # The engine advanced the colony while rendering.
+        # The engine advanced the civilization while rendering.
         self.assertGreater(viewer.state.time_of_day + viewer.state.day * 24, 0)
 
     def test_smoke_viewer_defaults_to_deterministic_fallback(self):
-        viewer = ColonyViewer(smoke_test=True)
+        viewer = CivilizationViewer(smoke_test=True)
         self.assertIsInstance(viewer.governor, FallbackGovernor)
 
     def test_viewer_steps_through_injected_governor(self):
         gov = _RecordingGovernor()
-        viewer = ColonyViewer(smoke_test=True, governor=gov)
+        viewer = CivilizationViewer(smoke_test=True, governor=gov)
         viewer.run()
         self.assertGreater(gov.calls, 0)
 

@@ -1,13 +1,13 @@
-"""Reusable headless colony engine (integration milestone I1).
+"""Reusable headless civilization engine (integration milestone I1).
 
 Extracts the I1 test-harness loop into a single reusable stepper so the viewer
 (I3) and the LLM governor (I2) run against the same deterministic step the
 fallback-survival regression proves. One call to :func:`step_hour` advances the
-colony by one simulated hour:
+civilization by one simulated hour:
 
 1. the governor reads a context and emits policy actions; valid ones are
    applied, and ``place_building`` actions are realized as construction sites
-   when the colony can afford them;
+   when the civilization can afford them;
 2. pending construction hauls its required goods and spends build work, flipping
    to a built ``Building`` when ready;
 3. each pawn decays its needs, restores from its schedule block, eats when
@@ -56,7 +56,7 @@ class StepResult:
 
 
 def step_hour(state: FactionState, gov: governor_mod.Governor | None = None) -> StepResult:
-    """Advance the colony by one simulated hour under ``gov`` (fallback default)."""
+    """Advance the civilization by one simulated hour under ``gov`` (fallback default)."""
     gov = gov or governor_mod.FallbackGovernor()
 
     actions = gov.decide(governor_mod.build_context(state))
@@ -80,7 +80,7 @@ def step_hour(state: FactionState, gov: governor_mod.Governor | None = None) -> 
 
 
 def run(state: FactionState, gov: governor_mod.Governor | None = None, *, hours: int) -> list[StepResult]:
-    """Step the colony ``hours`` times, returning each hour's result."""
+    """Step the civilization ``hours`` times, returning each hour's result."""
     if hours < 0:
         raise ValueError("hours must be non-negative")
     gov = gov or governor_mod.FallbackGovernor()
@@ -88,7 +88,7 @@ def run(state: FactionState, gov: governor_mod.Governor | None = None, *, hours:
 
 
 def run_days(state: FactionState, gov: governor_mod.Governor | None = None, *, days: int) -> list[StepResult]:
-    """Step the colony for ``days`` whole days."""
+    """Step the civilization for ``days`` whole days."""
     if days < 0:
         raise ValueError("days must be non-negative")
     return run(state, gov, hours=days * schedule.HOURS_PER_DAY)
@@ -99,7 +99,7 @@ def _realize_placements(state: FactionState, applied: list[GovernorAction]) -> l
 
     The governor only proposes placement; the engine owns the cost check and the
     site so the governor never mutates construction state directly. A placement
-    the colony cannot afford (coin or goods) is skipped rather than placed as a
+    the civilization cannot afford (coin or goods) is skipped rather than placed as a
     site that could never complete.
     """
     placed: list[str] = []

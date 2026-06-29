@@ -1,6 +1,6 @@
 # Colony sprite set
 
-Authored sprites for the colony viewer (`colony_view.py`), 25px base tiles.
+Authored sprites for the civilization viewer (`civilization_view.py`), 25px base tiles.
 
 ## Provenance / license
 
