@@ -150,32 +150,50 @@ The bridge order is I1 -> I3 -> I2 (see the civilization render before adding th
       historical `Local_little_world_refactor1.md` as a frozen artifact; the
       `assets/colony/` directory rename is optional (asset-path risk) and may
       trail.
-   2. **RimWorld mood foundation + Hunger as the first thought (the priority),**
-      across `mood.py` / `pawns.py` / `core.py`:
-      - **Thoughts ledger.** Add `Thought {kind, label, value, age, stack}` and a
-        `Pawn.thoughts` list (contract change, one-file-PR); `mood_target = base
-        + sum(thought values)`. Migrate the existing trait/want contributions
-        into thoughts; keep rest+rec as a blended thought.
-      - **Two-layer mood.** Compute `mood_target` each tick and drift the
-        displayed `pawn.mood` toward it at +0.12 / -0.08 per hour, frozen while
-        the pawn sleeps. Add `Pawn.mood_target` to the contract for the readout.
-      - **Hunger thought.** `0 / -0.05 / -0.10 / -0.15` at `>=15 / 5-15 / 0-5 /
-        0%` food becomes the first real thought ("Hungry" / "Starving"); food is
-        pulled out of the blended needs term so it hits mood once.
-      - **Break bands + seeded RNG.** Replace slack@0.25 / wander@0.12 with
-        minor<0.35 / major<0.20 / extreme<0.05; fire breaks on a seeded-PRNG
-        mean-time-between roll (faster in lower bands), keyed to a civilization seed on
-        `FactionState`, so runs stay reproducible per seed. Add per-trait
+   2. **Nutrition + RimWorld mood foundation on a 0-100 scale** (the priority,
+      current task). Locked design in `BLUEPRINT.md` "Mood: the RimWorld model"
+      and the "Pawn needs" / Design Decisions rows (nutrition reserve,
+      opportunistic eating, 0-100 mood). File-by-file:
+      - **`core.py` (frozen-contract change, one-file-PR).** Add `Thought
+        {kind, label, value, age, stack}`; `Pawn.thoughts: list[Thought]`;
+        `Pawn.mood_target: float`; a `FactionState.seed: int` for the break PRNG.
+        `Pawn.mood` default moves from 0.5 to the 0-100 base.
+      - **`mood.py`.** Replace `compute_mood` with `mood_target` (= base + sum of
+        thought values) plus the thought builders: a hunger thought from food
+        saturation (Fed >=25% 0; Hungry 25-12.5% -6; Ravenous 12.5-0% -12;
+        Malnourished 0% -20), trait/want contributions as thoughts, and a blended
+        rest+rec thought. Add `drift_mood(actual, target, asleep)` (+12 / -8 per
+        hour, frozen asleep). Update `mood_factor` for the 0-100 scale (neutral 50
+        -> 1.0) so `effective_work` is behaviour-unchanged.
+      - **`pawns.py`.** Food becomes a nutrition reserve: drain it as saturation;
+        add `eat(pawn, stockpile)` (consume 1 bread = 0.9 nutrition, cap at 1.0,
+        excess wasted) and **remove the free `SCHEDULE_ANY` food restoration** (the
+        conservation fix). Replace slack@0.25 / wander@0.12 with break bands
+        minor<35 / major<20 / extreme<5 fired on a seeded-PRNG mean-time-between
+        roll (faster in lower bands) keyed to `FactionState.seed`; add per-trait
         break-threshold offsets and a Catharsis thought after a break ends.
-      - Recalibrate base mood and the `economy.daily_tax_income` constant
-        together (mood feeds tax).
-      - Tests: thought add/stack/expire; target-vs-actual drift (+0.12/-0.08,
-        frozen asleep); hunger bands; break bands fire at the right mood under a
-        fixed seed (determinism preserved); catharsis applied; tax stable after
+      - **`engine.py`.** In `_advance_pawns`, replace the off-shift
+        eat-at-<0.65->1.0 block with opportunistic eating (saturation <= ~30% and
+        bread on hand, any waking hour); compute `mood_target`, drift `pawn.mood`
+        toward it, then advance the break state under the seed.
+      - **`economy.py`.** Un-clamp `average_mood` (now 0-100) and recalibrate
+        `daily_tax_income` so day-1 coin output stays in the current range (it
+        currently multiplies avg_mood expressed in [0,1]).
+      - **`governor.py`.** Point the unhappy / about-to-break exceptions at the new
+        break bands; mood in the faction/roster summaries is now 0-100.
+      - **`civilization_view.py`.** Render mood on 0-100 (bars/colours) and show
+        the pawn's thought list in the inspector (RimWorld-style). The Civ stats
+        bar is step 3.
+      - **Tests.** Update every mood-in-[0,1] assertion to 0-100 (the I1 survival
+        regression, `average_mood`); add thought add/stack/expire; drift
+        (+12/-8, frozen asleep); hunger bands off saturation; nutrition eat +
+        overeating waste + no-free-restoration; break bands fire at the right mood
+        under a fixed seed (determinism preserved); catharsis; tax stable after
         recalibration.
       - Deferred to build 2 (same architecture): expectations (wealth treadmill;
-        stub "extremely low / +0.30"), richer thoughts (meal quality, recreation
-        variety, social, death), and inspirations (nothing to boost yet).
+        stub "extremely low"), richer thoughts (meal quality, ate-without-table,
+        recreation variety, social, death), and inspirations (nothing to boost
+        yet).
    3. **Civ stats bar.** Add Civ-wide need averages (Mood, Food, Recreation,
       Rest) alongside `economy.average_mood` (e.g. `average_need(state, need)`),
       and render a Civ stats bar in the viewer reusing the existing need-bar

@@ -238,9 +238,14 @@ Production chains:
 Construction consumes planks plus stone. Bread is the consumable that feeds the
 food need.
 
-Pawn needs (build 1): rest, food, recreation. Each value is in the range 0.0 to
-1.0 where 1.0 means fully satisfied; needs decay toward 0.0 over time and are
-restored by the matching schedule block plus the right good or building.
+Pawn needs (build 1): rest, food, recreation. Rest and recreation are 0.0-1.0
+satisfaction values that decay over time and are restored by the matching
+schedule block. Food is different: it is a RimWorld-style **nutrition/saturation
+reserve** (0.0-1.0 nutrition, max 1.0) drained by hunger and refilled only by
+eating - a pawn opportunistically eats one bread (0.9 nutrition) when it drops to
+~30% saturation, capping at 1.0 with the excess wasted. No schedule block or idle
+hour grants food for free (conservation law); full design in "Mood: the RimWorld
+model" below.
 
 Trait subset: industrious or lazy (work speed), tough or frail (mood floor now,
 combat later), optimist or pessimist (mood floor), loner (solo jobs lift mood),
@@ -250,17 +255,19 @@ Wants subset: wants_outdoor_work, wants_own_house, wants_soldier (flagged,
 unused until build 2). A met want is a mood boost; an ignored one is a slow mood
 drag.
 
-Mood and breaks: `mood = base + needs_satisfaction + trait_modifiers +
-want_progress`. Below a threshold the pawn breaks: it slacks (effective_work
-drops), then wanders off the job. The break, surfaced as a `CivilizationException`, is
-the Governor's early-warning signal.
+Mood and breaks use the RimWorld model on a **0-100 scale**: `mood_target = base +
+sum(thoughts)` and the displayed mood drifts toward it. Below the break bands a
+pawn slacks (effective_work drops), then wanders off the job. The break, surfaced
+as a `CivilizationException`, is the Governor's early-warning signal. Full design in
+"Mood: the RimWorld model (build 1 foundation)" below.
 
 ### Mood: the RimWorld model (build 1 foundation)
 
-We adopt RimWorld's mood model as closely as the engine allows. Mood is a
-story-generating system, not a cosmetic meter: logistics (food, rest,
-recreation, later clothes/death/etc.) become emotion, and emotion feeds back into
-work, breaks, and tax. Shape:
+We adopt RimWorld's mood model as closely as the engine allows, including its
+**0-100 mood scale** (replacing the earlier 0-1 mood, so thoughts and break bands
+use RimWorld's own point values directly). Mood is a story-generating system, not
+a cosmetic meter: logistics (food, rest, recreation, later clothes/death/etc.)
+become emotion, and emotion feeds back into work, breaks, and tax. Shape:
 
 > mood_target = base mood + expectations + sum of active thoughts
 > actual mood drifts toward the target over time
@@ -270,8 +277,9 @@ Build 1 builds the foundation; the deferred pieces below slot into the same
 architecture rather than replacing it.
 
 - **Two layers (target vs actual).** Each tick we compute `mood_target` from the
-  ledger; the displayed `pawn.mood` (actual) drifts toward it at +0.12 per hour
-  rising and -0.08 per hour falling, and is frozen while the pawn sleeps. The
+  ledger; the displayed `pawn.mood` (actual) drifts toward it at +12 per hour
+  rising and -8 per hour falling (on the 0-100 scale), and is frozen while the
+  pawn sleeps. The
   buffer means one bad event does not instabreak a pawn, but sustained misery
   does - and fixing a problem lifts the target at once while the pawn recovers
   gradually. `Pawn.mood_target` is added to the frozen contract for the readout.
@@ -279,15 +287,21 @@ architecture rather than replacing it.
   {kind, label, value, age, stack}`, in a `Pawn.thoughts` list (contract change)
   - sourced from needs, traits, wants, and later events. Many small negatives
   stack into a crisis. The pawn inspector shows the list, RimWorld-style. Values
-  are point-equivalents on the 0-1 scale (-5% = -0.05).
+  are RimWorld points on the 0-100 mood scale (e.g. Hungry = -6).
 - **Base mood from difficulty.** The base is a storyteller/difficulty setting
   (RimWorld uses ~42 down to ~22); build 1 ships one default and exposes the
   knob later.
-- **Hunger is the first real thought.** Read off the food need (100% = full):
-  food >= 15% none; 5-15% -5%; 0-5% -10%; 0% -15% ("Hungry" / "Starving"). Food
-  is pulled out of the blended needs term so hunger hits mood exactly once. This
-  is the primary near-term incentive to keep pawns fed; starvation death (below)
-  is sequenced after it.
+- **Food is a nutrition reserve, and hunger is the first real thought.** The food
+  need becomes a RimWorld-style saturation reserve (0-1 nutrition, max 1.0)
+  drained by hunger and refilled only by eating: a pawn opportunistically eats one
+  bread (0.9 nutrition) when it drops to ~30% saturation, capping at 1.0 with the
+  excess wasted. There is no meal schedule block (RimWorld has none) and no free
+  off-shift restoration - the conservation fix lands here, in step 2. Saturation
+  drives one hunger thought: Fed (>=25%) none; Hungry (25-12.5%) -6; Ravenously
+  hungry (12.5-0%) -12; Malnourished (0%) -20. Food is pulled out of the blended
+  needs term so hunger hits mood exactly once. The deeper bands (-26 / -32 / -38 /
+  -44) and the lethal malnutrition ailment arrive with starvation death (below,
+  step 4). This is the primary near-term incentive to keep pawns fed.
 - **Breaks are band + roll.** Three bands replace the old single threshold:
   minor < 35%, major < 20%, extreme < 5%. A break fires on a mean-time-between
   roll that is faster in lower bands, off a seeded PRNG keyed to a civilization seed -
@@ -322,8 +336,11 @@ hunger thought is the primary near-term incentive). Rules:
 
 - Food is restored only by eating bread (a `Good`). No schedule block, building,
   or idle hour grants food for free - this is the conservation law applied to
-  hunger ("nothing from nothing"). The current free off-shift food restoration is
-  removed as part of this work.
+  hunger ("nothing from nothing"). The free off-shift food restoration is removed
+  with the nutrition reserve in the mood foundation (step 2); this section then
+  adds the lethal failure mode on top. At step 4 the flat "72h since last meal"
+  rule may be replaced by a RimWorld-style malnutrition ailment (severity accrues
+  while at zero nutrition, death ~6 days after) - finalised when step 4 lands.
 - Each pawn tracks `hours_since_meal`, reset to 0 when it eats and incremented
   every hour otherwise. A pawn that goes 72 hours (three game-days) without a
   meal dies and is removed from the civilization; the engine scrubs it from every
@@ -556,6 +573,9 @@ Rules:
 | Hunger as an explicit -5/-10/-15 mood modifier; death deferred behind it | Makes the mood hit the near-term feed-your-pawns incentive; food is pulled out of the blended needs term so hunger is one clean RimWorld-style modifier, not a double drag | 2026-06-28 user request |
 | Rename "civilization" -> "Civilization (Civ)" everywhere | One consistent player-facing and code vocabulary; done as an isolated behaviour-preserving commit (~327 refs / 32 files) before the mood work | 2026-06-28 user request |
 | Adopt RimWorld's mood model (two-layer target/actual, thoughts ledger, break bands), foundation-first | Mood is the game's story engine; building it RimWorld-shaped now means later thoughts/expectations/inspirations slot in without rework. Break timing uses a seeded PRNG so runs stay reproducible per seed | 2026-06-28 user request |
+| Food is a nutrition/saturation reserve (max 1.0, bread = 0.9), eaten opportunistically at ~30% with overeating waste | Authentic RimWorld hunger; makes the bread chain conservation-real (~2 bread/pawn/day is a load the bakeries must sustain) instead of an abstract satisfaction bar | 2026-06-28 user decision |
+| Pawns eat opportunistically when hungry, not on a meal schedule block; the free off-shift food restoration is removed | RimWorld has no meal block - pawns eat when they drop to ~30%; closes the "food from nothing" conservation gap | 2026-06-28 user decision |
+| Mood moves to a 0-100 scale (RimWorld 1:1); thoughts use RimWorld point values (Hungry -6 etc.); `daily_tax_income` recalibrated in the same pass | Hunger, break, and thought numbers match RimWorld exactly with no 0-1 translation; supersedes the earlier "-5/-10/-15 on 0-1" hunger sketch | 2026-06-28 user decision |
 
 ## Health Criteria
 
