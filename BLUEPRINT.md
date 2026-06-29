@@ -1,6 +1,6 @@
 # Local Agent Town - Blueprint
 
-**Last reviewed:** 2026-06-28
+**Last reviewed:** 2026-06-29
 **Status:** active
 **Source root:** `E:\GPTCode\local-agent-town`
 
@@ -194,9 +194,19 @@ Current research inputs, in implementation order:
    tiered work, not smarter global agents: exact truth near the player,
    reachability prefilters, deterministic command phases, job packets, path
    abstraction, cadence tiers, and visual/update LOD outside the active bubble.
+8. `research_papers/8.little-local-world-research-synthesis.md` - the project
+   synthesis and the sequencing authority over Papers 1-7. It collapses them into
+   one product rule, *make autonomous causality visible*, and one strict build
+   order: food (done) -> work priorities + reservations -> water -> map
+   readability -> governor card -> scale foundations -> deeper economy. The next
+   code task it names is the lane-based work-priority arbiter with reservations
+   and `set_work_priority` (Paper 3); lethal starvation and deeper economy are
+   explicitly deferred behind the visible autonomy loop.
 
 When these papers conflict with current implementation, the conflict becomes a
-roadmap task instead of being silently folded into docs.
+roadmap task instead of being silently folded into docs. Paper 8 sets the order
+in which the others are implemented; see `ROADMAP.md`'s Research Paper
+Implementation Queue.
 
 ## Scale architecture
 
@@ -695,6 +705,7 @@ Rules:
 | Build-2 economy starts with district logistics and essentials before comfort | Water, food, storage, repair, wages, spending, taxes, and trade should surface bottlenecks through days-of-cover, blocked time, travel share, queue wait, and reserve-aware export rules | 2026-06-29 research intake |
 | Viewer readability follows AoE-style silhouette/layer/status rules and observer UI density budgets | Identity should read through silhouette and anchor consistency first; state/cause/actionability stay visually separated; persistent UI stays compact while detail lives in inspectors | 2026-06-29 research intake |
 | Scale work starts with reachability regions and deterministic phases, not a new engine | Paper 7 says exactness should stay near player-visible truth while job search, long movement, update cadence, and overlays become indexed, batched, or approximate as population grows | 2026-06-29 research intake |
+| Adopt the Paper 8 synthesis build order; work priorities + reservations is the confirmed next slice | The seven source papers collapse into one rule - make autonomous causality visible - and one build order. After the food correction the highest-leverage step is the lane-based work-priority arbiter with reservations and `set_work_priority` (Paper 3), where pawns start living in the town instead of being hourly counters; lethal starvation and deeper economy stay deferred behind the visible autonomy loop | 2026-06-29 research synthesis + user direction |
 
 ## Health Criteria
 

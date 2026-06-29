@@ -70,10 +70,18 @@ Important drift or uncertainty:
 
 ## Current Goal
 
-Start the research-backed implementation queue while preserving the completed
-build-1 bridge. First reconcile the Build-1 mood/hunger findings that conflict
-with current code, then move into Build-2 pawn autonomy, economy depth, and
-viewer readability in the order captured from `research_papers`.
+The Build-1 mood/hunger reconciliation is complete (Papers 1 and 2 are
+implemented: 0-100 mood ledger, seeded break bands, conserved nutrition reserve,
+0.25-nutrition bread, neutral `mood_factor`). The synthesis paper
+(`research_papers/8.little-local-world-research-synthesis.md`) now sets the build
+order for everything that follows, and it is unambiguous about the single next
+code task: **a lane-based work-priority arbiter with reservations and
+`set_work_priority` (Paper 3)** - not deeper starvation or economy. The
+research-backed order is: food (done) -> work priorities + reservations -> water
+(first essential economy) -> map readability -> governor card + exception stack
+-> scale foundations -> deeper economy. Per user direction (2026-06-29) lethal
+starvation (build-1 step 5.4) stays deferred behind the autonomy work; Build-1
+ships with hunger mood pressure as its stakes.
 
 Done when:
 
@@ -226,12 +234,59 @@ from the research-backed queue below, keeping every slice small and verified.
       death event-log line, tests, and a `RUNBOOK.md` manual check (run a
       bakery-less Civ and watch a pawn die).
 
+6. **(next code task) Build-2 step 1: work-priority arbiter + reservations.**
+   The synthesis (Paper 8) names this as the highest-leverage move after the
+   food correction - the point where pawns start "living in" the town instead of
+   being hourly counters. Per user direction (2026-06-29) this is the headline
+   next task; **lethal starvation (step 5 substep 4 above) stays deferred behind
+   it.** Implement a small, inspectable lane-based arbiter (forced/manual -> hard
+   state -> medical/self-care -> emergency -> normal work -> idle), target
+   reservations so two pawns never claim the same job, and a
+   `set_work_priority(pawn_id_or_group, work_type, level)` governor action.
+   Normal work sorts by manual priority, then work-type natural order, workgiver
+   order, target urgency, path/distance cost, and finally skill fit; skill never
+   rescues an illegal, unreachable, reserved, disabled, or lower-lane job. The
+   inspector must explain the winning lane and the top rejected candidate so
+   autonomy never looks arbitrary. See the Paper 3 slice below for the
+   file-by-file touch list, tests, and deferrals.
+
 ## Research Paper Implementation Queue
 
-The seven GPT Pro research papers live in `research_papers/`. Treat them as
-source leads and project design inputs; exact constants that affect code should
-either be verified from the cited source or marked research-derived in tests and
-docs.
+Eight GPT Pro research papers live in `research_papers/`: seven source-game
+studies (Papers 1-7) plus a project synthesis (Paper 8,
+`8.little-local-world-research-synthesis.md`). Treat them as source leads and
+project design inputs; exact constants that affect code should either be verified
+from the cited source or marked research-derived in tests and docs.
+
+**Paper 8 is the sequencing authority.** It collapses the seven source papers
+into one product rule - *make autonomous causality visible* - and one strict
+build order. Work the queue in this order, not in paper-number order:
+
+1. **Food correction (done).** Papers 1-2. Conserved nutrition reserve,
+   0.25-nutrition bread, neutral `mood_factor`. Reconciled and merged.
+2. **Work priorities + reservations (next code task).** Paper 3. Lane-based
+   arbiter, target reservations, and `set_work_priority`. This is where the town
+   starts feeling autonomous; see Next Tasks item 6 and the Paper 3 slice below.
+3. **First essential economy: water.** Paper 4. Water Well -> water need -> Civ
+   readout -> governor exception, before storage / markets / wages.
+4. **Map readability for current systems.** Paper 5. Idle badge, construction
+   progress, storage 80/95% badges, danger-over-selection, hover vs selection.
+5. **Governor card + exception stack.** Paper 6. Current plan, bottleneck,
+   confidence, last reallocation, top exception and its likely cause.
+6. **Scale foundations.** Paper 7. Reachability `region_id` and deterministic
+   command/update phases - cheap scaffolding added before population grows.
+7. **Deeper economy.** Paper 4 (remainder). District storage, market/service
+   delivery, repair debt, wages -> spending -> taxes, reserve-aware trade.
+
+Explicit deferrals from Paper 8 (do not start until the autonomy loop is visible
+and stable): full RimWorld think-tree parity, full joy/recreation variety,
+lethal starvation and detailed malnutrition timing, spoilage-heavy food variety,
+the full wages/taxes/trade economy before storage and service bottlenecks exist,
+large-population approximations before 12-pawn exactness is proven, and
+text-heavy dashboards before world badges and inspector causality are readable.
+
+The per-paper slices below carry the file-by-file detail. They are reference
+material; the numbered order above is what to build.
 
 1. **RimWorld mood reconciliation** -
    `research_papers/1.rimworld_mood-system-report.md`
@@ -451,3 +506,4 @@ Append a row when a task changes durable project state. Use actual results, not 
 | 2026-06-29 | Integrate Paper 7 scale research into the workbench queue | `.\scripts\validate-workbench.ps1`; `git diff --check` | pass | Docs only. Replaced the pending scale-paper slot with concrete scale architecture guidance: exact player-visible truth at 12 pawns, reachability regions and deterministic phases before larger populations, job indexes/cadence buckets by 16-64 pawns, path abstraction/shared routes by 64-150, district work packets/path budgets by 150-400, and offscreen ETA/far-needs/visual LOD by 400-1000. Added scale guidance to AGENTS, BLUEPRINT, ROADMAP, RUNBOOK, and README. |
 | 2026-06-29 | Research retune: bread portions and hunger/break productivity | `.\.venv\Scripts\python.exe -m unittest tests.test_step2_hunger_mood tests.test_track_b_b2 tests.test_track_a_current_contract tests.test_integration_i1 tests.test_civilization tests.test_engine` (41 tests); `.\.venv\Scripts\python.exe -m unittest discover -s tests` (143 tests); `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; `git diff --check` | pass | Bread is now a 0.25 nutrition portion; pawns eat a rounded portion count up to four bread below the strict 30% threshold; Bakery output is four bread portions per cycle; the default civ starts a fourth Farm and equivalent bread reserve so the 12-pawn viewer civ remains winnable for the 3-day fallback proof. `mood_factor` is neutral; `effective_work` now changes through hunger and break state rather than high mood alone. Starvation death remains deferred until the malnutrition/death timing slice. |
 | 2026-06-29 | Synthesize seven research papers into one Little Local World project paper | `.\scripts\validate-workbench.ps1`; `git diff --check` | pass | Docs only. Added `research_papers/8.little-local-world-research-synthesis.md`, combining mood, hunger, autonomy, Townsmen economy loops, AoE readability, observer UI, and scale architecture into one project-specific design paper. Strategic result: food was the right first conservation slice, but after the bread correction the next highest-leverage step is `set_work_priority` plus reservations, not deeper starvation or economy complexity. |
+| 2026-06-29 | Fold Paper 8 synthesis order into ROADMAP/BLUEPRINT and set the next code task | `.\scripts\validate-workbench.ps1`; `git diff --check` | pass | Docs only. Per user direction, made the research-backed build order explicit (food done -> work priorities + reservations -> water -> readability -> governor card -> scale foundations -> deeper economy) and named the lane-based work-priority arbiter + reservations + `set_work_priority` (Paper 3) as the headline next code task, with lethal starvation deferred behind it. Updated ROADMAP Current Goal, added Next Tasks item 6, rewrote the Research Paper Implementation Queue intro around Paper 8 as sequencing authority, and added Paper 8 + a Design Decisions row to BLUEPRINT. Verified against code: `set_work_priority`/reservations/`region_id` do not exist yet; bread retune (0.25, rounded portions) is present. |
