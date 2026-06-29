@@ -98,12 +98,26 @@ Expected result:
 - Mouse wheel, `+`, and `-` zoom.
 - `WASD` or arrow keys pan.
 - Clicking a pawn, or pressing `Tab`, updates the pawn sheet with status,
-  assignment, needs, skills, and traits.
+  assignment, needs, skills, and traits, plus a "Why this job" trace: the winning
+  decision lane, the reason, and the top job the pawn passed over.
+- The HUD shows an `Idle N` count (pawns with no work the arbiter could give).
 - Pressing `L` connects to or disconnects from LM Studio/Ollama while the game is running.
 - The HUD shows local model state: disabled, idle, thinking, offline, or invalid.
-- The bottom command strip is a visual placeholder in the current build. The
-  `Architect`, `Work`, `Assign`, `Research`, `History`, and `Menu` buttons do
-  not perform actions yet.
+- The `Work` button opens the work-priority grid; the remaining command buttons
+  (`Architect`, `Assign`, `Research`, `History`, `Menu`) are still placeholders.
+
+Work-priority arbiter manual check (build-2 step 1):
+
+- Click the bottom-strip `Work` button (or press `Esc` to close it). A grid of
+  pawns (rows) by work types (columns) appears, each cell showing the effective
+  priority `1`-`4` (blank = disabled), brightest at `1`.
+- Click a cell to cycle its priority (`1` highest .. `4` lowest .. blank off).
+  Within a second or two the pawn re-routes: disable a baker's `Bake` and set its
+  `Farm` to `1`, and watch it leave the Bakery and walk to a Farm.
+- Confirm no two pawns occupy the same single-slot building, and that the `Idle`
+  count rises if you disable a work type that leaves a pawn with nothing legal.
+- Select that pawn and read the inspector's "Why this job" trace to see the lane
+  it won under and the job it rejected (e.g. `Passed over Bakery: reserved/full`).
 
 ## Test And Build
 

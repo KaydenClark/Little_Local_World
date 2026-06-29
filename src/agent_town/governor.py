@@ -20,13 +20,14 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any, Callable, Protocol
 
-from . import pawns, schedule
+from . import pawns, schedule, work
 from .core import (
     ACTION_ASSIGN_PAWN,
     ACTION_PLACE_BUILDING,
     ACTION_SET_PRODUCTION_TARGET,
     ACTION_SET_RESEARCH,
     ACTION_SET_SCHEDULE,
+    ACTION_SET_WORK_PRIORITY,
     CivilizationException,
     FactionState,
     Good,
@@ -233,6 +234,13 @@ def validate_action(state: FactionState, action: GovernorAction) -> bool:
             return False
         return action.group == "all" or action.group in state.pawns
 
+    if action.kind == ACTION_SET_WORK_PRIORITY:
+        if not action.work_type or action.level is None:
+            return False
+        if action.level < 0 or action.level > 4:
+            return False
+        return action.group == "all" or action.group in state.pawns
+
     if action.kind == ACTION_SET_PRODUCTION_TARGET:
         building = state.buildings.get(action.building_id)
         if building is None or not isinstance(action.good, Good):
@@ -261,7 +269,11 @@ def apply_actions(state: FactionState, actions: list[GovernorAction]) -> list[Go
         if action.kind == ACTION_ASSIGN_PAWN:
             building = state.buildings[action.building_id]
             building.staffed_by.append(action.pawn_id)
-            state.pawns[action.pawn_id].assignment = JobRef(action.building_id, action.role)
+            # assign_pawn is now the forced override (the arbiter's top lane): pin
+            # the pawn here so the work arbiter keeps it instead of reassigning.
+            pawn = state.pawns[action.pawn_id]
+            pawn.assignment = JobRef(action.building_id, action.role)
+            pawn.forced_assignment = JobRef(action.building_id, action.role)
             applied.append(action)
         elif action.kind == ACTION_SET_SCHEDULE:
             targets = (
@@ -271,6 +283,15 @@ def apply_actions(state: FactionState, actions: list[GovernorAction]) -> list[Go
             )
             for pawn in targets:
                 pawn.schedule = action.template
+            applied.append(action)
+        elif action.kind == ACTION_SET_WORK_PRIORITY:
+            targets = (
+                list(state.pawns.values())
+                if action.group == "all"
+                else [state.pawns[action.group]]
+            )
+            for pawn in targets:
+                work.set_priority(pawn, action.work_type, action.level)
             applied.append(action)
         elif action.kind == ACTION_SET_PRODUCTION_TARGET:
             state.buildings[action.building_id].production_target[action.good] = action.amount
@@ -287,41 +308,24 @@ def apply_actions(state: FactionState, actions: list[GovernorAction]) -> list[Go
 
 
 class FallbackGovernor:
-    """Deterministic greedy governor: best-skill slot, restorative reschedule.
+    """Deterministic policy governor: restorative reschedule, next-building.
 
-    Also the integration oracle - if a town survives N days under it, the
-    economy is winnable. ``decide`` is pure: it reads context and returns
-    actions without mutating state.
+    Build 2 moved routine staffing to the lane-based work arbiter
+    (``work.assign_jobs``): pawns self-select their best legal job from
+    skill-derived priorities, so the governor no longer hand-places pawns. Its
+    levers are now policy only - rest unhappy/breaking pawns and queue the next
+    missing chain building. It stays the integration oracle: if a town survives N
+    days under it (with the arbiter doing the staffing), the economy is winnable.
+    ``decide`` is pure: it reads context and returns actions without mutating state.
     """
 
     def decide(self, context: dict[str, Any]) -> list[GovernorAction]:
         actions: list[GovernorAction] = []
-        roster = context.get("roster", [])
         buildings = context.get("buildings", [])
         construction = context.get("construction", [])
         exceptions = context.get("exceptions", [])
 
-        # 1) Assign available pawns to their best-skill open slots.
-        assignable = [
-            entry
-            for entry in roster
-            if entry["assignment"] is None and entry["state"] not in BROKEN_STATES
-        ]
-        open_slots: list[tuple[str, str]] = []
-        for building in buildings:
-            if building["built"] and building["skill"] and building["open_slots"] > 0:
-                open_slots.extend([(building["building_id"], building["skill"])] * building["open_slots"])
-
-        used: set[str] = set()
-        for building_id, skill in sorted(open_slots, key=lambda slot: slot[0]):
-            candidates = [entry for entry in assignable if entry["pawn_id"] not in used]
-            if not candidates:
-                break
-            best = sorted(candidates, key=lambda e: (-e["skills"].get(skill, 0), e["pawn_id"]))[0]
-            actions.append(GovernorAction.assign_pawn(best["pawn_id"], building_id, skill))
-            used.add(best["pawn_id"])
-
-        # 2) Move unhappy / breaking pawns onto a restorative schedule.
+        # 1) Move unhappy / breaking pawns onto a restorative schedule.
         rescheduled: set[str] = set()
         for exc in exceptions:
             pawn_id = exc.get("pawn_id")
@@ -329,7 +333,7 @@ class FallbackGovernor:
                 actions.append(GovernorAction.set_schedule(pawn_id, RESTORATIVE_SCHEDULE))
                 rescheduled.add(pawn_id)
 
-        # 3) Ask the engine to place the next missing build-1 chain link. The
+        # 2) Ask the engine to place the next missing build-1 chain link. The
         # engine/Track A owns cost checks and construction-site realization.
         existing = {building["kind"] for building in buildings}
         pending = {site["building_kind"] for site in construction}
@@ -355,6 +359,7 @@ class FallbackGovernor:
 CIVILIZATION_ACTION_KINDS = (
     ACTION_ASSIGN_PAWN,
     ACTION_SET_SCHEDULE,
+    ACTION_SET_WORK_PRIORITY,
     ACTION_PLACE_BUILDING,
     ACTION_SET_PRODUCTION_TARGET,
     ACTION_SET_RESEARCH,
@@ -380,6 +385,8 @@ CIVILIZATION_ACTION_SCHEMA: dict[str, Any] = {
                     "x": {"type": "integer"},
                     "y": {"type": "integer"},
                     "tech": {"type": "string"},
+                    "work_type": {"type": "string"},
+                    "level": {"type": "integer"},
                 },
                 "required": ["kind"],
             },
@@ -395,16 +402,22 @@ GOVERNOR_SYSTEM_PROMPT = (
     "kinds and their fields:\n"
     "Mood is on a 0-100 scale (about 50 is neutral; below 35 a pawn starts to "
     "break).\n"
-    "- assign_pawn {pawn_id, building_id, role}: staff an idle pawn into an open "
-    "building slot whose skill matches the pawn.\n"
+    "Pawns now choose their own jobs from their work priorities - you tune the "
+    "priorities, you do not place pawns by hand.\n"
+    "- set_work_priority {group, work_type, level}: group is a pawn_id or \"all\"; "
+    "work_type is a skill (farming, milling, baking, forestry, woodworking, "
+    "mining); level 1 is highest, 4 lowest, 0 disables it. This is your main "
+    "lever for steering labour.\n"
+    "- assign_pawn {pawn_id, building_id, role}: a rare FORCED override that pins "
+    "one pawn to one building slot. Prefer set_work_priority instead.\n"
     "- set_schedule {group, template}: group is a pawn_id or \"all\"; template is "
     "one of default, night, rest. Put unhappy or breaking pawns on rest.\n"
     "- place_building {building_kind, x, y}: queue the next missing production "
     "building.\n"
     "- set_production_target {building_id, good, amount}.\n"
     "- set_research {tech}.\n"
-    "Prefer to staff idle pawns into matching open slots and to rest unhappy pawns. "
-    "Reply with valid JSON only - no prose, no markdown, no chain of thought."
+    "Prefer tuning work priorities and resting unhappy pawns over forcing "
+    "assignments. Reply with valid JSON only - no prose, no markdown, no chain of thought."
 )
 
 
@@ -444,6 +457,8 @@ def action_from_dict(data: dict[str, Any]) -> GovernorAction | None:
         x=_coerce_int(data.get("x")),
         y=_coerce_int(data.get("y")),
         tech=_clean_str(data.get("tech")),
+        work_type=_clean_str(data.get("work_type")),
+        level=_coerce_int(data.get("level")),
     )
 
 

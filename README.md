@@ -9,11 +9,18 @@ Pygame is the local viewer for the civilization state.
 
 ![Current Local Agent Town UI](docs/screenshots/current-state.png)
 
-This is a screenshot of the current local viewer state. It shows the intended
-near-term direction: a RimWorld-style pawn roster, selected-pawn sheet,
-readable civilization map, resource HUD, and bottom command strip. The bottom command
-buttons are visual placeholders right now; they do not trigger build, work,
-assign, research, history, or menu actions yet.
+This is a screenshot of the current local viewer state: a RimWorld-style pawn
+roster, selected-pawn sheet, readable civilization map, resource HUD, and bottom
+command strip. Pawns now self-select their work through the lane-based arbiter,
+so the selected-pawn sheet has a "Why this job" trace (winning lane, reason, and
+the top job it passed over) and the HUD shows an `Idle` count.
+
+The **Work** button opens the RimWorld-style work-priority grid below; click a
+cell to cycle a pawn's priority (1 highest .. 4 lowest, blank disables it) and
+watch the pawn re-route on the next step. The other command buttons (Architect,
+Assign, Research, History, Menu) are still visual placeholders.
+
+![Work-priority grid](docs/screenshots/work-grid.png)
 
 ## Architecture Stance
 
@@ -107,14 +114,15 @@ Ollama can use the same adapter with
   error.
 - A Pygame civilization viewer with camera pan/zoom, pawn selection, a top pawn
   roster, right-side pawn sheet, HUD, and local model status.
-- A bottom command strip that shows the target control surface, but is not wired
-  to gameplay actions yet.
+- A lane-based work-priority arbiter: pawns self-select their best legal job
+  (manual priority -> work-type order -> skill), never double-claim a slot, and
+  expose a decision trace. The Work button opens a clickable priority grid; the
+  rest of the bottom command strip is still placeholder.
 - CC0/provenance-tracked civilization sprites under `src\agent_town\assets\colony`.
 - A repeatable civilization scaling benchmark for 100, 500, and 1,000 pawns.
 
 ## Next Useful Upgrades
 
-- Add the Build 2 lane-based work-priority arbiter and reservation model.
 - Keep lethal starvation deferred until the malnutrition/death timing slice can
   add status, exceptions, viewer surfacing, and food-chain urgency together.
 - Start the first Townsmen-style essentials slice: Water Well -> water need ->

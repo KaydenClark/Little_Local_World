@@ -1,7 +1,7 @@
 import unittest
 
-from agent_town import buildings, engine
-from agent_town.core import FactionState, Good, Pawn
+from agent_town import buildings, engine, work
+from agent_town.core import FactionState, Good, JobRef, Pawn
 from agent_town import pawns
 
 
@@ -55,6 +55,36 @@ class EngineConstructionTests(unittest.TestCase):
 
         self.assertEqual(state.construction_sites, {})
         self.assertEqual(state.buildings, {})
+
+
+class EngineArbiterTests(unittest.TestCase):
+    def test_step_hour_seats_pawns_through_the_arbiter(self):
+        # No governor assign_pawn: the arbiter staffs the farmer into the Farm and
+        # leaves a decision trace the viewer can read.
+        state = _farm_civilization()
+
+        engine.step_hour(state)
+
+        self.assertEqual(state.pawns["farmer"].assignment, JobRef("farm1", "farming"))
+        self.assertEqual(state.buildings["farm1"].staffed_by, ["farmer"])
+        self.assertEqual(state.work_decisions["farmer"].lane, work.LANE_NORMAL_WORK)
+
+    def test_priority_change_reroutes_a_pawn(self):
+        state = _farm_civilization()
+        bakery = buildings.make_building("Bakery", 4, 0, building_id="bake1")
+        state.buildings[bakery.id] = bakery
+
+        engine.step_hour(state)
+        self.assertEqual(state.pawns["farmer"].assignment.building_id, "farm1")
+
+        # The player/governor disables farming and prioritises baking; the pawn
+        # releases the Farm and re-routes to the Bakery on the next replan.
+        work.set_priority(state.pawns["farmer"], "farming", 0)
+        work.set_priority(state.pawns["farmer"], "baking", 1)
+        engine.step_hour(state)
+
+        self.assertEqual(state.pawns["farmer"].assignment.building_id, "bake1")
+        self.assertEqual(state.buildings["farm1"].staffed_by, [])
 
 
 class EngineDeterminismTests(unittest.TestCase):
