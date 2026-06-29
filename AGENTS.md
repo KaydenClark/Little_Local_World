@@ -35,6 +35,8 @@ The agent may edit:
 - `src\agent_town`;
 - `tests`;
 - `scripts`;
+- `research_papers` only when the current user request explicitly asks to add,
+  rename, or organize research files;
 - `docs\screenshots` when updating checked-in visual proof for the README;
 - project docs: `README.md`, `AGENTS.md`, `BLUEPRINT.md`, `ROADMAP.md`, `RUNBOOK.md`, `BOOTSTRAP_CHECKLIST.md`, `UNATTENDED_WORK_POLICY.md`, `VISUAL_DESIGN.md`;
 - dependency manifests only when the dependency change is necessary and explained.
@@ -69,6 +71,9 @@ Default responsibilities:
 
 - restate the current goal in one sentence;
 - read relevant docs and code before editing;
+- when a task depends on research in `research_papers`, read the relevant paper
+  first and translate it into project decisions, implementation tasks, tests,
+  and explicit deferrals before touching code;
 - make the smallest correct change;
 - preserve existing architecture, naming, and style;
 - validate inputs at boundaries;
@@ -110,6 +115,11 @@ Every completed task leaves proof in two places:
 
 Do not claim work is complete unless verification ran. If verification could not run, say exactly why and record the gap in `ROADMAP.md`.
 
+For scale, pathfinding, large-population, or performance architecture work,
+read `research_papers/7.scalable-sim-report.md`, run the scaling benchmark when
+practical, and preserve exact simulation for player-visible truth before adding
+approximation.
+
 ## Day-One Checklist
 
 Load only what the task requires:
@@ -127,6 +137,21 @@ Then for every task:
 3. Run baseline verification when practical.
 4. Implement with tests or a named manual check.
 5. Append to `ROADMAP.md` Verification Log if state changed.
+
+For research-driven tasks:
+
+- Treat `research_papers` as design input and source leads, not as automatic
+  authority over verified code.
+- Keep the raw research files intact unless the user explicitly asks to rename or
+  reorganize them.
+- Do not paste long research sections into active docs. Extract only the project
+  rule, affected files, tests, risks, and deferrals.
+- If research conflicts with current implementation, record the conflict in
+  `ROADMAP.md` and either implement a small reconciliation slice or leave an
+  explicit next task.
+- If a paper cites exact external constants and the code depends on precision,
+  verify the underlying source or mark the value as research-derived until
+  verified.
 
 For visual changes to the game viewer:
 

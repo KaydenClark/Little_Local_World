@@ -23,15 +23,25 @@ def _pawn(**kw):
 
 
 class NutritionReserveTests(unittest.TestCase):
-    def test_eat_adds_nutrition_capped_with_overeating_waste(self):
-        pawn = _pawn(needs={NEED_FOOD: 0.5})
+    def test_eat_consumes_rounded_bread_portion_capped_with_waste(self):
+        pawn = _pawn(needs={NEED_FOOD: 0.30})
+        stock = Stockpile({Good.BREAD: 10})
+
+        self.assertTrue(pawns.eat(pawn, stock))
+
+        # Missing 0.70 nutrition / 0.25 bread nutrition rounds to 3 bread.
+        # 0.30 + 0.75 caps to 1.0, wasting 0.05 nutrition.
+        self.assertEqual(pawn.needs[NEED_FOOD], 1.0)
+        self.assertEqual(stock.counts.get(Good.BREAD, 0), 7)
+
+    def test_eat_consumes_available_bread_when_short_of_full_portion(self):
+        pawn = _pawn(needs={NEED_FOOD: 0.30})
         stock = Stockpile({Good.BREAD: 2})
 
         self.assertTrue(pawns.eat(pawn, stock))
 
-        # 0.5 + 0.9 = 1.4, capped at 1.0 -> 0.4 nutrition wasted, one loaf gone.
-        self.assertEqual(pawn.needs[NEED_FOOD], 1.0)
-        self.assertEqual(stock.counts.get(Good.BREAD, 0), 1)
+        self.assertEqual(pawn.needs[NEED_FOOD], 0.80)
+        self.assertEqual(stock.counts.get(Good.BREAD, 0), 0)
 
     def test_eat_without_bread_is_a_noop(self):
         pawn = _pawn(needs={NEED_FOOD: 0.2})
@@ -39,6 +49,10 @@ class NutritionReserveTests(unittest.TestCase):
 
         self.assertFalse(pawns.eat(pawn, stock))
         self.assertEqual(pawn.needs[NEED_FOOD], 0.2)
+
+    def test_wants_food_uses_strict_thirty_percent_threshold(self):
+        self.assertFalse(pawns.wants_food(_pawn(needs={NEED_FOOD: 0.301})))
+        self.assertTrue(pawns.wants_food(_pawn(needs={NEED_FOOD: 0.299})))
 
     def test_no_schedule_block_restores_food_for_free(self):
         for block, restored in pawns.SCHEDULE_RESTORATION_PER_HOUR.items():
@@ -52,9 +66,10 @@ class HungerBandTests(unittest.TestCase):
             return None if thought is None else thought.value
 
         self.assertIsNone(value(0.50))  # Fed
-        self.assertIsNone(value(0.25))  # Fed (boundary)
-        self.assertEqual(value(0.20), mood.HUNGER_HUNGRY_VALUE)  # -6
-        self.assertEqual(value(0.10), mood.HUNGER_RAVENOUS_VALUE)  # -12
+        self.assertIsNone(value(0.24))  # Fed (boundary)
+        self.assertEqual(value(0.239), mood.HUNGER_HUNGRY_VALUE)  # -6
+        self.assertEqual(value(0.12), mood.HUNGER_HUNGRY_VALUE)  # still hungry at boundary
+        self.assertEqual(value(0.119), mood.HUNGER_RAVENOUS_VALUE)  # -12
         self.assertEqual(value(0.0), mood.HUNGER_MALNOURISHED_VALUE)  # -20
 
 

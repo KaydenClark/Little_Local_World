@@ -55,7 +55,7 @@ BUILDING_DEFS: dict[str, BuildingDef] = {
     ),
     "bakery": BuildingDef(
         kind="Bakery",
-        recipe=Recipe(inputs={Good.FLOUR: 2}, outputs={Good.BREAD: 1}, work_units=1.0, skill="baking"),
+        recipe=Recipe(inputs={Good.FLOUR: 2}, outputs={Good.BREAD: 4}, work_units=1.0, skill="baking"),
         job_slots=1,
         build_cost={Good.PLANKS: 4, Good.STONE: 2},
         build_work=4.0,

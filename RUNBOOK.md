@@ -145,6 +145,48 @@ Expected result:
 - A CSV-style table reports engine step time, governor context build time, dummy draw time, final applied action count, and completed-building count.
 - Use this before increasing default population size or deciding whether Pygame is the scaling blocker.
 
+Scale interpretation from `research_papers/7.scalable-sim-report.md`:
+
+- At about 12 pawns, keep player-visible truth exact.
+- Before raising default population, add reachability-region rejection and
+  deterministic update phases.
+- Around 16 to 64 pawns, add job candidate indexes and cadence buckets.
+- Around 64 to 150 pawns, add long-route abstraction or shared routes for common
+  sinks before relying on exact per-pawn paths.
+- Around 150 to 400 pawns, use district work packets and path budgets.
+- Around 400 to 1000 pawns, use offscreen ETA movement, far-needs cadence, and
+  strong visual/overlay LOD.
+
+If a pawn is selected, visible, in conflict, touching scarce resources, or
+transferring ownership of a good/building/job, force it into exact simulation.
+Only approximate opportunity search and offscreen movement.
+
+## Research Intake
+
+Research papers live in `research_papers/`. They are design inputs and source
+leads, not automatic proof that the current code behaves that way.
+
+When adding or using a paper:
+
+1. Keep the raw paper file intact unless the user explicitly asks to rename or
+   reorganize it.
+2. Read the relevant paper before editing active docs or code.
+3. Extract only the project rule, affected files, tests, risks, and deferrals.
+4. If the paper conflicts with current implementation, record the conflict in
+   `ROADMAP.md` instead of silently changing the design.
+5. If exact constants affect code behavior, verify the cited source or mark the
+   value as research-derived in the test/doc note.
+
+Workbench-only research integration check:
+
+```powershell
+.\scripts\validate-workbench.ps1
+git diff --check
+```
+
+Use the full verification path when the research intake also changes runtime
+code, tests, assets, or viewer behavior.
+
 ## Data Operations
 
 There is no civilization save/load UI or persistence model yet.

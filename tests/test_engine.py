@@ -16,7 +16,7 @@ def _wood_ready_state() -> FactionState:
 def _farm_civilization() -> FactionState:
     """A minimal deterministic civilization: one farmer, one Farm, some bread on hand."""
     state = FactionState(day=0, time_of_day=7, tax_rate=0.2)
-    state.stockpile.add(Good.BREAD, 4)
+    state.stockpile.add(Good.BREAD, 16)
     state.pawns["farmer"] = Pawn(
         id="farmer",
         name="Farmer",

@@ -22,7 +22,7 @@ SEEDED_BUILDINGS = (
 
 def make_state() -> FactionState:
     state = FactionState(day=0, time_of_day=7, tax_rate=0.2)
-    state.stockpile.add(Good.BREAD, 6)
+    state.stockpile.add(Good.BREAD, 24)
     for index, (_kind, specialty) in enumerate(SEEDED_BUILDINGS):
         pawn = Pawn(
             id=f"pawn{index:02d}",

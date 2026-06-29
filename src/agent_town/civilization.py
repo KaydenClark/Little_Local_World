@@ -24,6 +24,7 @@ STARTING_BUILDINGS: tuple[tuple[str, int, int], ...] = (
     ("Farm", 3, 8),
     ("Farm", 6, 8),
     ("Farm", 9, 8),
+    ("Farm", 12, 8),
     ("Mill", 14, 5),
     ("Mill", 17, 5),
     ("Bakery", 14, 10),
@@ -62,7 +63,7 @@ def create_default_civilization(*, seed: int = 7) -> FactionState:
         grid=grid,
         resource_nodes=nodes,
     )
-    state.stockpile.add(Good.BREAD, 12)
+    state.stockpile.add(Good.BREAD, 48)
 
     counts: dict[str, int] = {}
     for kind, x, y in STARTING_BUILDINGS:

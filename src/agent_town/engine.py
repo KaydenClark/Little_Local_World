@@ -35,7 +35,6 @@ from .core import (
     ACTION_PLACE_BUILDING,
     FactionState,
     GovernorAction,
-    NEED_FOOD,
     Pawn,
     SCHEDULE_SLEEP,
 )
@@ -44,10 +43,6 @@ from .core import (
 # has no dedicated builder/hauler job; tying construction to pawn labour is a
 # build-2 refinement. Kept a deterministic constant here.
 CONSTRUCTION_WORK_PER_HOUR = 1.0
-
-# A pawn eats opportunistically (any waking hour) once its nutrition reserve falls
-# to this saturation, if bread is on hand - RimWorld has no meal schedule block.
-EAT_FOOD_THRESHOLD = 0.30
 
 # Pawns walk this many tiles toward their destination each hour. Movement is
 # cosmetic in build 1 (production only checks staffing) but real and deterministic;
@@ -153,7 +148,7 @@ def _advance_pawns(state: FactionState) -> None:
         pawns.decay_needs(pawn, 1.0)
         pawns.apply_schedule_block(pawn, block, 1.0)
         # Opportunistic eating: any waking hour, hungry enough, bread on hand.
-        if not asleep and pawn.needs[NEED_FOOD] <= EAT_FOOD_THRESHOLD:
+        if not asleep and pawns.wants_food(pawn):
             pawns.eat(pawn, state.stockpile)
         pawn.mood_target = mood.mood_target(pawn)
         pawn.mood = mood.drift_mood(pawn.mood, pawn.mood_target, asleep=asleep)

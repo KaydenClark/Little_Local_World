@@ -4,10 +4,10 @@ Home of ``effective_work`` - the single function where Track A (production) and
 Track B (people) meet. Production multiplies a building's base rate by the sum
 of ``effective_work`` over its staffed pawns:
 
-    effective_work = skill_factor * mood_factor * trait_factor * schedule_factor
+    effective_work = skill_factor * trait_factor * schedule_factor * hunger_factor * break_factor
 
-``schedule_factor`` is 0 when the pawn's current hour is not a work block, so an
-off-shift or broken pawn contributes nothing.
+``schedule_factor`` is 0 when the pawn's current hour is not a work block, and
+``break_factor`` pauses productive work during a break.
 
 Mood is the RimWorld model on a **0-100 scale**: ``mood_target`` is the base mood
 plus the sum of active :class:`Thought` values, and the displayed ``pawn.mood``
@@ -19,7 +19,7 @@ trait/want contributions. Event thoughts (e.g. Catharsis) live in
 
 from __future__ import annotations
 
-from . import schedule
+from . import pawns, schedule
 from .core import (
     NEED_FOOD,
     NEED_RECREATION,
@@ -44,7 +44,6 @@ MOOD_DRIFT_DOWN = 8.0
 SKILL_BASE = 0.5
 SKILL_PER_LEVEL = 0.05
 SKILL_FACTOR_FLOOR = 0.4
-MOOD_BONUS_SLOPE = 0.4  # mood above neutral (50) grants up to +20% work at 100
 TRAIT_WORK = {"industrious": 1.15, "lazy": 0.85}
 
 # Thought point values on the 0-100 mood scale (RimWorld 1:1).
@@ -54,8 +53,8 @@ WANT_UNMET_DRAG = -2.0
 REST_REC_SWING = 40.0  # blended rest+rec thought spans [-20, +20] around 0.5
 
 # Hunger thought, read off the food saturation reserve (1.0 == full nutrition).
-HUNGER_FED_BAND = 0.25  # >= this: Fed, no thought
-HUNGER_RAVENOUS_BAND = 0.125  # below this (and > 0): Ravenously hungry
+HUNGER_FED_BAND = 0.24  # >= this: Fed, no thought
+HUNGER_RAVENOUS_BAND = 0.12  # below this (and > 0): Ravenously hungry
 HUNGER_HUNGRY_VALUE = -6.0
 HUNGER_RAVENOUS_VALUE = -12.0
 HUNGER_MALNOURISHED_VALUE = -20.0
@@ -71,11 +70,8 @@ def skill_factor(skill_level: int) -> float:
 
 
 def mood_factor(mood: float) -> float:
-    """Work multiplier from current mood (B2). Neutral mood 50 maps to 1.0."""
-    m = mood / MOOD_MAX
-    if m >= 0.5:
-        return 1.0 + (m - 0.5) * MOOD_BONUS_SLOPE
-    return max(0.1, m / 0.5)
+    """Neutral compatibility hook: vanilla mood has no generic work-speed boost."""
+    return 1.0
 
 
 def trait_factor(traits: tuple[str, ...], recipe: Recipe) -> float:
@@ -91,6 +87,25 @@ def schedule_factor(schedule_name: str, time_of_day: int) -> float:
     return 1.0 if schedule.block_for(schedule_name, time_of_day) == SCHEDULE_WORK else 0.0
 
 
+def hunger_productivity_factor(pawn: Pawn) -> float:
+    """Direct work multiplier from hunger state."""
+    food = pawn.needs.get(NEED_FOOD, 1.0)
+    if food <= 0.0:
+        return 0.0
+    if food < HUNGER_RAVENOUS_BAND:
+        return 0.25
+    if food < HUNGER_FED_BAND:
+        return 0.5
+    return 1.0
+
+
+def break_factor(pawn: Pawn) -> float:
+    """Break states pause productive work until the pawn recovers."""
+    if pawn.state in (pawns.STATE_SLACKING, pawns.STATE_WANDERING):
+        return 0.0
+    return 1.0
+
+
 def effective_work(pawn: Pawn, recipe: Recipe, time_of_day: int) -> float:
     """The frozen cross-track seam: how much work a staffed pawn contributes.
 
@@ -100,9 +115,10 @@ def effective_work(pawn: Pawn, recipe: Recipe, time_of_day: int) -> float:
     level = pawn.skills.get(recipe.skill, 0)
     return (
         skill_factor(level)
-        * mood_factor(pawn.mood)
         * trait_factor(pawn.traits, recipe)
         * schedule_factor(pawn.schedule, time_of_day)
+        * hunger_productivity_factor(pawn)
+        * break_factor(pawn)
     )
 
 

@@ -8,7 +8,7 @@ EXPECTED_BUILDINGS = {
     "Forester": 1,
     "Sawmill": 1,
     "Quarry": 1,
-    "Farm": 3,
+    "Farm": 4,
     "Mill": 2,
     "Bakery": 2,
 }

@@ -58,8 +58,13 @@ SCHEDULE_RESTORATION_PER_HOUR: dict[str, dict[str, float]] = {
     SCHEDULE_ANY: {NEED_RECREATION: 0.03},
 }
 
-# One loaf of bread is a simple meal worth this much nutrition (RimWorld 1:1).
-BREAD_NUTRITION = 0.9
+# Pawns seek food once their nutrition reserve drops below this saturation.
+EAT_FOOD_THRESHOLD = 0.30
+
+# One bread unit is a small portion, not a whole meal. At the 30% eat threshold
+# the rounded RimWorld-style portion is three bread, with up to four per eat job.
+BREAD_NUTRITION = 0.25
+MAX_BREAD_PER_MEAL = 4
 
 # Mental-break bands on the 0-100 mood scale (RimWorld 1:1). Each is the mood at
 # or below which the pawn becomes *eligible* for that break; the break then fires
@@ -140,18 +145,29 @@ def apply_schedule_block(pawn: Pawn, block: str, dt: float) -> None:
         restore_need(pawn, need, rate * dt)
 
 
+def wants_food(pawn: Pawn) -> bool:
+    """Whether the pawn is below the strict eat-job threshold."""
+    _ensure_build1_needs(pawn)
+    return pawn.needs[NEED_FOOD] < EAT_FOOD_THRESHOLD
+
+
 def eat(pawn: Pawn, stockpile: Stockpile) -> bool:
-    """Consume one bread to refill the nutrition reserve, returning whether a meal happened.
+    """Consume bread portions to refill the nutrition reserve.
 
     The pawn's food need *is* its saturation reserve (1.0 == full). A loaf adds
-    :data:`BREAD_NUTRITION` and anything over the 1.0 cap is wasted (RimWorld
-    overeating waste). Eats nothing and returns ``False`` when no bread is on hand.
+    :data:`BREAD_NUTRITION`; the portion count is rounded from the missing
+    nutrition, capped at :data:`MAX_BREAD_PER_MEAL`, and anything over 1.0 is
+    wasted. Eats nothing and returns ``False`` when no bread is on hand.
     """
-    if not stockpile.has(Good.BREAD, 1):
+    available = stockpile.counts.get(Good.BREAD, 0)
+    if available <= 0:
         return False
-    stockpile.remove(Good.BREAD, 1)
     _ensure_build1_needs(pawn)
-    pawn.needs[NEED_FOOD] = _clamp01(pawn.needs[NEED_FOOD] + BREAD_NUTRITION)
+    missing = max(0.0, 1.0 - pawn.needs[NEED_FOOD])
+    desired = max(1, int((missing / BREAD_NUTRITION) + 0.5))
+    count = min(available, MAX_BREAD_PER_MEAL, desired)
+    stockpile.remove(Good.BREAD, count)
+    pawn.needs[NEED_FOOD] = _clamp01(pawn.needs[NEED_FOOD] + BREAD_NUTRITION * count)
     return True
 
 
