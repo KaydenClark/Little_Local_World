@@ -206,6 +206,8 @@ class Pawn:
     assignment: JobRef | None = None
     x: int = 0
     y: int = 0
+    home_x: int = 0
+    home_y: int = 0
     state: str = "idle"
 
 

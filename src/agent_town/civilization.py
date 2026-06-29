@@ -83,6 +83,8 @@ def create_default_civilization(*, seed: int = 7) -> FactionState:
             schedule="default",
             x=px,
             y=py,
+            home_x=px,
+            home_y=py,
         )
 
     return state

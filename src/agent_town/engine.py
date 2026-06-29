@@ -12,7 +12,9 @@ civilization by one simulated hour:
    to a built ``Building`` when ready;
 3. each pawn decays its needs, restores rest/recreation from its schedule block,
    eats bread opportunistically when its nutrition reserve runs low, drifts its
-   mood toward the thought-driven target, and advances its mental-break state;
+   mood toward the thought-driven target, advances its mental-break state, takes
+   on its activity state (working/sleeping/...), and steps toward its destination
+   (its workplace on shift, otherwise home);
 4. staffed, input-satisfied buildings produce through the ``effective_work``
    seam;
 5. the clock advances one hour, and tax is collected on a day rollover.
@@ -46,6 +48,13 @@ CONSTRUCTION_WORK_PER_HOUR = 1.0
 # A pawn eats opportunistically (any waking hour) once its nutrition reserve falls
 # to this saturation, if bread is on hand - RimWorld has no meal schedule block.
 EAT_FOOD_THRESHOLD = 0.30
+
+# Pawns walk this many tiles toward their destination each hour. Movement is
+# cosmetic in build 1 (production only checks staffing) but real and deterministic;
+# there is no collision/pathfinding yet (a build-2/4 item). A working pawn stands
+# this many tiles in front of its building so the sprite is not hidden behind it.
+PAWN_MOVE_TILES_PER_HOUR = 2
+BUILDING_FRONT_OFFSET = 2
 
 
 @dataclass(frozen=True)
@@ -150,6 +159,47 @@ def _advance_pawns(state: FactionState) -> None:
         pawn.mood = mood.drift_mood(pawn.mood, pawn.mood_target, asleep=asleep)
         pawns.age_thoughts(pawn)
         pawns.advance_break_state(pawn, _break_roll(state, pawn))
+        broken = pawn.state in (pawns.STATE_SLACKING, pawns.STATE_WANDERING)
+        if not broken:
+            pawn.state = pawns.activity_state(pawn, block)
+        _move_pawn(state, pawn, block, broken)
+
+
+def _move_pawn(state: FactionState, pawn: Pawn, block: str, broken: bool) -> None:
+    """Step a pawn one tile toward its destination for this hour (deterministic).
+
+    A healthy pawn on a work shift heads to its assigned building (and stands in
+    front of it); off-shift, broken, or unassigned pawns head home. Build 1 has no
+    collision, so the step is a straight tile move toward the target.
+    """
+    tx, ty = _pawn_destination(state, pawn, block, broken)
+    for _ in range(PAWN_MOVE_TILES_PER_HOUR):
+        if pawn.x == tx and pawn.y == ty:
+            break
+        if pawn.x != tx:
+            pawn.x += 1 if tx > pawn.x else -1
+        if pawn.y != ty:
+            pawn.y += 1 if ty > pawn.y else -1
+
+
+def _pawn_destination(state: FactionState, pawn: Pawn, block: str, broken: bool) -> tuple[int, int]:
+    """Where a pawn is headed this hour: its workplace while awake, home at night.
+
+    An assigned, unbroken pawn holds its building front through the whole waking
+    day (work / rec / any blocks) and only walks home during sleep, so it does not
+    yo-yo on every midday rec hour. Broken or unassigned pawns head home.
+    """
+    if not broken and pawn.assignment is not None and block != SCHEDULE_SLEEP:
+        building = state.buildings.get(pawn.assignment.building_id)
+        if building is not None:
+            return _clamp_to_grid(state, building.x, building.y + BUILDING_FRONT_OFFSET)
+    return _clamp_to_grid(state, pawn.home_x, pawn.home_y)
+
+
+def _clamp_to_grid(state: FactionState, x: int, y: int) -> tuple[int, int]:
+    if state.grid is None:
+        return (x, y)
+    return (max(0, min(state.grid.width - 1, x)), max(0, min(state.grid.height - 1, y)))
 
 
 def _break_roll(state: FactionState, pawn: Pawn) -> float:

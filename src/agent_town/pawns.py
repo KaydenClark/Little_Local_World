@@ -29,6 +29,7 @@ from .core import (
     SCHEDULE_BLOCK_KINDS,
     SCHEDULE_REC,
     SCHEDULE_SLEEP,
+    SCHEDULE_WORK,
     Stockpile,
     Thought,
 )
@@ -232,3 +233,20 @@ def advance_break_state(pawn: Pawn, roll: float) -> None:
         return
     if roll < break_chance(mtb):
         pawn.state = target
+
+
+def activity_state(pawn: Pawn, block: str) -> str:
+    """The non-broken activity state for a pawn this hour (step: movement/UI).
+
+    Derived purely from the schedule block and assignment; the engine calls this
+    only for pawns the break machine has not put into a slacking/wandering state,
+    so a healthy pawn reads ``working`` / ``sleeping`` / ``recreating`` / ``idle``
+    instead of always ``idle``.
+    """
+    if block == SCHEDULE_SLEEP:
+        return STATE_SLEEPING
+    if block == SCHEDULE_REC:
+        return STATE_RECREATING
+    if block == SCHEDULE_WORK and pawn.assignment is not None:
+        return STATE_WORKING
+    return STATE_IDLE
