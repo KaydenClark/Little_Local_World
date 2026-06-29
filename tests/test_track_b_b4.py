@@ -1,8 +1,7 @@
 import unittest
 
-from agent_town import governor
+from agent_town import governor, work
 from agent_town.core import (
-    ACTION_ASSIGN_PAWN,
     ACTION_PLACE_BUILDING,
     ACTION_SET_SCHEDULE,
     Building,
@@ -30,13 +29,21 @@ def town():
 
 
 class FallbackGovernorTests(unittest.TestCase):
-    def test_assigns_best_skill_pawn_to_open_slot(self):
+    def test_fallback_no_longer_hand_places_pawns(self):
+        # Build 2 moved routine staffing to the work arbiter; the fallback only
+        # sets policy now, so it emits no assign_pawn for an idle, staffable civ.
         actions = governor.FallbackGovernor().decide(governor.build_context(town()))
-        assigns = [a for a in actions if a.kind == ACTION_ASSIGN_PAWN]
-        self.assertEqual(len(assigns), 1)
-        self.assertEqual(assigns[0].pawn_id, "ace")
-        self.assertEqual(assigns[0].building_id, "saw1")
-        self.assertEqual(assigns[0].role, "woodcutting")
+        self.assertFalse([a for a in actions if a.kind == "assign_pawn"])
+
+    def test_arbiter_seats_best_skill_pawn_into_the_open_slot(self):
+        # The behaviour that used to be the fallback's job now lives in work.py:
+        # the higher-skill pawn (priority 2) beats the lower-skill one (priority 3)
+        # for the single Sawmill slot, and the loser is left idle, not double-seated.
+        state = town()
+        work.assign_jobs(state)
+        self.assertEqual(state.pawns["ace"].assignment, JobRef("saw1", "woodcutting"))
+        self.assertIsNone(state.pawns["ben"].assignment)
+        self.assertEqual(state.buildings["saw1"].staffed_by, ["ace"])
 
     def test_reschedules_unhappy_pawn(self):
         state = town()
@@ -82,6 +89,28 @@ class ApplyActionsTests(unittest.TestCase):
         action = GovernorAction.place_building("Forester", 1, 1)
 
         self.assertEqual(governor.apply_actions(state, [action]), [action])
+
+    def test_assign_pawn_sets_forced_override(self):
+        state = town()
+        governor.apply_actions(state, [GovernorAction.assign_pawn("ace", "saw1", "woodcutting")])
+        # The override pins the pawn so the arbiter keeps it (the forced lane).
+        self.assertEqual(state.pawns["ace"].forced_assignment, JobRef("saw1", "woodcutting"))
+
+    def test_set_work_priority_applies_to_group(self):
+        state = town()
+        action = GovernorAction.set_work_priority("all", "woodcutting", 1)
+        self.assertTrue(governor.validate_action(state, action))
+        self.assertEqual(governor.apply_actions(state, [action]), [action])
+        self.assertTrue(all(p.work_priorities["woodcutting"] == 1 for p in state.pawns.values()))
+
+    def test_set_work_priority_rejects_out_of_range_level(self):
+        state = town()
+        self.assertFalse(
+            governor.validate_action(state, GovernorAction.set_work_priority("ace", "woodcutting", 9))
+        )
+        self.assertEqual(
+            governor.apply_actions(state, [GovernorAction.set_work_priority("ace", "woodcutting", 9)]), []
+        )
 
 
 class ContextTests(unittest.TestCase):

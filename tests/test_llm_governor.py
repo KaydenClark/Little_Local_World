@@ -3,7 +3,6 @@ import unittest
 
 from agent_town import buildings, civilization, engine, governor
 from agent_town.core import (
-    ACTION_ASSIGN_PAWN,
     ACTION_SET_SCHEDULE,
     FactionState,
     Good,
@@ -44,6 +43,15 @@ class ActionParsingTests(unittest.TestCase):
     def test_action_from_dict_rejects_unknown_kind(self):
         self.assertIsNone(governor.action_from_dict({"kind": "nuke_everything"}))
 
+    def test_action_from_dict_maps_set_work_priority(self):
+        action = governor.action_from_dict(
+            {"kind": "set_work_priority", "group": "all", "work_type": "baking", "level": "1"}
+        )
+        self.assertEqual(action.kind, "set_work_priority")
+        self.assertEqual(action.group, "all")
+        self.assertEqual(action.work_type, "baking")
+        self.assertEqual(action.level, 1)
+
     def test_parse_action_list_skips_junk_and_requires_list(self):
         payload = {"actions": [{"kind": "set_schedule", "group": "all", "template": "rest"}, "nope", 7]}
         actions = governor.parse_action_list(payload)
@@ -73,9 +81,9 @@ class LLMGovernorDecideTests(unittest.TestCase):
 
         actions = gov.decide(context)
 
-        # Falls back to the deterministic governor, which staffs the open slot.
+        # Falls back to the deterministic governor (which now sets policy only;
+        # routine staffing is the work arbiter's job, not the governor's).
         self.assertEqual(actions, governor.FallbackGovernor().decide(context))
-        self.assertTrue(any(a.kind == ACTION_ASSIGN_PAWN for a in actions))
 
     def test_empty_model_actions_defer_to_fallback(self):
         _state, context = _small_context()

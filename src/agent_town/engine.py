@@ -12,17 +12,22 @@ civilization by one simulated hour:
    to a built ``Building`` when ready;
 3. each pawn decays its needs, restores rest/recreation from its schedule block,
    eats bread opportunistically when its nutrition reserve runs low, drifts its
-   mood toward the thought-driven target, advances its mental-break state, takes
-   on its activity state (working/sleeping/...), and steps toward its destination
-   (its workplace on shift, otherwise home);
-4. staffed, input-satisfied buildings produce through the ``effective_work``
-   seam;
-5. the clock advances one hour, and tax is collected on a day rollover.
+   mood toward the thought-driven target, and advances its mental-break state;
+4. the lane-based work arbiter (``work.assign_jobs``) re-plans the roster: pawns
+   release illegal/broken jobs, reserve the slots they keep, and self-select
+   their best legal job by manual priority -> work-type order -> skill, never
+   double-claiming a slot; each pawn gets a decision trace;
+5. each pawn takes on its activity state (working/sleeping/...) from its fresh
+   assignment and steps toward its destination (its workplace on shift, else home);
+6. staffed, input-satisfied buildings produce through the ``effective_work`` seam;
+7. the clock advances one hour, and tax is collected on a day rollover.
 
-The governor sets policy only; the engine owns affordability, construction
-realization, and the per-pawn / production / tax tick. Same seed plus same
-governor equals same outcome - the LLM governor is the only nondeterministic
-layer and drops in behind the same ``Governor`` protocol.
+The governor sets policy only (priorities, schedules, placements); the arbiter
+turns that policy into per-pawn jobs, and the engine owns affordability,
+construction realization, and the per-pawn / production / tax tick. The arbiter
+is deterministic, so same seed plus same governor equals same outcome - the LLM
+governor is the only nondeterministic layer and drops in behind the same
+``Governor`` protocol.
 """
 
 from __future__ import annotations
@@ -30,7 +35,7 @@ from __future__ import annotations
 import random
 from dataclasses import dataclass
 
-from . import buildings, construction, economy, governor as governor_mod, mood, pawns, schedule
+from . import buildings, construction, economy, governor as governor_mod, mood, pawns, schedule, work
 from .core import (
     ACTION_PLACE_BUILDING,
     FactionState,
@@ -72,7 +77,9 @@ def step_hour(state: FactionState, gov: governor_mod.Governor | None = None) -> 
     completed = _realize_placements(state, applied)
     completed.extend(_advance_construction(state))
 
-    _advance_pawns(state)
+    _advance_pawn_needs(state)
+    work.assign_jobs(state)
+    _advance_pawn_activity(state)
     economy.production_tick(state)
 
     days_rolled = schedule.advance_clock(state, 1)
@@ -140,8 +147,14 @@ def _advance_construction(state: FactionState) -> list[str]:
     return completed
 
 
-def _advance_pawns(state: FactionState) -> None:
-    """Per-pawn need decay, restoration, opportunistic eating, mood drift, and breaks."""
+def _advance_pawn_needs(state: FactionState) -> None:
+    """Per-pawn need decay, restoration, opportunistic eating, mood drift, and breaks.
+
+    Runs *before* the work arbiter so a pawn that breaks down this hour is already
+    in a broken state when :func:`work.assign_jobs` decides whether it keeps its
+    job. Activity state and movement are deferred to :func:`_advance_pawn_activity`
+    so they read the arbiter's fresh assignment.
+    """
     for pawn in state.pawns.values():
         block = schedule.block_for(pawn.schedule, state.time_of_day)
         asleep = block == SCHEDULE_SLEEP
@@ -154,6 +167,12 @@ def _advance_pawns(state: FactionState) -> None:
         pawn.mood = mood.drift_mood(pawn.mood, pawn.mood_target, asleep=asleep)
         pawns.age_thoughts(pawn)
         pawns.advance_break_state(pawn, _break_roll(state, pawn))
+
+
+def _advance_pawn_activity(state: FactionState) -> None:
+    """Set each pawn's activity state from its fresh assignment, then step movement."""
+    for pawn in state.pawns.values():
+        block = schedule.block_for(pawn.schedule, state.time_of_day)
         broken = pawn.state in (pawns.STATE_SLACKING, pawns.STATE_WANDERING)
         if not broken:
             pawn.state = pawns.activity_state(pawn, block)

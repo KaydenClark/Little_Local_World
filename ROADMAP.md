@@ -65,23 +65,25 @@ Important drift or uncertainty:
 - The I1/I2/I3 bridge goal is complete. Final viewer cleanup has landed as the
   RimWorld-style overlay shell, in-map panels, Civ stats readout, pawn selection
   and inspection, local-model status/toggle, and deterministic pawn commute
-  movement. The bottom command strip remains an intentional visual placeholder
-  until build-2 actions such as work priorities and build controls exist.
+  movement. The bottom command strip's **Work** button is now live (it opens the
+  work-priority grid, build-2 step 1); the remaining buttons (Architect, Assign,
+  Research, History, Menu) stay visual placeholders until their actions exist.
 
 ## Current Goal
 
 The Build-1 mood/hunger reconciliation is complete (Papers 1 and 2 are
 implemented: 0-100 mood ledger, seeded break bands, conserved nutrition reserve,
-0.25-nutrition bread, neutral `mood_factor`). The synthesis paper
-(`research_papers/8.little-local-world-research-synthesis.md`) now sets the build
-order for everything that follows, and it is unambiguous about the single next
-code task: **a lane-based work-priority arbiter with reservations and
-`set_work_priority` (Paper 3)** - not deeper starvation or economy. The
-research-backed order is: food (done) -> work priorities + reservations -> water
-(first essential economy) -> map readability -> governor card + exception stack
--> scale foundations -> deeper economy. Per user direction (2026-06-29) lethal
-starvation (build-1 step 5.4) stays deferred behind the autonomy work; Build-1
-ships with hunger mood pressure as its stakes.
+0.25-nutrition bread, neutral `mood_factor`). Build-2 step 1 is now also complete:
+the **lane-based work-priority arbiter with reservations and `set_work_priority`
+(Paper 3)** ships in `work.py` with a clickable Work grid and an inspector
+decision trace - pawns self-select their jobs and the governor tunes priorities
+instead of hand-placing pawns. The synthesis paper
+(`research_papers/8.little-local-world-research-synthesis.md`) sets the build
+order: food (done) -> work priorities + reservations (done) -> **water (first
+essential economy, the next code task)** -> map readability -> governor card +
+exception stack -> scale foundations -> deeper economy. Per user direction
+(2026-06-29) lethal starvation (build-1 step 5.4) stays deferred behind the
+autonomy work; Build-1 ships with hunger mood pressure as its stakes.
 
 Done when:
 
@@ -234,21 +236,21 @@ from the research-backed queue below, keeping every slice small and verified.
       death event-log line, tests, and a `RUNBOOK.md` manual check (run a
       bakery-less Civ and watch a pawn die).
 
-6. **(next code task) Build-2 step 1: work-priority arbiter + reservations.**
-   The synthesis (Paper 8) names this as the highest-leverage move after the
-   food correction - the point where pawns start "living in" the town instead of
-   being hourly counters. Per user direction (2026-06-29) this is the headline
-   next task; **lethal starvation (step 5 substep 4 above) stays deferred behind
-   it.** Implement a small, inspectable lane-based arbiter (forced/manual -> hard
-   state -> medical/self-care -> emergency -> normal work -> idle), target
-   reservations so two pawns never claim the same job, and a
-   `set_work_priority(pawn_id_or_group, work_type, level)` governor action.
-   Normal work sorts by manual priority, then work-type natural order, workgiver
-   order, target urgency, path/distance cost, and finally skill fit; skill never
-   rescues an illegal, unreachable, reserved, disabled, or lower-lane job. The
-   inspector must explain the winning lane and the top rejected candidate so
-   autonomy never looks arbitrary. See the Paper 3 slice below for the
-   file-by-file touch list, tests, and deferrals.
+6. **(done) Build-2 step 1: work-priority arbiter + reservations.** Shipped as
+   `work.py`: a lane-based arbiter (forced -> hard-state -> self-care -> normal
+   work -> idle; medical/emergency are ordered stubs with no build-1 content) now
+   does routine staffing instead of the governor. Pawns self-select their best
+   legal job by manual priority -> work-type natural order -> target urgency
+   (hook) -> distance -> skill fit; skill never rescues an illegal/reserved/
+   disabled/lower-priority job. Target reservations are `job_slots`-aware so two
+   pawns never claim the same slot, legal jobs are kept (no thrash), and a break
+   or a disabled work type releases the slot. `set_work_priority(group, work_type,
+   level)` is a governor action (and the LLM's main labour lever); `assign_pawn`
+   is now the forced-override lane. The viewer adds a clickable RimWorld-style
+   Work grid (Work button), an inspector "Why this job" trace (winning lane,
+   reason, top rejected job) via `work.explain`, and an `Idle N` HUD chip.
+   **Lethal starvation (step 5 substep 4 above) stays deferred behind this.**
+   **Next code task is the queue item below: the first essential economy (water).**
 
 ## Research Paper Implementation Queue
 
@@ -264,10 +266,11 @@ build order. Work the queue in this order, not in paper-number order:
 
 1. **Food correction (done).** Papers 1-2. Conserved nutrition reserve,
    0.25-nutrition bread, neutral `mood_factor`. Reconciled and merged.
-2. **Work priorities + reservations (next code task).** Paper 3. Lane-based
-   arbiter, target reservations, and `set_work_priority`. This is where the town
-   starts feeling autonomous; see Next Tasks item 6 and the Paper 3 slice below.
-3. **First essential economy: water.** Paper 4. Water Well -> water need -> Civ
+2. **Work priorities + reservations (done).** Paper 3. Lane-based arbiter in
+   `work.py`, `job_slots`-aware reservations, `set_work_priority`, clickable Work
+   grid, and an inspector decision trace. This is where the town starts feeling
+   autonomous; see Next Tasks item 6 and the Paper 3 slice below.
+3. **First essential economy: water (next code task).** Paper 4. Water Well -> water need -> Civ
    readout -> governor exception, before storage / markets / wages.
 4. **Map readability for current systems.** Paper 5. Idle badge, construction
    progress, storage 80/95% badges, danger-over-selection, hover vs selection.
@@ -316,16 +319,25 @@ material; the numbered order above is what to build.
      disease/traits/genes that change hunger.
 3. **RimWorld autonomous pawn priorities** -
    `research_papers/3.rimworld_autonomous-pawn-report.md`
-   - Current status: Build 1 still relies on direct assignment slots; command
-     buttons are visual placeholders.
-   - Next code task: add a minimal lane-based work arbiter with reservations and
-     `set_work_priority`: forced/manual, hard state, self-care, emergency,
-     normal work, idle.
-   - Tests: manual priority beats natural order; self-care interrupts normal
-     work at thresholds; disabled/unreachable/reserved jobs are rejected; the
-     decision trace explains the winning job and top rejection.
+   - Current status: **done.** `work.py` is the lane-based arbiter (forced ->
+     hard-state -> self-care -> normal work -> idle; medical/emergency ordered but
+     empty in build 1). It does routine staffing instead of the governor, sorts
+     normal work by manual priority -> work-type order -> target urgency (hook) ->
+     distance -> skill, makes `job_slots`-aware reservations, keeps legal jobs,
+     and releases on break/disable. `set_work_priority` is wired through the
+     governor + LLM; `assign_pawn` is the forced override. The viewer has the
+     clickable Work grid and an inspector decision trace (`work.explain`).
+   - Next code task: none for this paper. Skill is still a *legality-passing*
+     tiebreak only, matching the paper; later builds add emergency/medical content
+     and richer work types as those systems land.
+   - Tests (in `test_work.py`): manual priority beats work-type order; self-care
+     lane flips at the hunger threshold; disabled/reserved/no-recipe jobs are
+     rejected and not rescued by skill; broken pawn releases its slot; the
+     decision trace explains the winning job and top rejection; determinism.
    - Deferred: full think-tree parity, full joy system, combat/drafted AI,
-     apparel/inventory housekeeping, deep medical simulation.
+     apparel/inventory housekeeping, deep medical simulation, the self-care
+     *time cost* (eating costing a work hour) until building-based services exist,
+     and job-candidate indexes (Paper 7) before large populations.
 4. **Townsmen economy depth** -
    `research_papers/4.townsmen_economy-loop-report.md`
    - Current status: Build 2 backlog names water, clothing/beauty, storage caps,
@@ -507,3 +519,4 @@ Append a row when a task changes durable project state. Use actual results, not 
 | 2026-06-29 | Research retune: bread portions and hunger/break productivity | `.\.venv\Scripts\python.exe -m unittest tests.test_step2_hunger_mood tests.test_track_b_b2 tests.test_track_a_current_contract tests.test_integration_i1 tests.test_civilization tests.test_engine` (41 tests); `.\.venv\Scripts\python.exe -m unittest discover -s tests` (143 tests); `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; `git diff --check` | pass | Bread is now a 0.25 nutrition portion; pawns eat a rounded portion count up to four bread below the strict 30% threshold; Bakery output is four bread portions per cycle; the default civ starts a fourth Farm and equivalent bread reserve so the 12-pawn viewer civ remains winnable for the 3-day fallback proof. `mood_factor` is neutral; `effective_work` now changes through hunger and break state rather than high mood alone. Starvation death remains deferred until the malnutrition/death timing slice. |
 | 2026-06-29 | Synthesize seven research papers into one Little Local World project paper | `.\scripts\validate-workbench.ps1`; `git diff --check` | pass | Docs only. Added `research_papers/8.little-local-world-research-synthesis.md`, combining mood, hunger, autonomy, Townsmen economy loops, AoE readability, observer UI, and scale architecture into one project-specific design paper. Strategic result: food was the right first conservation slice, but after the bread correction the next highest-leverage step is `set_work_priority` plus reservations, not deeper starvation or economy complexity. |
 | 2026-06-29 | Fold Paper 8 synthesis order into ROADMAP/BLUEPRINT and set the next code task | `.\scripts\validate-workbench.ps1`; `git diff --check` | pass | Docs only. Per user direction, made the research-backed build order explicit (food done -> work priorities + reservations -> water -> readability -> governor card -> scale foundations -> deeper economy) and named the lane-based work-priority arbiter + reservations + `set_work_priority` (Paper 3) as the headline next code task, with lethal starvation deferred behind it. Updated ROADMAP Current Goal, added Next Tasks item 6, rewrote the Research Paper Implementation Queue intro around Paper 8 as sequencing authority, and added Paper 8 + a Design Decisions row to BLUEPRINT. Verified against code: `set_work_priority`/reservations/`region_id` do not exist yet; bread retune (0.25, rounded portions) is present. |
+| 2026-06-29 | Build-2 step 1: lane-based work-priority arbiter + reservations + `set_work_priority` + clickable Work grid (Paper 3) | `.\.venv\Scripts\python.exe -m unittest discover -s tests` (174 tests, was 143); `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; `.\.venv\Scripts\python.exe .\scripts\benchmark_scaling.py --pawns 100 500 1000 --steps 20`; rendered `work_grid_open.png`/`inspector_trace.png` and refreshed `docs\screenshots\current-state.png` + `work-grid.png` | pass | New `work.py` lane-based arbiter (forced/hard-state/self-care/normal-work/idle; medical+emergency are ordered stubs) replaces the governor's routine `assign_pawn`: pawns self-select their best legal job by manual priority -> work-type order -> target urgency (hook) -> distance -> skill, reserve the slot (`job_slots`-aware, no double-claim), keep legal jobs (no thrash), release on break/disable, and get a decision trace (`WorkDecision`/`RejectedJob`). `set_work_priority` action wired through governor validate/apply + LLM schema/prompt; `assign_pawn` is now a forced-lane override. Contract additions (additive, one-file-PR): `Pawn.work_priorities`/`forced_assignment`, `FactionState.work_decisions`, `WorkDecision`/`RejectedJob`, `ACTION_SET_WORK_PRIORITY`, `GovernorAction.work_type/level`+`set_work_priority`. Engine splits needs/arbiter/activity phases. Viewer: clickable RimWorld Work grid (Work button), inspector "Why this job" trace via `work.explain` (lazy O(buildings) per inspected pawn), `Idle N` HUD chip. Oracles held: I1 3-day survival and the LLM-vs-fallback 3-day determinism proof both stay green; default-civ staffing matches the old best-skill matcher. Scale note: arbiter is O(needers x buildings)/hour - microseconds at 12 pawns; the 1000-pawn benchmark rises to ~21 ms/hour (989 unemployed pawns re-scan 11 slots each hour), which is the Paper 7 job-index/cadence work deferred to the scale gates and stays ~28x under the real-time step budget. Lethal starvation still deferred. |

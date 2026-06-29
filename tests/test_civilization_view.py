@@ -5,22 +5,28 @@ os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 
 import pygame
 
-from agent_town import civilization
+from agent_town import civilization, engine, work
 from agent_town.civilization_view import (
     BUILDING_SPRITE,
     INSPECTOR_WIDTH,
     PAWN_ROSTER_HEIGHT,
+    WORK_GRID_TYPES,
     Camera,
     CivilizationViewer,
     _need_bar_color,
     _mood_color,
     _pawn_status_label,
     _top_skills,
+    cycle_work_priority,
     find_pawn_at_screen,
     governor_status_line,
+    hud_button_rects,
+    idle_pawn_count,
     load_civilization_assets,
     parse_args,
     render_civilization,
+    work_grid_cell_at,
+    work_grid_layout,
 )
 from agent_town.pawns import STATE_SLACKING
 from agent_town.governor import CivilizationDecisionScheduler, FallbackGovernor
@@ -61,6 +67,66 @@ class CivilizationAssetTests(unittest.TestCase):
         surface = pygame.Surface((state.grid.width * 25 + 24, state.grid.height * 25 + 120))
 
         render_civilization(surface, state, assets, font, (12, 12))
+
+    def test_render_with_work_grid_and_decision_trace_does_not_crash(self):
+        assets = load_civilization_assets()
+        font = pygame.font.Font(None, 16)
+        state = civilization.create_default_civilization()
+        engine.step_hour(state)  # populate work_decisions so the inspector trace draws
+
+        surface = pygame.Surface((state.grid.width * 25 + 24 + INSPECTOR_WIDTH, state.grid.height * 25 + 200))
+        render_civilization(
+            surface,
+            state,
+            assets,
+            font,
+            (12, 12),
+            selected_pawn_id="pawn00",
+            show_inspector=True,
+            show_work_grid=True,
+        )
+
+
+class WorkGridTests(unittest.TestCase):
+    def _map_rect(self):
+        return pygame.Rect(0, PAWN_ROSTER_HEIGHT, 700, 500)
+
+    def test_layout_covers_every_pawn_and_work_type(self):
+        state = civilization.create_default_civilization()
+        pawn_ids = sorted(state.pawns)
+        layout = work_grid_layout(self._map_rect(), pawn_ids)
+
+        self.assertEqual(len(layout.headers), len(WORK_GRID_TYPES))
+        self.assertEqual(len(layout.rows), len(pawn_ids))  # all 12 fit
+        self.assertEqual(len(layout.cells), len(pawn_ids) * len(WORK_GRID_TYPES))
+
+    def test_cell_hit_test_round_trips(self):
+        state = civilization.create_default_civilization()
+        pawn_ids = sorted(state.pawns)
+        rect, pid, wt = work_grid_layout(self._map_rect(), pawn_ids).cells[0]
+
+        self.assertEqual(work_grid_cell_at(self._map_rect(), pawn_ids, rect.center), (pid, wt))
+
+    def test_clicking_a_cell_cycles_that_priority(self):
+        state = civilization.create_default_civilization()
+        pawn = state.pawns["pawn00"]
+        work_type = WORK_GRID_TYPES[0]
+        before = work.default_priority(pawn, work_type)
+        expected = {0: 1, 1: 2, 2: 3, 3: 4, 4: 0}[before]
+
+        cycle_work_priority(state, "pawn00", work_type)
+
+        self.assertEqual(pawn.work_priorities[work_type], expected)
+
+    def test_work_button_rect_exists_for_toggle(self):
+        rects = hud_button_rects(900, 600)
+        self.assertIn("Work", rects)
+
+    def test_idle_pawn_count_after_arbiter_runs(self):
+        state = civilization.create_default_civilization()
+        engine.step_hour(state)
+        # The default civ has 12 pawns for 11 slots, so exactly one stays idle.
+        self.assertEqual(idle_pawn_count(state), 1)
 
 
 class MoodColorTests(unittest.TestCase):

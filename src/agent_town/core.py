@@ -51,6 +51,14 @@ ACTION_SET_SCHEDULE = "set_schedule"
 ACTION_PLACE_BUILDING = "place_building"
 ACTION_SET_PRODUCTION_TARGET = "set_production_target"
 ACTION_SET_RESEARCH = "set_research"
+ACTION_SET_WORK_PRIORITY = "set_work_priority"
+
+# Work-priority levels (build-2 lane-based arbiter, Paper 3). RimWorld 1:1:
+# 1 is the highest priority, 4 the lowest, and 0/absent means the work type is
+# disabled for that pawn. ``work.py`` owns the lanes and selection logic.
+WORK_PRIORITY_DISABLED = 0
+WORK_PRIORITY_HIGHEST = 1
+WORK_PRIORITY_LOWEST = 4
 
 
 @dataclass(frozen=True)
@@ -190,6 +198,38 @@ class Thought:
 
 
 @dataclass
+class RejectedJob:
+    """A job a pawn's arbiter considered but did not take, with the why.
+
+    Spectator telemetry only (Paper 3 "show why the top rejected candidate
+    lost"). ``reason`` is a short human string such as ``"reserved"`` or
+    ``"lower priority (4)"``.
+    """
+
+    building_id: str
+    work_type: str
+    reason: str
+
+
+@dataclass
+class WorkDecision:
+    """The work arbiter's latest decision for one pawn (Paper 3 decision trace).
+
+    ``lane`` is the winning decision lane (see ``work.py`` LANE_* constants).
+    ``building_id``/``work_type`` are the pawn's standing work assignment for the
+    lane that won (``None`` when idle/hard-state). ``rejected`` lists the top
+    candidates the normal-work lane passed over, so the inspector can explain why
+    a pawn chose one job over another instead of looking arbitrary.
+    """
+
+    lane: str
+    building_id: str | None = None
+    work_type: str | None = None
+    reason: str = ""
+    rejected: list[RejectedJob] = field(default_factory=list)
+
+
+@dataclass
 class Pawn:
     """A colonist. Owned by Track B; the engine reads it for production."""
 
@@ -204,6 +244,13 @@ class Pawn:
     thoughts: list[Thought] = field(default_factory=list)
     schedule: str = "default"
     assignment: JobRef | None = None
+    # Per-work-type manual priorities (work_type -> 1..4; 0/absent = disabled).
+    # Empty means "derive from skill" (see work.default_priority). The work
+    # arbiter reads these; the governor/player set them via set_work_priority.
+    work_priorities: dict[str, int] = field(default_factory=dict)
+    # A governor/player override (the forced lane). When set, the arbiter pins
+    # the pawn to this job instead of choosing one; it is set by assign_pawn.
+    forced_assignment: JobRef | None = None
     x: int = 0
     y: int = 0
     home_x: int = 0
@@ -240,6 +287,9 @@ class FactionState:
     pawns: dict[str, Pawn] = field(default_factory=dict)
     buildings: dict[str, Building] = field(default_factory=dict)
     construction_sites: dict[str, ConstructionSite] = field(default_factory=dict)
+    # The work arbiter's latest per-pawn decision trace (keyed by pawn id),
+    # rewritten each engine hour. Pure telemetry the viewer reads; not gameplay.
+    work_decisions: dict[str, WorkDecision] = field(default_factory=dict)
     research: tuple[str, ...] = ()
     season: str = "spring"
     tax_rate: float = 0.1
@@ -276,6 +326,8 @@ class GovernorAction:
     x: int | None = None
     y: int | None = None
     tech: str | None = None
+    work_type: str | None = None
+    level: int | None = None
 
     @classmethod
     def assign_pawn(cls, pawn_id: str, building_id: str, role: str) -> "GovernorAction":
@@ -284,6 +336,10 @@ class GovernorAction:
     @classmethod
     def set_schedule(cls, pawn_id_or_group: str, template: str) -> "GovernorAction":
         return cls(kind=ACTION_SET_SCHEDULE, group=pawn_id_or_group, template=template)
+
+    @classmethod
+    def set_work_priority(cls, pawn_id_or_group: str, work_type: str, level: int) -> "GovernorAction":
+        return cls(kind=ACTION_SET_WORK_PRIORITY, group=pawn_id_or_group, work_type=work_type, level=level)
 
     @classmethod
     def place_building(cls, kind: str, x: int, y: int) -> "GovernorAction":

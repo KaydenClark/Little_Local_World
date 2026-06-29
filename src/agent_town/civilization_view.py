@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 
 import pygame
 
-from . import economy, engine, mood
+from . import economy, engine, mood, work
 from .assets import CivilizationAssetManifest, load_civilization_manifest
 from .core import FactionState, Good, NEED_FOOD, NEED_RECREATION, NEED_REST
 from .civilization import create_default_civilization
@@ -113,6 +113,41 @@ CIV_STATS_NEEDS = (
     ("Rest", NEED_REST),
 )
 CIV_STATS_WIDTH = 224
+
+# Work-priority grid (RimWorld Work tab). Columns are the build-1 work types,
+# ordered by their natural priority (the arbiter's tiebreaker), with short labels.
+WORK_GRID_TYPES = sorted(work.WORK_TYPE_ORDER, key=lambda wt: -work.work_type_order(wt))
+WORK_TYPE_LABEL = {
+    "farming": "Farm",
+    "milling": "Mill",
+    "baking": "Bake",
+    "forestry": "Frst",
+    "woodworking": "Wood",
+    "mining": "Mine",
+}
+# Priority -> cell colour (1 highest/brightest .. 4 lowest; 0/disabled is blank).
+WORK_PRIORITY_COLOR = {
+    1: (86, 170, 108),
+    2: (120, 156, 96),
+    3: (150, 140, 80),
+    4: (120, 110, 74),
+}
+# Decision-lane -> readable label + colour for the inspector trace.
+LANE_LABEL = {
+    work.LANE_FORCED: ("Forced (override)", (214, 180, 110)),
+    work.LANE_HARD_STATE: ("Mental break", (224, 130, 110)),
+    work.LANE_MEDICAL: ("Medical rest", (224, 130, 110)),
+    work.LANE_SELF_CARE: ("Self-care (eat)", (220, 200, 120)),
+    work.LANE_EMERGENCY: ("Emergency", (224, 130, 110)),
+    work.LANE_NORMAL_WORK: ("Normal work", (140, 200, 150)),
+    work.LANE_IDLE: ("Idle", (150, 156, 148)),
+}
+
+# Bottom-strip command buttons. "Work" opens the work-priority grid; the rest are
+# still visual placeholders until their build-2 actions exist.
+HUD_BUTTONS = ("Architect", "Work", "Assign", "Research", "History", "Menu")
+HUD_BUTTON_W = 104
+HUD_BUTTON_H = 28
 
 HUD_MUTED = (150, 156, 148)
 GOVERNOR_STATUS_COLOR = {
@@ -290,6 +325,7 @@ def render_civilization(
     camera: Camera | None = None,
     selected_pawn_id: str | None = None,
     show_inspector: bool = False,
+    show_work_grid: bool = False,
 ) -> None:
     """Draw the whole civilization (tiles, nodes, buildings, pawns, HUD) onto ``surface``."""
     camera = camera or Camera()
@@ -359,7 +395,9 @@ def render_civilization(
     _draw_pawn_roster(surface, state, assets, font, selected_pawn_id, map_rect.width)
     if inspector_rect is not None:
         _draw_inspector(surface, state, font, selected_pawn_id, inspector_rect)
-    _draw_hud(surface, state, font, status_line)
+    if show_work_grid:
+        _draw_work_grid(surface, state, font, selected_pawn_id, map_rect)
+    _draw_hud(surface, state, font, status_line, work_grid_open=show_work_grid)
 
 
 def _scale_for_camera(sprite: pygame.Surface, camera: Camera) -> pygame.Surface:
@@ -565,6 +603,37 @@ def _draw_thoughts(
     return y
 
 
+def _draw_work_trace(
+    surface: pygame.Surface,
+    font: pygame.font.Font,
+    state: FactionState,
+    pawn,
+    x: int,
+    y: int,
+    width: int,
+) -> int:
+    """Explain the arbiter's choice for this pawn: lane, why, and top rejection."""
+    decision = work.explain(state, pawn.id)
+    _draw_text(surface, font, "Why this job", SELECTION, (x, y), width)
+    y += 20
+    if decision is None:
+        _draw_text(surface, font, "Lane  (deciding...)", INSPECTOR_MUTED, (x, y), width)
+        return y + 20
+    label, color = LANE_LABEL.get(decision.lane, (decision.lane, INSPECTOR_TEXT))
+    _draw_text(surface, font, f"Lane  {label}", color, (x, y), width)
+    y += 19
+    if decision.reason:
+        _draw_text(surface, font, decision.reason, INSPECTOR_MUTED, (x, y), width)
+        y += 19
+    if decision.rejected:
+        top = decision.rejected[0]
+        building = state.buildings.get(top.building_id)
+        name = building.kind if building else top.building_id
+        _draw_text(surface, font, f"Passed over {name}: {top.reason}", INSPECTOR_MUTED, (x, y), width)
+        y += 19
+    return y
+
+
 def _draw_chip(
     surface: pygame.Surface,
     font: pygame.font.Font,
@@ -681,6 +750,8 @@ def _draw_inspector(
         building_name = building.kind if building else pawn.assignment.building_id
         line(f"Job    {building_name}", INSPECTOR_MUTED)
 
+    y = _draw_work_trace(surface, font, state, pawn, x, y + 4, rect.width - 28) + 2
+
     tab_rect = pygame.Rect(rect.x, y + 5, rect.width, 28)
     _draw_tab_strip(surface, font, tab_rect)
     y = tab_rect.bottom + 14
@@ -721,11 +792,154 @@ def _draw_inspector(
             chip_y += chip.height + 6
 
 
+def hud_button_rects(width: int, height: int) -> dict[str, pygame.Rect]:
+    """Bottom-strip command-button rects, so draw and click hit-test agree."""
+    button_y = height - HUD_BUTTON_H
+    return {
+        label: pygame.Rect(index * (HUD_BUTTON_W + 2), button_y, HUD_BUTTON_W, HUD_BUTTON_H)
+        for index, label in enumerate(HUD_BUTTONS)
+    }
+
+
+def idle_pawn_count(state: FactionState) -> int:
+    """Pawns with no work assignment that are not mid-break (the arbiter left idle)."""
+    return sum(
+        1
+        for pawn in state.pawns.values()
+        if pawn.assignment is None and pawn.state not in (STATE_WANDERING, STATE_SLACKING)
+    )
+
+
+# --- Work-priority grid (RimWorld Work tab) ---------------------------------
+
+WORK_GRID_NAME_W = 132
+WORK_GRID_CELL_W = 58
+WORK_GRID_ROW_H = 24
+WORK_GRID_HEADER_H = 26
+WORK_GRID_TITLE_H = 30
+WORK_GRID_PAD = 10
+# Left-click cycles a cell forward through this ladder (then wraps to disabled).
+_PRIORITY_CYCLE = {0: 1, 1: 2, 2: 3, 3: 4, 4: 0}
+
+
+@dataclass
+class WorkGridLayout:
+    """Geometry for the Work grid, shared by the renderer and the click hit-test."""
+
+    panel: pygame.Rect
+    headers: list[tuple[pygame.Rect, str]] = field(default_factory=list)
+    rows: list[tuple[str, pygame.Rect]] = field(default_factory=list)
+    cells: list[tuple[pygame.Rect, str, str]] = field(default_factory=list)
+
+
+def work_grid_layout(map_rect: pygame.Rect, pawn_ids: list[str]) -> WorkGridLayout:
+    """Compute the Work-grid panel and its header/row/cell rects, centred in the map."""
+    cols = WORK_GRID_TYPES
+    grid_w = WORK_GRID_NAME_W + WORK_GRID_CELL_W * len(cols)
+    panel_w = grid_w + WORK_GRID_PAD * 2
+    body_room = map_rect.height - 2 * MARGIN - WORK_GRID_TITLE_H - WORK_GRID_HEADER_H - WORK_GRID_PAD * 2
+    max_rows = max(1, body_room // WORK_GRID_ROW_H)
+    rows = pawn_ids[:max_rows]
+    panel_h = WORK_GRID_TITLE_H + WORK_GRID_HEADER_H + WORK_GRID_ROW_H * len(rows) + WORK_GRID_PAD * 2
+    panel = pygame.Rect(0, 0, panel_w, min(panel_h, map_rect.height - 2 * MARGIN))
+    panel.center = map_rect.center
+
+    cols_x = panel.x + WORK_GRID_PAD + WORK_GRID_NAME_W
+    header_y = panel.y + WORK_GRID_PAD + WORK_GRID_TITLE_H
+    headers = [
+        (pygame.Rect(cols_x + i * WORK_GRID_CELL_W, header_y, WORK_GRID_CELL_W, WORK_GRID_HEADER_H), wt)
+        for i, wt in enumerate(cols)
+    ]
+    layout = WorkGridLayout(panel=panel, headers=headers)
+    body_y = header_y + WORK_GRID_HEADER_H
+    for r, pid in enumerate(rows):
+        row_y = body_y + r * WORK_GRID_ROW_H
+        layout.rows.append((pid, pygame.Rect(panel.x + WORK_GRID_PAD, row_y, grid_w, WORK_GRID_ROW_H)))
+        for i, wt in enumerate(cols):
+            layout.cells.append(
+                (pygame.Rect(cols_x + i * WORK_GRID_CELL_W, row_y, WORK_GRID_CELL_W, WORK_GRID_ROW_H), pid, wt)
+            )
+    return layout
+
+
+def work_grid_cell_at(map_rect: pygame.Rect, pawn_ids: list[str], pos: tuple[int, int]) -> tuple[str, str] | None:
+    """The (pawn_id, work_type) cell under ``pos``, or None."""
+    for rect, pid, wt in work_grid_layout(map_rect, pawn_ids).cells:
+        if rect.collidepoint(pos):
+            return (pid, wt)
+    return None
+
+
+def cycle_work_priority(state: FactionState, pawn_id: str, work_type: str) -> None:
+    """Advance one pawn's priority for a work type to the next rung on a click."""
+    pawn = state.pawns.get(pawn_id)
+    if pawn is None:
+        return
+    current = work.default_priority(pawn, work_type)
+    work.set_priority(pawn, work_type, _PRIORITY_CYCLE.get(current, 1))
+
+
+def _draw_work_grid(
+    surface: pygame.Surface,
+    state: FactionState,
+    font: pygame.font.Font,
+    selected_pawn_id: str | None,
+    map_rect: pygame.Rect,
+) -> None:
+    pawn_ids = sorted(state.pawns)
+    layout = work_grid_layout(map_rect, pawn_ids)
+    panel = layout.panel
+
+    backdrop = pygame.Surface((map_rect.width, map_rect.height), pygame.SRCALPHA)
+    backdrop.fill((6, 8, 9, 150))
+    surface.blit(backdrop, map_rect.topleft)
+    pygame.draw.rect(surface, PANEL_BG, panel)
+    pygame.draw.rect(surface, PANEL_BORDER, panel, 1)
+
+    _draw_text(
+        surface,
+        font,
+        "Work priorities - click to cycle  (1 top .. 4 low, blank off)",
+        SELECTION,
+        (panel.x + WORK_GRID_PAD, panel.y + 8),
+        panel.width - WORK_GRID_PAD * 2,
+    )
+
+    for rect, wt in layout.headers:
+        glyph = font.render(WORK_TYPE_LABEL.get(wt, wt[:4].title()), True, INSPECTOR_TEXT)
+        surface.blit(glyph, (rect.centerx - glyph.get_width() // 2, rect.y + 6))
+
+    selected_rows = {pid for pid, _ in layout.rows if pid == selected_pawn_id}
+    for pid, row_rect in layout.rows:
+        if pid in selected_rows:
+            pygame.draw.rect(surface, PANEL_BG_3, row_rect)
+        pawn = state.pawns[pid]
+        _draw_text(
+            surface,
+            font,
+            pawn.name.split()[0],
+            INSPECTOR_TEXT,
+            (row_rect.x + 4, row_rect.y + 4),
+            WORK_GRID_NAME_W - 8,
+        )
+
+    for rect, pid, wt in layout.cells:
+        pygame.draw.rect(surface, (12, 15, 16), rect, 1)
+        level = work.default_priority(state.pawns[pid], wt)
+        if level <= 0:
+            continue
+        pygame.draw.rect(surface, WORK_PRIORITY_COLOR.get(level, PANEL_BG_3), rect.inflate(-8, -6))
+        glyph = font.render(str(level), True, (12, 15, 16))
+        surface.blit(glyph, (rect.centerx - glyph.get_width() // 2, rect.centery - glyph.get_height() // 2))
+
+
 def _draw_hud(
     surface: pygame.Surface,
     state: FactionState,
     font: pygame.font.Font,
     status_line: tuple[str, tuple[int, int, int]] | None = None,
+    *,
+    work_grid_open: bool = False,
 ) -> None:
     width = surface.get_width()
     top = surface.get_height() - HUD_HEIGHT
@@ -741,6 +955,7 @@ def _draw_hud(
         f"Pop {population}",
         f"Mood {round(avg_mood)}",
         f"Coin {state.coin}",
+        f"Idle {idle_pawn_count(state)}",
         f"Sites {sites}",
     )
 
@@ -767,13 +982,11 @@ def _draw_hud(
 
     _draw_text(surface, font, text, color, (MARGIN, top + 72), width - MARGIN * 2)
 
-    buttons = ("Architect", "Work", "Assign", "Research", "History", "Menu")
-    button_y = top + HUD_HEIGHT - 28
-    button_w = 104
-    for index, label in enumerate(buttons):
-        button = pygame.Rect(index * (button_w + 2), button_y, button_w, 28)
-        pygame.draw.rect(surface, (31, 42, 45), button)
-        pygame.draw.rect(surface, PANEL_BORDER, button, 1)
+    for label, button in hud_button_rects(width, surface.get_height()).items():
+        active = label == "Work" and work_grid_open
+        fill = (101, 75, 43) if active else (31, 42, 45)
+        pygame.draw.rect(surface, fill, button)
+        pygame.draw.rect(surface, SELECTION if active else PANEL_BORDER, button, 1)
         glyph = font.render(label, True, HUD_TEXT)
         surface.blit(glyph, (button.centerx - glyph.get_width() // 2, button.centery - glyph.get_height() // 2))
 
@@ -804,6 +1017,7 @@ class CivilizationViewer:
         self.governor = governor
         self.camera = Camera()
         self.selected_pawn_id = next(iter(self.state.pawns), None)
+        self.show_work_grid = False
         self.assets = None  # set after the display mode exists
 
         grid = self.state.grid
@@ -840,14 +1054,19 @@ class CivilizationViewer:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.running = False
-            elif event.type == pygame.KEYDOWN and event.key in (pygame.K_ESCAPE, pygame.K_q):
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_q:
                 self.running = False
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                if self.show_work_grid:
+                    self.show_work_grid = False
+                else:
+                    self.running = False
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_l:
                 self._toggle_governor()
             elif event.type == pygame.KEYDOWN:
                 self._handle_camera_key(event.key)
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                self._select_pawn_at(event.pos)
+                self._handle_click(event.pos)
             elif event.type == pygame.MOUSEWHEEL:
                 factor = ZOOM_STEP if event.y > 0 else 1.0 / ZOOM_STEP
                 self._zoom_camera(factor, pygame.mouse.get_pos())
@@ -897,6 +1116,21 @@ class CivilizationViewer:
         world_size = (grid.width * tile_size, grid.height * tile_size)
         self.camera.clamp_to_world(world_size, self._map_rect().size)
 
+    def _handle_click(self, pos: tuple[int, int]) -> None:
+        # The bottom-strip Work button toggles the grid from anywhere.
+        if hud_button_rects(self.screen.get_width(), self.screen.get_height())["Work"].collidepoint(pos):
+            self.show_work_grid = not self.show_work_grid
+            return
+        # While the grid is open it is modal over the map: a cell click cycles a
+        # priority and the pawn re-routes on the next engine step; other clicks
+        # are swallowed so they do not also reselect a pawn underneath.
+        if self.show_work_grid:
+            cell = work_grid_cell_at(self._map_rect(), sorted(self.state.pawns), pos)
+            if cell is not None:
+                cycle_work_priority(self.state, cell[0], cell[1])
+            return
+        self._select_pawn_at(pos)
+
     def _select_pawn_at(self, pos: tuple[int, int]) -> None:
         if not self._map_rect().collidepoint(pos) or self.assets is None:
             return
@@ -945,6 +1179,7 @@ class CivilizationViewer:
             camera=self.camera,
             selected_pawn_id=self.selected_pawn_id,
             show_inspector=True,
+            show_work_grid=self.show_work_grid,
         )
         pygame.display.flip()
 
