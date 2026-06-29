@@ -39,6 +39,26 @@ Project structure follows the `LLM_Workbench` pattern:
 - `UNATTENDED_WORK_POLICY.md` - guardrails for longer agent work.
 - `VISUAL_DESIGN.md` - local visual baseline.
 
+## Research Papers
+
+The `research_papers/` folder contains GPT Pro reference papers for the games
+and UI patterns this project is borrowing from. They are used as source leads
+and design inputs, then reduced into `BLUEPRINT.md` decisions and `ROADMAP.md`
+implementation slices.
+
+Current intake order:
+
+1. RimWorld mood/thoughts.
+2. RimWorld hunger/nutrition.
+3. RimWorld autonomous pawn work priorities.
+4. Townsmen-style economy loops.
+5. Age of Empires settlement readability.
+6. Observer-first RimWorld + Age UI.
+7. Scale from 12 pawns to 1000 pawns.
+
+When a paper conflicts with current code, the conflict is tracked as a roadmap
+task instead of being treated as already implemented.
+
 ## Run
 
 From this folder:
@@ -94,8 +114,15 @@ Ollama can use the same adapter with
 
 ## Next Useful Upgrades
 
-- Finish final viewer cleanup after the social-sim retirement.
-- Add build-2 depth: water, clothes/beauty, storage caps, repair, wages, and
-  work priorities.
+- Reconcile the research-backed hunger model with the current bread unit before
+  implementing lethal starvation.
+- Decide whether the current generic mood-to-work multiplier stays as a
+  deliberate Local Agent Town rule or is replaced by hunger/break-driven
+  productivity only.
+- Add the Build 2 lane-based work-priority arbiter and reservation model.
+- Start the first Townsmen-style essentials slice: Water Well -> water need ->
+  Civ readout -> governor exception.
+- Add the first Paper 7 scale foundations before larger populations:
+  reachability-region rejection and deterministic update phases.
 - Add save state once the civilization persistence model is designed.
 - Add pathfinding benchmarks before larger maps or blocked terrain.

@@ -154,6 +154,79 @@ Operator interaction principles:
   whether a feature is on, off, pending, blocked, or degraded.
 - Be creative but practical. Prefer small, game-readable controls that match
   the desktop settlement UI over plain text instructions buried in a footer.
+- Persistent UI is for scanability, not completeness. Keep the Civ strip, pawn
+  roster, alert stack, and governor status short; put causes, full thought
+  ledgers, decision traces, and stockpile detail in the inspector or drill-downs.
+- Do not rely on color alone. Critical states need at least two channels such as
+  color plus icon, shape, position, or brief motion. Text belongs on dark
+  back-plates, not directly on terrain.
+
+## Research-backed design inputs
+
+The `research_papers` folder is now the source-input shelf for external game
+reference work. These papers guide future implementation, but active code and
+tests remain the source of truth until a research finding is implemented and
+verified.
+
+Current research inputs, in implementation order:
+
+1. `research_papers/1.rimworld_mood-system-report.md` - keep the mood ledger,
+   target/current mood split, asymmetric drift, break thresholds, Catharsis, and
+   expectations as the future baseline correction. Treat generic mood-to-work
+   speed as a deliberate non-vanilla choice if retained.
+2. `research_papers/2.rimworld_hunger-system-report.md` - pawns eat from a
+   threshold-driven self-care job, not meal schedules. Bread is a custom Local
+   Agent Town staple; the paper recommends 0.25 nutrition per bread and up to
+   four bread per eat job before starvation is made lethal.
+3. `research_papers/3.rimworld_autonomous-pawn-report.md` - Build 2 work
+   priorities should use a visible lane-based arbiter: forced/manual, hard
+   state, medical rest, self-care, emergencies, normal work, idle.
+4. `research_papers/4.townsmen_economy-loop-report.md` - Build 2 economy depth
+   should use district-aware logistics, essentials before comfort, storage caps,
+   repair debt, wages -> spending -> taxes, and reserve-aware external trade.
+5. `research_papers/5.aoe_civ-readability-report.md` - viewer readability should
+   prioritize silhouettes, stable anchors, explicit draw layers, hover/selection
+   separation, threshold badges, and accessibility contrast.
+6. `research_papers/6.ui-report.md` - the observer UI should combine an
+   Age-style Civ strip with a RimWorld-style pawn roster/inspector and an
+   always-visible local Governor status card.
+7. `research_papers/7.scalable-sim-report.md` - scale comes from indexed and
+   tiered work, not smarter global agents: exact truth near the player,
+   reachability prefilters, deterministic command phases, job packets, path
+   abstraction, cadence tiers, and visual/update LOD outside the active bubble.
+
+When these papers conflict with current implementation, the conflict becomes a
+roadmap task instead of being silently folded into docs.
+
+## Scale architecture
+
+Paper 7 turns the 1000-pawn goal into a staged architecture instead of a late
+optimization project. At 12 pawns, keep visible truth exact: reservations,
+inventory transfers, short-range movement, health/death, scarce-resource
+ownership, construction completion, and deterministic event order. Even at that
+scale, build two low-cost foundations early:
+
+- **Reachability regions.** Every walkable tile eventually gets a `region_id`,
+  with dirty-region recomputation when topology changes, so impossible jobs can
+  be rejected before pathfinding.
+- **Deterministic phases.** Job claims, reservations, path requests, movement,
+  interactions, production, needs, and tax advance in stable ordered phases so
+  later batching does not break replayability.
+
+Scale thresholds are design guidance, not source claims:
+
+| Scale | Keep exact | Start abstracting |
+|---|---|---|
+| Up to about 16 active pawns | Almost everything | Optional render cadence only |
+| About 16 to 64 | Inventory, reservations, local interaction truth | Candidate indexes and deterministic update buckets |
+| About 64 to 150 | Near-goal movement and active-bubble behavior | Chunk/HPA-style long paths, shared routes to common sinks, animation LOD |
+| About 150 to 400 | Selected/near/conflict pawns | District work packets, path budgets, offscreen corridor ETAs |
+| About 400 to 1000 | Player-near truth and state transfers | Far-needs cadence, simplified local avoidance, strong visual and overlay LOD |
+
+The hard trust rule: if a pawn is selected, visible, in conflict, carrying or
+touching a scarce object, or about to transfer ownership of a good/building/job,
+force it back into exact simulation. Approximation is allowed for opportunity
+search and offscreen movement, not for player-readable truth.
 
 ## Module Layout
 
@@ -242,10 +315,11 @@ Pawn needs (build 1): rest, food, recreation. Rest and recreation are 0.0-1.0
 satisfaction values that decay over time and are restored by the matching
 schedule block. Food is different: it is a RimWorld-style **nutrition/saturation
 reserve** (0.0-1.0 nutrition, max 1.0) drained by hunger and refilled only by
-eating - a pawn opportunistically eats one bread (0.9 nutrition) when it drops to
-~30% saturation, capping at 1.0 with the excess wasted. No schedule block or idle
-hour grants food for free (conservation law); full design in "Mood: the RimWorld
-model" below.
+eating. The implemented Build-1 pass treats one bread as a large satisfying food
+unit; the hunger research recommends a follow-up retune to 0.25 nutrition per
+bread, with up to four bread eaten at once, before starvation death becomes
+lethal. No schedule block or idle hour grants food for free (conservation law);
+full design in "Mood: the RimWorld model" below.
 
 Trait subset: industrious or lazy (work speed), tough or frail (mood floor now,
 combat later), optimist or pessimist (mood floor), loner (solo jobs lift mood),
@@ -293,17 +367,20 @@ architecture rather than replacing it.
   knob later.
 - **Food is a nutrition reserve, and hunger is the first real thought.** The food
   need becomes a RimWorld-style saturation reserve (0-1 nutrition, max 1.0)
-  drained by hunger and refilled only by eating: a pawn opportunistically eats one
-  bread (0.9 nutrition) when it drops to ~30% saturation, capping at 1.0 with the
-  excess wasted. There is no meal schedule block (RimWorld has none) and no free
-  off-shift restoration - the conservation fix lands here, in step 2. Saturation
-  drives one hunger thought: Fed (>=25%) none; Hungry (25-12.5%) -6; Ravenously
-  hungry (12.5-0%) -12; Malnourished (0%) -20. Food is pulled out of the blended
-  needs term so hunger hits mood exactly once. The deeper bands (-26 / -32 / -38 /
-  -44) and the lethal malnutrition ailment arrive with starvation death (below,
-  step 4). This is the primary near-term incentive to keep pawns fed.
+  drained by hunger and refilled only by eating: a pawn opportunistically eats
+  one or more bread when it drops to ~30% saturation, capping at 1.0 with excess
+  wasted. There is no meal schedule block (RimWorld has none) and no free
+  off-shift restoration. The current code has the conservation fix; the research
+  reconciliation still needs to retune bread from the earlier large-unit value to
+  the recommended 0.25 nutrition unit with up to four units per eat job.
+  Saturation drives one hunger thought: Fed (>=24%) none; Hungry (24-12%) -6;
+  Ravenously hungry (12-0%) -12; Malnourished/Starving (0%) -20 until the
+  starvation system lands. Food is pulled out of the blended needs term so hunger
+  hits mood exactly once. The deeper malnutrition bands and lethal starvation
+  arrive with starvation death (below, step 4). This is the primary near-term
+  incentive to keep pawns fed.
 - **Breaks are band + roll.** Three bands replace the old single threshold:
-  minor < 35%, major < 20%, extreme < 5%. A break fires on a mean-time-between
+  minor < 35%, major around 20%, extreme around 5%. A break fires on a mean-time-between
   roll that is faster in lower bands, off a seeded PRNG keyed to a civilization seed -
   so the engine stays reproducible (same seed + same policy = same outcome) while
   still feeling unpredictable, the way RimWorld's "story generator" does. Traits
@@ -327,6 +404,13 @@ prisoners are out of build-1 scope.
 Note: adopting base + expectations + thoughts changes absolute mood numbers, and
 mood feeds `daily_tax_income`, so the tax constant is rebalanced in the same pass,
 not silently.
+
+Productivity note from the mood research: vanilla RimWorld does not use a simple
+generic mood-to-work-speed multiplier. Productivity changes mostly through
+hunger, exhaustion, break downtime, and optional inspirations. Local Agent Town's
+existing `mood_factor` can remain only as an explicit town-design choice, and it
+should be reviewed before the Build-2 work-priority arbiter becomes the primary
+productivity model.
 
 ### Starvation and pawn loss (build 1)
 
@@ -367,6 +451,21 @@ Build 1 ships only the first rows; `ROADMAP.md` sequences the rest. This table
 is the design target the chains converge on, not the build-1 cut. Every "from /
 to" obeys the conservation law above. The `Build` column is the earliest build
 that ships the row.
+
+Build-2 economy direction from the Townsmen research:
+
+- Model essentials before comfort: water, food, shelter/warmth, and repair stay
+  ahead of clothing, beauty, taverns, and luxury services.
+- Make logistics district-aware before making them large. District storage,
+  market stalls, and travel-share readouts are more useful than global stock
+  totals alone.
+- Add storage caps as real blockers with visible pressure: warning at about 80%
+  full and critical at about 95% full.
+- Add repair debt as a material and labour sink. Building condition should
+  degrade into output/service penalties before catastrophic failure.
+- Keep the money loop legible: treasury pays wages, households buy essentials
+  and comfort goods, taxes and building revenue return coin, and reserve-aware
+  trade is the main net-new coin source.
 
 ### Production chains
 
@@ -498,6 +597,20 @@ the substance of the spectator view. (`set_work_priority` is a build-2 addition;
 build 1 still assigns slots directly. `set_research` is core to the Space-Age
 victory, not a stretch.)
 
+Build-2 autonomy direction from the RimWorld work-priority research:
+
+- Do not implement a full RimWorld think tree. Use a compact, inspectable
+  lane-based arbiter.
+- Decision lanes, in order: forced/manual, hard state, medical rest, self-care,
+  emergency, normal work, idle.
+- Normal work sorts by manual priority first, then work-type order, workgiver
+  order, target urgency, path/distance cost, and skill fit. Skill never rescues
+  an illegal, unreachable, reserved, disabled, or lower-lane job.
+- Add reservations before broad autonomy so two pawns do not claim the same
+  target.
+- The spectator UI must show why a job won and why the top rejected candidates
+  lost; otherwise autonomous behavior will look arbitrary.
+
 What the Governor reads, built by `governor.build_context`:
 
 - Faction summary: population, average mood, stockpile levels, coin, day and
@@ -573,9 +686,15 @@ Rules:
 | Hunger as an explicit -5/-10/-15 mood modifier; death deferred behind it | Makes the mood hit the near-term feed-your-pawns incentive; food is pulled out of the blended needs term so hunger is one clean RimWorld-style modifier, not a double drag | 2026-06-28 user request |
 | Rename "civilization" -> "Civilization (Civ)" everywhere | One consistent player-facing and code vocabulary; done as an isolated behaviour-preserving commit (~327 refs / 32 files) before the mood work | 2026-06-28 user request |
 | Adopt RimWorld's mood model (two-layer target/actual, thoughts ledger, break bands), foundation-first | Mood is the game's story engine; building it RimWorld-shaped now means later thoughts/expectations/inspirations slot in without rework. Break timing uses a seeded PRNG so runs stay reproducible per seed | 2026-06-28 user request |
-| Food is a nutrition/saturation reserve (max 1.0, bread = 0.9), eaten opportunistically at ~30% with overeating waste | Authentic RimWorld hunger; makes the bread chain conservation-real (~2 bread/pawn/day is a load the bakeries must sustain) instead of an abstract satisfaction bar | 2026-06-28 user decision |
+| Food is a nutrition/saturation reserve (max 1.0, current bread unit = 0.9 pending research retune), eaten opportunistically at ~30% with overeating waste | Authentic RimWorld hunger; makes the bread chain conservation-real instead of an abstract satisfaction bar; the 2026-06-29 hunger paper recommends retuning bread to 0.25 nutrition before starvation death | 2026-06-28 user decision, updated 2026-06-29 research intake |
 | Pawns eat opportunistically when hungry, not on a meal schedule block; the free off-shift food restoration is removed | RimWorld has no meal block - pawns eat when they drop to ~30%; closes the "food from nothing" conservation gap | 2026-06-28 user decision |
 | Mood moves to a 0-100 scale (RimWorld 1:1); thoughts use RimWorld point values (Hungry -6 etc.); `daily_tax_income` recalibrated in the same pass | Hunger, break, and thought numbers match RimWorld exactly with no 0-1 translation; supersedes the earlier "-5/-10/-15 on 0-1" hunger sketch | 2026-06-28 user decision |
+| Research papers are implementation inputs, not automatic code truth | Papers in `research_papers` are converted into explicit tasks, tests, and deferrals; source-level constants are verified or marked research-derived before exact implementation | 2026-06-29 research intake |
+| Reconcile Build-1 hunger with the hunger paper before lethal starvation | The paper recommends bread as 0.25 nutrition with up to four units per eat job; current Build-1 uses a larger bread unit, so starvation death should wait until that food-unit choice is retuned or consciously retained | 2026-06-29 research intake |
+| Build-2 pawn autonomy uses a lane-based arbiter, not full RimWorld think-tree parity | Forced/manual, hard-state, self-care, emergency, and normal-work lanes preserve the feel while keeping decisions inspectable and testable | 2026-06-29 research intake |
+| Build-2 economy starts with district logistics and essentials before comfort | Water, food, storage, repair, wages, spending, taxes, and trade should surface bottlenecks through days-of-cover, blocked time, travel share, queue wait, and reserve-aware export rules | 2026-06-29 research intake |
+| Viewer readability follows AoE-style silhouette/layer/status rules and observer UI density budgets | Identity should read through silhouette and anchor consistency first; state/cause/actionability stay visually separated; persistent UI stays compact while detail lives in inspectors | 2026-06-29 research intake |
+| Scale work starts with reachability regions and deterministic phases, not a new engine | Paper 7 says exactness should stay near player-visible truth while job search, long movement, update cadence, and overlays become indexed, batched, or approximate as population grows | 2026-06-29 research intake |
 
 ## Health Criteria
 

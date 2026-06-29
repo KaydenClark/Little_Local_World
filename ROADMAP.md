@@ -61,23 +61,30 @@ Important drift or uncertainty:
   error. It is proven faithful (an always-failing LLM governor drives the civilization
   identically to the fallback over three days), has a live Gemma 4 E4B run log
   through `scripts/llm_governor_run.py --hours 6`, and is wired into the
-  real-time viewer through the non-blocking `CivilizationDecisionScheduler`. Remaining
-  bridge work is final civilization-viewer cleanup before build-2 depth begins.
+  real-time viewer through the non-blocking `CivilizationDecisionScheduler`.
+- The I1/I2/I3 bridge goal is complete. Final viewer cleanup has landed as the
+  RimWorld-style overlay shell, in-map panels, Civ stats readout, pawn selection
+  and inspection, local-model status/toggle, and deterministic pawn commute
+  movement. The bottom command strip remains an intentional visual placeholder
+  until build-2 actions such as work priorities and build controls exist.
 
 ## Current Goal
 
-Turn the passing Track A + Track B module set into a reusable deterministic
-civilization stepper, then extend it through I2/I3 so the local LLM governor and
-viewer run against real civilization state.
+Start the research-backed implementation queue while preserving the completed
+build-1 bridge. First reconcile the Build-1 mood/hunger findings that conflict
+with current code, then move into Build-2 pawn autonomy, economy depth, and
+viewer readability in the order captured from `research_papers`.
 
 Done when:
 
-- a reusable headless engine step replaces the I1 test harness while preserving
-  the three-day fallback survival proof;
-- the LLM governor can drop in behind the fallback interface without blocking
-  the sim loop;
-- the viewer renders civilization state instead of the legacy social-sim state;
-- the smoke test still exits successfully and workbench validation passes.
+- each research paper is reduced to a small implementation slice with affected
+  files, tests, risks, and explicit deferrals;
+- the chosen slice is implemented through the deterministic core first, with
+  viewer/status updates only where they make the new state visible;
+- tests cover the new conservation path and any changed governor/viewer surface;
+- `BLUEPRINT.md`, `RUNBOOK.md`, and this roadmap are updated if the slice changes
+  the product contract or operator workflow;
+- the full verification path still passes.
 
 ## Build arc (the long road)
 
@@ -110,23 +117,25 @@ content design"; this is the sequencing.
 
 ## Next Tasks
 
-The bridge order is I1 -> I3 -> I2 (see the civilization render before adding the LLM).
+The bridge order I1 -> I3 -> I2 is complete. Start the next implementation work
+from the research-backed queue below, keeping every slice small and verified.
 
 1. **(done) Extract the I1 headless stepper** - `engine.py` is the reusable
    civilization engine; the three-day survival test runs through it. See the current
    state above.
-2. **(done, cleanup pending) Viewer I3** - `civilization_view.py` renders the civilization
+2. **(done) Viewer I3** - `civilization_view.py` renders the civilization
    `FactionState` (tiles, buildings with staffing, pawns by mood, HUD) with the
    authored `assets/colony` sprites and steps `engine.step_hour`; it is now the
    default `python -m agent_town` view and its smoke test is green. Camera
    pan/zoom, pawn selection, the inspection panel, and the LLM toggle are now in
-   place. Remaining: final civilization-viewer cleanup before build-2 depth begins.
+   place. The final cleanup pass also added in-map overlays, Civ stats, and
+   deterministic pawn commute movement; command buttons remain visual placeholders
+   until build-2 command actions exist.
 3. **(done) LLM governor I2** - `governor.LLMGovernor` is behind the fallback
    `decide` interface with JSON-schema output and a hard fallback;
    `test_llm_governor.py` is green, `scripts/llm_governor_run.py --hours 6`
    completed against live `google/gemma-4-e4b`, and the real-time viewer uses
    `CivilizationDecisionScheduler` so local model calls never block the sim loop.
-   Remaining: final civilization-viewer cleanup before build-2 depth begins.
 4. **Manual LM Studio/Ollama tuning pass** - run Gemma 4 E4B-it, Qwen3.5-4B,
    and Phi-4-mini-instruct locally and record which model gives the best
    speed/personality balance.
@@ -217,6 +226,109 @@ The bridge order is I1 -> I3 -> I2 (see the civilization render before adding th
       death event-log line, tests, and a `RUNBOOK.md` manual check (run a
       bakery-less Civ and watch a pawn die).
 
+## Research Paper Implementation Queue
+
+The seven GPT Pro research papers live in `research_papers/`. Treat them as
+source leads and project design inputs; exact constants that affect code should
+either be verified from the cited source or marked research-derived in tests and
+docs.
+
+1. **RimWorld mood reconciliation** -
+   `research_papers/1.rimworld_mood-system-report.md`
+   - Current status: the 0-100 mood ledger, target/current mood split, seeded
+     break bands, and Catharsis are already implemented.
+   - Next code task: decide whether `mood_factor` stays as a deliberate
+     non-vanilla Local Agent Town throughput choice or is replaced by
+     productivity effects from hunger, exhaustion, break downtime, and later
+     inspirations.
+   - Tests: preserve tax stability and production sanity after any
+     `effective_work` change; add a test that high mood alone does not create a
+     hidden productivity boost if the multiplier is removed.
+   - Deferred: wealth-based expectations, richer event thoughts, inspiration
+     events.
+2. **RimWorld hunger and nutrition retune** -
+   `research_papers/2.rimworld_hunger-system-report.md`
+   - Current status: food is conserved and eaten opportunistically at ~30%, but
+     the implemented bread unit is larger than the paper's recommended 0.25
+     nutrition unit.
+   - Next code task: retune bread to 0.25 nutrition, let a pawn eat up to four
+     bread per eating job, keep the 30% eat threshold, and update default
+     production/bread balance before starvation death lands.
+   - Tests: 0.301 vs 0.299 eat threshold, one-day nutrition conservation ledger,
+     portion waste near threshold, bread-only deterministic choice, and no free
+     schedule restoration.
+   - Deferred: feed-by-other patient/prisoner logic, food policy variety,
+     disease/traits/genes that change hunger.
+3. **RimWorld autonomous pawn priorities** -
+   `research_papers/3.rimworld_autonomous-pawn-report.md`
+   - Current status: Build 1 still relies on direct assignment slots; command
+     buttons are visual placeholders.
+   - Next code task: add a minimal lane-based work arbiter with reservations and
+     `set_work_priority`: forced/manual, hard state, self-care, emergency,
+     normal work, idle.
+   - Tests: manual priority beats natural order; self-care interrupts normal
+     work at thresholds; disabled/unreachable/reserved jobs are rejected; the
+     decision trace explains the winning job and top rejection.
+   - Deferred: full think-tree parity, full joy system, combat/drafted AI,
+     apparel/inventory housekeeping, deep medical simulation.
+4. **Townsmen economy depth** -
+   `research_papers/4.townsmen_economy-loop-report.md`
+   - Current status: Build 2 backlog names water, clothing/beauty, storage caps,
+     repair, wages, market/tavern, and trade, but the exact order needs
+     implementation slicing.
+   - Next code task: start with a conservation-safe essentials slice: Water Well
+     -> water need -> Civ stat/readout -> governor exception. Then add district
+     storage/market pressure before comfort chains.
+   - Tests: water days-of-cover, summer/seasonal demand hook when introduced,
+     storage-full blocked production, repair input reservation, and wage ->
+     spending -> tax accounting once money loops start.
+   - Deferred: full household economy, private firms, premium/mobile timers,
+     large multi-district optimization.
+5. **Age of Empires readability pass** -
+   `research_papers/5.aoe_civ-readability-report.md`
+   - Current status: the viewer has a readable Pygame map, roster, inspector,
+     overlays, and Civ stats, but it is still a prototype tile viewer.
+   - Next code task: introduce explicit render-layer conventions and status
+     badges: idle after a short delay, construction progress, storage pressure
+     at ~80/95%, danger over selection, and hover/selection as separate states.
+   - Tests/manual proof: screenshot comparison, hover/selection smoke checks,
+     badges visible without relying only on color, and no overlapping text at
+     the default window size.
+   - Deferred: full 64x32 isometric rebase, atlas pipeline, multi-LOD sprite
+     sets, reduce-motion settings.
+6. **Observer-first UI pass** -
+   `research_papers/6.ui-report.md`
+   - Current status: the app already has the start of an observer shell, but the
+     Governor's current plan, bottleneck, confidence/health, and recent policy
+     changes are not always visible.
+   - Next code task: add a compact Governor card and alert/exception stack that
+     separate state, cause, and actionability; keep the bottom strip thin and
+     contextual.
+   - Tests/manual proof: render smoke with at least one exception, local model
+     disabled/offline/thinking states, selected pawn sheet still readable, and
+     no persistent UI element exceeding its density budget.
+   - Deferred: full decision-log scrubber, policy editor, multi-civilization
+     observer dashboards.
+7. **Scale architecture intake** -
+   `research_papers/7.scalable-sim-report.md`
+   - Current status: the benchmark exists and the product target is ~1000 pawns
+     per civilization, but current gameplay remains exact and small-population.
+   - Next code task: add the cheap scale foundations before raising population:
+     reachability `region_id`/dirty topology tracking and deterministic
+     command/update phases for reservations, job claims, path requests, movement,
+     interactions, production, needs, and tax.
+   - Tests: unreachable jobs are rejected before pathfinding; region IDs update
+     deterministically after a topology change; identical command batches produce
+     identical state; benchmark still reports core/context/draw timings.
+   - Scale gates: at 16-64 pawns add job candidate indexes and cadence buckets;
+     at 64-150 add chunk/HPA-style long routes or shared routes to common sinks;
+     at 150-400 add district work packets and path budgets; at 400-1000 add
+     offscreen ETA movement, far-needs cadence, simplified local avoidance, and
+     strong visual/overlay LOD.
+   - Exactness rule: selected, visible, conflict-involved, scarce-resource, and
+     ownership-transfer pawns stay exact. Approximate opportunity search and
+     offscreen travel, not player-readable truth.
+
 ## Blocked Or Deferred
 
 Do not start these until their prerequisite is met.
@@ -267,13 +379,17 @@ Build 4 (competition and the Space Age):
 
 - Two Governor agents, one shared map, contested finite resources.
 - Research spine to industrial components and the space-program launch victory.
-- Scale to ~1000 pawns per civilization (this is where spatial indexing/benchmarks
-  earn their place).
+- Scale to ~1000 pawns per civilization through the Paper 7 path: reachability
+  regions, deterministic phases, job indexes, chunk/long-route abstraction,
+  shared routes/flow fields for common sinks, district work packets, cadence
+  tiers, offscreen ETA movement, and visual/overlay LOD.
 
 Carried from the social-sim era (revisit when relevant):
 
 - Event feed and time controls; screenshots/GIF capture for quick review.
-- Pathfinding benchmark before obstacles or large maps.
+- Pathfinding benchmark before obstacles or large maps; Paper 7 says the first
+  scalable pathfinding feature should be reachability-region rejection before
+  exact A*/JPS pathing.
 
 ## Release Checks
 
@@ -330,3 +446,6 @@ Append a row when a task changes durable project state. Use actual results, not 
 | 2026-06-28 | Build-1 stakes step 2: nutrition reserve + RimWorld 0-100 mood/break foundation (continues the RED WIP checkpoint to green) | `.\.venv\Scripts\python.exe -m unittest discover -s tests` (124 tests, was 108); `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; `git diff --check`; 3-day bread/mood trajectory inspected | pass | Drove the RED foundation (core.py Thought/mood_target/seed + mood.py 0-100, from the prior WIP) to green. `pawns.py`: food is a nutrition reserve with `eat()` (bread 0.9, overeating waste) and the free `SCHEDULE_ANY` food restoration removed (conservation fix); break bands 35/20/5 fire on a seeded mean-time-between roll + per-trait offsets; `Catharsis` + thought stack/age/expire. `engine.py`: opportunistic eat at <=30% any waking hour, then mood_target -> drift -> age thoughts -> seeded break roll (`random.Random(f"{seed}:{id}:{day}:{hour}")`, process-stable). `economy.py`: `average_mood` un-clamped to 0-100, tax recalibrated (/100) so day-1 coin is unchanged. `governor.py`/`civilization_view.py`: bands + 0-100 mood, plus a thought ledger in the inspector. Added `test_step2_hunger_mood.py` and migrated every [0,1] mood assertion to 0-100. Per user the food sink is left as a deliberate hunger pressure (default viewer civ can run dry; I1 survival civ sustains). Next: step 3 Civ stats bar |
 | 2026-06-28 | Build-1 stakes step 3: Civ stats bar (Civ-wide need averages + viewer panel) | `.\.venv\Scripts\python.exe -m unittest discover -s tests` (129 tests, was 124); `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; `git diff --check`; rendered frame inspected (`%TEMP%\...\civ_stats_frame.png`) | pass | Added `economy.average_need(state, need)` (mean need satisfaction, [0,1], missing-need reads as 1.0, unknown need raises) alongside `average_mood`. `civilization_view.py` draws a top-left translucent Civ stats panel: Mood (own colour) + Food/Recreation/Rest readouts reusing the need-bar colours; the red Food bar surfaces the deliberate hunger pressure (rendered 5-day default civ showed Mood 70% / Food 9% / Rec 80% / Rest 96%). Added `test_civ_stats.py` (average_need on a known roster, empty/missing/unknown cases, panel render smoke). Build 1 only adds a mood consequence for food; the other three are readouts. Next: step 4 (deferred) starvation death |
 | 2026-06-28 | Pawn activity state + sim-level movement (pawns commute to their jobs) | `.\.venv\Scripts\python.exe -m unittest discover -s tests` (138 tests, was 129); `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; `git diff --check`; rendered frame + refreshed `docs\screenshots\current-state.png` | pass | Closes the two I3/viewer-liveness gaps behind the "pawns clustered at spawn, always idle" look. Added `Pawn.home_x/home_y` (additive frozen-contract change), `pawns.activity_state` (working/sleeping/recreating/idle for non-broken pawns), and deterministic sim-level movement in `engine._advance_pawns`: each hour a non-broken pawn takes its activity state and steps `PAWN_MOVE_TILES_PER_HOUR` (2) tiles toward its destination - its assigned building front while awake, home at night; broken/unassigned pawns head home. No collision/pathfinding yet (a build-2/4 item); production stays position-agnostic. Pawns now distribute to their workplaces and the inspector shows the real state. Added `test_movement.py` (9 tests). Next: step 4 (deferred) starvation death |
+| 2026-06-28 | Close completed build-1 bridge goal in ROADMAP/README | `.\.venv\Scripts\python.exe -m unittest tests.test_package_runtime tests.test_engine tests.test_llm_governor tests.test_civilization_view` (33 tests); `.\.venv\Scripts\python.exe -m unittest discover -s tests` (138 tests); `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; `git diff --check` | pass | Docs only. Removed stale "final viewer cleanup pending" language from the active roadmap goal and README next-up list. The I1/I2/I3 bridge is now recorded as closed; next code work starts from build-2 depth unless the deferred starvation-death stake is explicitly pulled forward. |
+| 2026-06-29 | Integrate research papers into workbench docs and implementation queue | `.\scripts\validate-workbench.ps1`; `git diff --check` | pass | Docs only. Wired `research_papers/1..6` into AGENTS, BLUEPRINT, ROADMAP, RUNBOOK, and README as source-input guidance; recorded the mood/hunger conflicts to reconcile (generic mood-to-work multiplier and bread 0.25 vs current larger bread unit); added paper-by-paper implementation slices for mood, hunger, work priorities, Townsmen economy depth, AoE readability, observer UI, and pending scale-paper intake. |
+| 2026-06-29 | Integrate Paper 7 scale research into the workbench queue | `.\scripts\validate-workbench.ps1`; `git diff --check` | pass | Docs only. Replaced the pending scale-paper slot with concrete scale architecture guidance: exact player-visible truth at 12 pawns, reachability regions and deterministic phases before larger populations, job indexes/cadence buckets by 16-64 pawns, path abstraction/shared routes by 64-150, district work packets/path budgets by 150-400, and offscreen ETA/far-needs/visual LOD by 400-1000. Added scale guidance to AGENTS, BLUEPRINT, ROADMAP, RUNBOOK, and README. |
