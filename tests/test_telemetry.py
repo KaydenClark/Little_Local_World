@@ -65,7 +65,8 @@ class BuildSnapshotTests(unittest.TestCase):
         result = engine.step_hour(state, governor.FallbackGovernor())
         snap = telemetry.build_snapshot(state, result)
         for key in ("day", "hour", "population", "avg_mood", "needs", "coin",
-                    "stockpile", "idle", "broken", "broken_pawn_ids", "staffed", "construction"):
+                    "stockpile", "idle", "broken", "broken_pawn_ids", "staffed",
+                    "construction", "wages_paid", "market_revenue"):
             self.assertIn(key, snap)
         self.assertNotIn("_llm_offline", snap)  # no internal-field leakage
 

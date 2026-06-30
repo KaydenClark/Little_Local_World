@@ -81,6 +81,13 @@ BUILDING_DEFS: dict[str, BuildingDef] = {
         build_cost={Good.PLANKS: 8, Good.STONE: 4},
         build_work=6.0,
     ),
+    "market": BuildingDef(
+        kind="Market",
+        recipe=Recipe(inputs={}, outputs={}, work_units=1.0, skill="commerce"),
+        job_slots=1,
+        build_cost={Good.PLANKS: 8, Good.STONE: 4},
+        build_work=6.0,
+    ),
 }
 
 

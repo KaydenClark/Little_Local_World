@@ -95,8 +95,11 @@ live: `set_production_target` now changes production, and `set_research` now
 selects an active tech that staffed Laboratory work can complete. The first
 storage-pressure foundation is also live: finite stockpile capacity blocks net
 new output before inputs are consumed, telemetry records storage fullness, and
-the HUD shows storage percent. Per user direction (2026-06-29) lethal
-starvation (build-1 step 5.4) stays deferred behind the visible
+the HUD shows storage percent. The first wage/market money-loop slice is also
+live: pawns have wallets, assigned pawns receive deterministic daily wages, and
+a staffed Market can sell a small bread surplus above reserve into treasury
+coin. Per user direction (2026-06-29) lethal starvation (build-1 step 5.4) stays
+deferred behind the visible
 autonomy/readability work; Build-1 ships with hunger mood pressure as its stakes.
 
 Done when:
@@ -288,9 +291,10 @@ from the research-backed queue below, keeping every slice small and verified.
    exceptions by severity/actionability with likely causes. It stays observer
    UI, not a policy editor. Truth-loop cleanup has begun after this: production
    targets are honored, and a minimal research spine makes `set_research` a real
-   lever. Finite stockpile capacity now makes storage saturation truthful.
-   **Next code task is the wage/market money loop, then Storehouse capacity
-   upgrades and storage-pressure badges before further Paper 7 scale work.**
+   lever. Finite stockpile capacity now makes storage saturation truthful, and
+   the first wage/market loop pays assigned pawns while a staffed Market exports
+   surplus bread above reserve. **Next code task is Storehouse capacity upgrades
+   and storage-pressure badges before further Paper 7 scale work.**
 
 ## Research Paper Implementation Queue
 
@@ -322,9 +326,11 @@ build order. Work the queue in this order, not in paper-number order:
    rule now gates scale behind truthful 12-pawn levers. Done so far:
    `set_production_target` caps output, and `set_research` selects an active tech
    completed by staffed Laboratory work. Finite stockpile capacity now blocks
-   net-growing production at capacity and is visible in telemetry/HUD. Remaining
-   truth-loop slices: wage/market money loop, Storehouse capacity upgrades plus
-   storage-pressure badges, then the larger Space-Age spine.
+   net-growing production at capacity and is visible in telemetry/HUD. Daily
+   wages and staffed Market surplus sales now make the first money-loop state
+   transitions real. Remaining truth-loop slices: Storehouse capacity upgrades
+   plus storage-pressure badges, richer household spending/tax pressure, then
+   the larger Space-Age spine.
 7. **Scale foundations.** Paper 7. Reachability `region_id` and deterministic
    command/update phases - cheap scaffolding, but behind the truth-loop work.
 8. **Deeper economy.** Paper 4 (remainder). District storage, market/service
@@ -393,10 +399,12 @@ material; the numbered order above is what to build.
      Well production, water reserve/need, thirst mood pressure, Civ readout/HUD
      chip, water days-of-cover, and a `low_water` governor exception. The first
      storage slice is also implemented: finite stockpile capacity, storage-full
-     blocked production, telemetry fullness, and a HUD storage percent.
-   - Next code task: wage/market money loop before Paper 7 scale work.
-     Storehouse capacity upgrades, storage-pressure badges, district
-     storage/market pressure, and comfort chains follow after that.
+     blocked production, telemetry fullness, and a HUD storage percent. The
+     first money-loop slice pays daily wages to assigned pawns and lets staffed
+     Markets sell surplus bread above reserve.
+   - Next code task: Storehouse capacity upgrades plus storage-pressure badges.
+     District storage/market pressure, richer household spending/tax pressure,
+     repair, trade, and comfort chains follow after that.
    - Tests: water days-of-cover is covered; summer/seasonal demand hook,
      Storehouse capacity upgrades, storage pressure badges, repair input
      reservation, and wage -> spending -> tax accounting remain future tests once
@@ -476,8 +484,9 @@ Build 2 (depth and the spectator):
   labour (the missing material/coin sink).
 - Wage money loop: pay pawns (treasury -> purse), pawns spend at Market/Tavern,
   tax the wages back; Market trades surplus with off-map caravans.
-- Storage caps + "storage full %" readout are started; Storehouse raises
-  capacity and storage pressure badges remain next.
+- Storage caps + "storage full %" readout are started; daily wages and staffed
+  Market surplus sales are started; Storehouse raises capacity and storage
+  pressure badges remain next.
 - `set_work_priority` action + RimWorld per-pawn work-priority model.
 - Per-civilization spectator view: open a civilization and see assignments, priorities,
   stockpile, mood, construction live.
@@ -599,3 +608,4 @@ Append a row when a task changes durable project state. Use actual results, not 
 | 2026-06-30 04:48 -06:00 | Full Mac LM acceptance gate for PR #24 `codex/research-spine` at `36505a03ec3063b556cc91b7ce71d87e08026657` | `.venv/bin/python -m pip install -e .`; `.venv/bin/python -m agent_town --smoke-test`; `.venv/bin/python -m unittest discover -s tests` (240 tests); `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/validate-workbench.ps1`; LM Studio ping `http://192.168.1.131:1234/v1/models` found `google/gemma-4-e4b`; Pygame `CivilizationViewer` booted with blocking `LLMGovernor`; 96 simulated viewer hours; `.venv/bin/python scripts/analyze_run.py logs/run-20260630-044810.jsonl --events`; `git diff --check` | pass | Install/smoke/unit/docs/LM ping/viewer boot passed. Analyzer returned `RESULT: GREEN`: 96/96 model decisions, 0 dropped/fallback hours, 0 warnings, 0 critical events, mood 85.8 -> min 72.4 -> end 82.4, idle peak 0, breaks 0, depletions 0, stalls 0, final stockpile bread 16 / water 96, and action histogram 391 `set_work_priority`. Ready to merge; no Apple Silicon-specific failure evidence. See `docs/run_reports/2026-06-30-pr24-mac-lm-gate.md`. |
 | 2026-06-30 05:07 -06:00 | Paper 4 storage-cap slice on new `codex/storage-caps` branch stacked from green `origin/codex/research-spine` (model scheduled gpt-5.5 xhigh; after 04:00 budget metric/safe in-run switch not readable; `.agent.lock` acquired in `E:\GPTCode\local-agent-town`) | PR status read: #24 OPEN/CLEAN with latest Mac comment `READY TO MERGE`, no GitHub checks; #23 also OPEN/CLEAN with latest Mac comment `READY TO MERGE`. RED `E:\GPTCode\local-agent-town\.venv\Scripts\python.exe -m unittest tests.test_storage_caps` failed on missing `Stockpile.capacity`; GREEN `tests.test_storage_caps` (6 tests); focused affected set (81 tests); `E:\GPTCode\local-agent-town\.venv\Scripts\python.exe -m unittest discover -s tests` (246 tests); `E:\GPTCode\local-agent-town\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; `git diff --check` (CRLF warnings only); refreshed and inspected `docs\screenshots\current-state.png` | pass | Decision source: Paper 4 "Storage and logistics rules" plus ROADMAP truth-loop queue. `Stockpile.capacity` is optional for legacy states; the default viewer civ now has a 240-unit cap and HUD `Storage N%`; `production_tick` blocks net-growing output at capacity before consuming inputs while allowing net-shrinking transforms; telemetry records storage used/capacity/fullness; health invariants flag over-capacity. Storehouse upgrades, district storage, 80/95% map badges, wages, markets, and trade remain deferred. |
 | 2026-06-30 05:18 -06:00 | Full Mac LM acceptance gate for PR #25 `codex/storage-caps` at `911e5fd1e1ff9f5a7195c46266e7036b430228c0` | Fresh-worktree `/usr/bin/python3` bootstrap first failed because macOS selected Python 3.9; reran with supported `python3.12`: `.venv/bin/python -m pip install -e .`; `.venv/bin/python -m agent_town --smoke-test`; `.venv/bin/python -m unittest discover -s tests` (246 tests); `pwsh -NoLogo -NoProfile -File scripts/validate-workbench.ps1`; LM Studio ping `http://192.168.1.131:1234/v1/models` found `google/gemma-4-e4b`; Pygame `CivilizationViewer` booted with blocking `LLMGovernor`; 96 simulated viewer hours; `.venv/bin/python scripts/analyze_run.py logs/run-20260630-052021.jsonl --events`; rendered and inspected `/tmp/pr25-current-state-proof.png`; `git diff --check` | pass | Install/smoke/unit/docs/LM ping/viewer boot passed. Analyzer returned `RESULT: GREEN`: 96/96 model decisions, 0 dropped/fallback hours, 0 warnings, 0 critical events, mood 85.8 -> min 72.4 -> end 82.4, idle peak 0, breaks 0, depletions 0, stalls 0, final stockpile bread 16 / water 96, final storage 172/240 used, and action histogram 391 `set_work_priority`. Ready to merge; no Apple Silicon-specific failure evidence. See `docs/run_reports/2026-06-30-pr25-mac-lm-gate.md`. |
+| 2026-06-30 05:38 -06:00 | First wage/market money-loop slice on new `codex/wage-market-money-loop` branch stacked from green `origin/codex/storage-caps` (model scheduled gpt-5.5 xhigh; after 04:00 budget metric/safe in-run switch not readable; `.agent.lock` acquired in `E:\GPTCode\local-agent-town`) | PR status read: #25 OPEN/CLEAN with latest Mac comment `READY TO MERGE`, no GitHub checks; #24 and #23 also OPEN/CLEAN with latest Mac comments `READY TO MERGE`. RED `$env:PYTHONPATH='src'; E:\GPTCode\local-agent-town\.venv\Scripts\python.exe -m unittest tests.test_money_loop` failed on missing Market/wage/wallet/result fields; GREEN `tests.test_money_loop` (5 tests); focused affected set (58 tests); `$env:PYTHONPATH='src'; E:\GPTCode\local-agent-town\.venv\Scripts\python.exe -m unittest discover -s tests` (251 tests); `$env:PYTHONPATH='src'; E:\GPTCode\local-agent-town\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; `git diff --check` (CRLF warnings only) | pass | Decision source: Paper 4 "The minimum metric set" / storage and market bottleneck guidance plus Paper 8 "economy is loops, not chains." Added `Pawn.coin`, staffable Market/commerce work, daily treasury-to-pawn wages for assigned pawns, staffed Market bread-surplus sales above reserve, engine result fields, telemetry fields, and docs. The legacy abstract tax floor remains to avoid destabilizing existing survival proofs; richer household spending/tax pressure, Storehouse capacity upgrades, storage-pressure badges, reserve-aware trade, and full market services remain deferred. |

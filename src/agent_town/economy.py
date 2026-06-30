@@ -21,6 +21,11 @@ from .core import BUILD1_NEEDS, FactionState, Good, Pawn, Recipe, Stockpile
 # Base output rate per unit of summed effective work, per tick.
 BASE_RATE = 1.0
 WATER_UNITS_PER_PAWN_DAY = 1.0
+DAILY_WAGE = 1
+MARKET_KIND = "Market"
+MARKET_DAILY_BREAD_EXPORT_LIMIT = 4
+MARKET_BREAD_RESERVE_PER_PAWN = 6
+MARKET_BREAD_PRICE = 1
 TECH_EFFICIENT_BAKING = "efficient_baking"
 RESEARCH_COSTS = {TECH_EFFICIENT_BAKING: 4}
 LABORATORY_KIND = "Laboratory"
@@ -180,9 +185,37 @@ def daily_tax_income(state: FactionState) -> int:
     return int(population * (average_mood(state) / mood.MOOD_MAX) * tax_rate * 10)
 
 
+def pay_daily_wages(state: FactionState) -> int:
+    """Pay one daily wage to assigned pawns, transferring treasury coin to them."""
+    paid = 0
+    for pawn in sorted(state.pawns.values(), key=lambda p: p.id):
+        if pawn.assignment is None or state.coin < DAILY_WAGE:
+            continue
+        state.coin -= DAILY_WAGE
+        pawn.coin += DAILY_WAGE
+        paid += DAILY_WAGE
+    return paid
+
+
+def apply_market_sales(state: FactionState) -> int:
+    """Sell a small bread surplus through a staffed Market; return treasury revenue."""
+    if not _has_staffed_market(state):
+        return 0
+    bread = state.stockpile.counts.get(Good.BREAD, 0)
+    reserve = len(state.pawns) * MARKET_BREAD_RESERVE_PER_PAWN
+    surplus = max(0, bread - reserve)
+    sold = min(MARKET_DAILY_BREAD_EXPORT_LIMIT, surplus)
+    if sold <= 0:
+        return 0
+    state.stockpile.remove(Good.BREAD, sold)
+    revenue = sold * MARKET_BREAD_PRICE
+    state.coin += revenue
+    return revenue
+
+
 def apply_daily_tax(state: FactionState) -> int:
     """Add the day's tax income to ``state.coin``; return the amount added."""
-    income = daily_tax_income(state)
+    income = daily_tax_income(state) + _collect_income_tax(state)
     state.coin += income
     return income
 
@@ -262,6 +295,27 @@ def _effective_outputs(outputs: dict[Good, int], research: tuple[str, ...]) -> d
     adjusted = dict(outputs)
     adjusted[Good.BREAD] = adjusted[Good.BREAD] + 1
     return adjusted
+
+
+def _has_staffed_market(state: FactionState) -> bool:
+    return any(
+        building.kind == MARKET_KIND and building.built and bool(building.staffed_by)
+        for building in state.buildings.values()
+    )
+
+
+def _collect_income_tax(state: FactionState) -> int:
+    tax_rate = max(0.0, state.tax_rate)
+    if tax_rate <= 0.0:
+        return 0
+    collected = 0
+    for pawn in sorted(state.pawns.values(), key=lambda p: p.id):
+        tax = int(pawn.coin * tax_rate)
+        if tax <= 0:
+            continue
+        pawn.coin -= tax
+        collected += tax
+    return collected
 
 
 def _validate_recipe_amount(good: Good, amount: int) -> None:

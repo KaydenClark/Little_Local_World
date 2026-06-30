@@ -21,13 +21,14 @@ civilization by one simulated hour:
    assignment and steps toward its destination (its workplace on shift, else home);
 6. staffed, input-satisfied buildings produce through the ``effective_work`` seam,
    and staffed Laboratories advance active research;
-7. the clock advances one hour, and tax is collected on a day rollover.
+7. the clock advances one hour, and wages, staffed Market sales, and tax are
+   settled on a day rollover.
 
 The governor sets policy only (priorities, schedules, placements); the arbiter
 turns that policy into per-pawn jobs, and the engine owns affordability,
-construction realization, and the per-pawn / production / tax tick. The arbiter
-is deterministic, so same seed plus same governor equals same outcome - the LLM
-governor is the only nondeterministic layer and drops in behind the same
+construction realization, and the per-pawn / production / money tick. The
+arbiter is deterministic, so same seed plus same governor equals same outcome -
+the LLM governor is the only nondeterministic layer and drops in behind the same
 ``Governor`` protocol.
 """
 
@@ -67,6 +68,8 @@ class StepResult:
     research_completed: tuple[str, ...] = ()
     days_rolled: int = 0
     tax_collected: int = 0
+    wages_paid: int = 0
+    market_revenue: int = 0
 
 
 def step_hour(state: FactionState, gov: governor_mod.Governor | None = None) -> StepResult:
@@ -86,7 +89,13 @@ def step_hour(state: FactionState, gov: governor_mod.Governor | None = None) -> 
     research_completed = economy.research_tick(state)
 
     days_rolled = schedule.advance_clock(state, 1)
-    tax_collected = economy.apply_daily_tax(state) if days_rolled else 0
+    wages_paid = 0
+    market_revenue = 0
+    tax_collected = 0
+    if days_rolled:
+        wages_paid = economy.pay_daily_wages(state)
+        market_revenue = economy.apply_market_sales(state)
+        tax_collected = economy.apply_daily_tax(state)
 
     return StepResult(
         actions_applied=tuple(applied),
@@ -94,6 +103,8 @@ def step_hour(state: FactionState, gov: governor_mod.Governor | None = None) -> 
         research_completed=research_completed,
         days_rolled=days_rolled,
         tax_collected=tax_collected,
+        wages_paid=wages_paid,
+        market_revenue=market_revenue,
     )
 
 

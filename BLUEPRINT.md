@@ -558,6 +558,8 @@ Coin is conserved internally and only enters or leaves through trade.
   Market/Tavern and via tax on wages.
 - Trade: the Market sells surplus goods to off-map caravans for net new coin, or
   buys scarce goods for coin. This is the only external source and sink.
+  The current first slice pays daily wages into pawn wallets and lets a staffed
+  Market export a small bread surplus above reserve.
 
 So "where do taxes come from if you don't pay your people" resolves cleanly: you
 tax the wages you paid, and net civilization wealth comes from selling what the pawns
@@ -725,6 +727,7 @@ Rules:
 | Paper 6 governor observer shell shipped | The viewer derives a read-only Governor card from current exceptions, scheduler status, and recent policy actions: plan, phase, bottleneck, confidence, last reallocation, and top exception. A right-edge exception stack sorts active governor exceptions by severity and actionability. It is diagnosis-first UI, not a micromanagement surface; decision-log drill-down and policy editors remain deferred | 2026-06-29 Paper 6 observer UI slice |
 | Minimal research spine shipped before scale work | `set_research` is no longer a dead lever: it selects an active tech target, staffed Laboratory work produces research points through the existing `effective_work` seam, and `efficient_baking` raises Bakery output. This proves the progression lever before the larger Space-Age spine, wages, storage caps, and victory condition land | 2026-06-30 truth-loop cleanup |
 | Finite storage capacity shipped before wages/markets | Storage saturation is now a real bottleneck: `Stockpile.capacity` blocks net-growing production before inputs are consumed, telemetry records storage used/capacity/fullness, and the HUD shows storage percent. Storehouse upgrades, storage pressure badges, wages, markets, and trade stay deferred | 2026-06-30 Paper 4 storage slice |
+| First wage/market money loop shipped | Pawns now have personal coin, assigned pawns receive deterministic daily wages from the treasury, and a staffed Market can export a small bread surplus above reserve into treasury coin. This starts the money loop without replacing the legacy abstract tax floor; household service spending, wage pressure, reserve-aware trade, and Storehouse capacity upgrades remain future Build-2 slices | 2026-06-30 wage/market slice |
 
 ## Health Criteria
 

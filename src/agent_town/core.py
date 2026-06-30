@@ -294,6 +294,7 @@ class Pawn:
     y: int = 0
     home_x: int = 0
     home_y: int = 0
+    coin: int = 0
     state: str = "idle"
 
 

@@ -66,6 +66,8 @@ def build_snapshot(state: FactionState, step_result: Any) -> dict[str, Any]:
         "staffed": dict(sorted(staffed.items())),
         "construction": _construction_records(state),
         "tax_collected": int(getattr(step_result, "tax_collected", 0)),
+        "wages_paid": int(getattr(step_result, "wages_paid", 0)),
+        "market_revenue": int(getattr(step_result, "market_revenue", 0)),
         "days_rolled": int(getattr(step_result, "days_rolled", 0)),
     }
 
@@ -235,6 +237,8 @@ class _EmptyStep:
     buildings_completed: tuple = ()
     days_rolled = 0
     tax_collected = 0
+    wages_paid = 0
+    market_revenue = 0
 
 
 class RunLogger:
