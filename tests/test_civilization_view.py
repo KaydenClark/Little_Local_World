@@ -6,7 +6,7 @@ os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 import pygame
 
 from agent_town import civilization, engine, work
-from agent_town.core import ConstructionSite, Good
+from agent_town.core import ConstructionSite, Good, GovernorAction
 from agent_town.civilization_view import (
     BUILDING_SPRITE,
     INSPECTOR_WIDTH,
@@ -21,7 +21,9 @@ from agent_town.civilization_view import (
     _pawn_status_label,
     _top_skills,
     cycle_work_priority,
+    exception_stack_items,
     find_pawn_at_screen,
+    governor_card_summary,
     governor_status_line,
     hud_button_rects,
     idle_pawn_count,
@@ -251,6 +253,57 @@ class GovernorStatusLineTests(unittest.TestCase):
         text, _color = governor_status_line(sched)
         self.assertIn("press L", text)
         sched.shutdown(wait=True)
+
+
+class GovernorObserverModelTests(unittest.TestCase):
+    def setUp(self):
+        pygame.display.init()
+        pygame.font.init()
+        pygame.display.set_mode((64, 64))
+
+    def test_exception_stack_prioritizes_breaks_over_supply_warnings(self):
+        state = civilization.create_default_civilization()
+        state.stockpile.counts[Good.WATER] = 0
+        state.pawns["pawn00"].state = "wandering"
+
+        items = exception_stack_items(state)
+
+        self.assertGreaterEqual(len(items), 2)
+        self.assertEqual(items[0].kind, "pawn_break")
+        self.assertEqual(items[0].severity, "critical")
+        self.assertIn("mental break", items[0].cause.lower())
+        self.assertIn("low_water", [item.kind for item in items])
+
+    def test_governor_card_surfaces_low_water_bottleneck(self):
+        state = civilization.create_default_civilization()
+        state.stockpile.counts[Good.WATER] = 0
+
+        summary = governor_card_summary(state, FallbackGovernor())
+
+        self.assertIn("water", summary.plan.lower())
+        self.assertIn("water", summary.bottleneck.lower())
+        self.assertEqual(summary.top_exception.kind, "low_water")
+        self.assertLess(summary.confidence, 80)
+
+    def test_governor_card_describes_last_reallocation_actions(self):
+        state = civilization.create_default_civilization()
+
+        summary = governor_card_summary(
+            state,
+            FallbackGovernor(),
+            last_actions=[GovernorAction.set_work_priority("all", "water", 1)],
+        )
+
+        self.assertIn("work priorities", summary.last_reallocation.lower())
+
+    def test_render_with_governor_observer_overlays_does_not_crash(self):
+        assets = load_civilization_assets()
+        font = pygame.font.Font(None, 16)
+        state = civilization.create_default_civilization()
+        state.stockpile.counts[Good.WATER] = 0
+
+        surface = pygame.Surface((state.grid.width * 25 + 24 + INSPECTOR_WIDTH, state.grid.height * 25 + 220))
+        render_civilization(surface, state, assets, font, (12, 12), show_inspector=True)
 
 
 class CameraTests(unittest.TestCase):

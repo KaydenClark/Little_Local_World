@@ -110,6 +110,10 @@ Expected result:
 - The Civ stats panel shows Mood, Food, Water, Recreation, and Rest.
 - Pressing `L` connects to or disconnects from LM Studio/Ollama while the game is running.
 - The HUD shows local model state: disabled, idle, thinking, offline, or invalid.
+- A bottom-left Governor card stays visible with the current plan, phase,
+  bottleneck, confidence, last policy change, and top exception.
+- A right-edge exception stack lists the active governor exceptions by severity,
+  including the likely cause for the highest-priority problems.
 - The `Work` button opens the work-priority grid; the `History` button opens a
   live run-event feed. The remaining command buttons (`Architect`, `Assign`,
   `Research`, `Menu`) are still placeholders.
@@ -159,6 +163,9 @@ Live viewer monitoring:
   violations.
 - When warn/critical events occur the HUD shows a coloured alert chip with a
   count and the `History` button glows; opening the feed acknowledges them.
+- The Governor card and exception stack are live observer surfaces, not command
+  editors; use them to diagnose whether the current bottleneck is supply,
+  staffing, mood, model availability, or construction.
 - Live viewer runs also write a JSONL log under `logs\`; these are local proof
   artifacts and are git-ignored.
 
