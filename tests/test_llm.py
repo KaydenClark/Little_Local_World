@@ -68,6 +68,15 @@ class LocalLLMClientTests(unittest.TestCase):
         self.assertEqual(client.model, "google/gemma-4-e4b")
         self.assertEqual(client.base_url, "http://localhost:1234/v1")
 
+    def test_from_env_uses_safe_governor_response_defaults(self):
+        with patch.dict(os.environ, {}, clear=True):
+            client = LocalLLMClient.from_env(
+                model_discovery=lambda base_url, timeout: "google/gemma-4-e4b"
+            )
+
+        self.assertEqual(client.timeout, 8.0)
+        self.assertEqual(client.max_tokens, 320)
+
     def test_from_env_model_setting_overrides_discovery(self):
         discovered = []
 

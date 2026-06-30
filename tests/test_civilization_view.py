@@ -129,6 +129,38 @@ class WorkGridTests(unittest.TestCase):
         self.assertEqual(idle_pawn_count(state), 1)
 
 
+class HistoryFeedTests(unittest.TestCase):
+    def setUp(self):
+        pygame.display.init()
+        pygame.font.init()
+        pygame.display.set_mode((64, 64))
+
+    def test_render_with_history_feed_and_alert_does_not_crash(self):
+        from agent_town import health
+
+        assets = load_civilization_assets()
+        font = pygame.font.Font(None, 16)
+        state = civilization.create_default_civilization()
+        events = [
+            {"type": "event", "kind": "good_depleted", "severity": health.CRITICAL, "day": 2, "hour": 4, "text": "Bread depleted"},
+            {"type": "event", "kind": "mass_idle", "severity": health.WARN, "day": 2, "hour": 5, "text": "5/12 idle"},
+        ]
+        surface = pygame.Surface((state.grid.width * 25 + 24 + INSPECTOR_WIDTH, state.grid.height * 25 + 200))
+        render_civilization(
+            surface, state, assets, font, (12, 12),
+            show_inspector=True, show_history=True, events=events, alert_severity=health.CRITICAL,
+        )
+
+    def test_smoke_viewer_logs_to_ring_without_writing_a_file(self):
+        from agent_town.telemetry import JsonlFileSink, RingBufferSink
+
+        viewer = CivilizationViewer(smoke_test=True)
+        viewer.run()
+        # The smoke viewer keeps an in-memory events ring but writes no JSONL file.
+        self.assertIsInstance(viewer.event_ring, RingBufferSink)
+        self.assertFalse(any(isinstance(s, JsonlFileSink) for s in viewer.logger.sink.sinks))
+
+
 class MoodColorTests(unittest.TestCase):
     def test_mood_color_runs_red_to_green(self):
         low = _mood_color(0.0)

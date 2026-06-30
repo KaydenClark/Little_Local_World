@@ -9,8 +9,8 @@ import urllib.request
 
 
 DEFAULT_BASE_URL = "http://localhost:1234/v1"
-DEFAULT_TIMEOUT = 4.0
-DEFAULT_MAX_TOKENS = 180
+DEFAULT_TIMEOUT = 8.0
+DEFAULT_MAX_TOKENS = 320
 DEFAULT_DISCOVERY_TIMEOUT = 0.75
 
 HttpPost = Callable[[dict[str, Any], float], dict[str, Any]]

@@ -38,8 +38,8 @@ Optional local model variables:
 |---|---|---|---|
 | `AGENT_TOWN_LLM_MODEL` | Optional explicit model override | no | `google/gemma-4-e4b`, or the exact model id loaded in LM Studio/Ollama |
 | `AGENT_TOWN_LLM_BASE_URL` | OpenAI-compatible local endpoint | no | `http://localhost:1234/v1` for LM Studio, `http://localhost:11434/v1` for Ollama |
-| `AGENT_TOWN_LLM_TIMEOUT` | Per-request timeout in seconds | no | default `4.0` |
-| `AGENT_TOWN_LLM_MAX_TOKENS` | Max tokens for compact decision JSON | no | default `180` |
+| `AGENT_TOWN_LLM_TIMEOUT` | Per-request timeout in seconds | no | default `8.0` |
+| `AGENT_TOWN_LLM_MAX_TOKENS` | Max tokens for compact decision JSON | no | default `320` |
 | `AGENT_TOWN_LLM_AUTO_DISCOVER` | Controls startup model discovery when no model is set | no | default `1`; set `0` to keep local model disabled unless `AGENT_TOWN_LLM_MODEL` is set |
 
 Rules:
@@ -118,6 +118,46 @@ Work-priority arbiter manual check (build-2 step 1):
   count rises if you disable a work type that leaves a pawn with nothing legal.
 - Select that pawn and read the inspector's "Why this job" trace to see the lane
   it won under and the job it rejected (e.g. `Passed over Bakery: reserved/full`).
+
+## Monitoring A Run
+
+Every run keeps its own structured record so you can verify it is going correctly
+- separate from the LM Studio server log (which only shows the model's tokens, not
+the civilization). The judgement of "correct" lives in `health.py`; the plumbing in
+`telemetry.py`.
+
+Live, in the viewer:
+
+- An `Idle N` chip and an **ALERT** dot sit in the HUD. The dot lights amber for a
+  warning and red for a critical issue, and stays lit (latched) until you look.
+- Click the bottom-strip **History** button to open the event feed (newest first):
+  buildings completed, mental breaks, food running low or depleted, mood dips, and
+  the LLM going offline or dropping a decision to the fallback. Opening it
+  acknowledges the alert. `Esc` closes it.
+- A real run also streams the same records to `logs/run-<stamp>.jsonl` (gitignored).
+
+Headless, for verification:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\llm_governor_run.py --hours 24      # writes logs\run-*.jsonl
+.\.venv\Scripts\python.exe scripts\analyze_run.py logs\run-*.jsonl --events
+```
+
+Expected result:
+
+- `llm_governor_run.py` prints a per-hour line (applied actions, `DROPPED` when the
+  LLM failed and the fallback covered, and a severity flag) plus an end summary.
+- `analyze_run.py` prints a health report (mood trend, idle peak, breaks, food
+  depletions, LLM uptime / dropped-decision rate, action histogram, event counts),
+  lists flagged events with `--events`, and **exits non-zero** if the run hit a red
+  condition (invariant violation, food depletion, mood collapse, or a high
+  dropped-decision rate) - so it doubles as a post-run gate.
+- A run with no local model loaded is healthy (it runs on the deterministic
+  fallback by design); "disabled" is not counted as a dropped decision.
+
+The JSONL is one JSON object per line (`run_start`, `snapshot`, `decision`,
+`event`, `run_end`), keyed by sim-time `(day, hour)`, so it is greppable and
+tailable while a run is in progress.
 
 ## Test And Build
 
@@ -214,6 +254,23 @@ Safety rules:
 
 There is no deployment target. The project runs locally through PowerShell.
 
+Manual app launch:
+
+```powershell
+cd E:\GPTCode\local-agent-town
+.\.venv\Scripts\python.exe -m agent_town
+```
+
+Manual launch with one-off local-model overrides:
+
+```powershell
+cd E:\GPTCode\local-agent-town
+$env:AGENT_TOWN_LLM_MODEL = "google/gemma-4-e4b"
+$env:AGENT_TOWN_LLM_MAX_TOKENS = "320"
+$env:AGENT_TOWN_LLM_TIMEOUT = "8"
+.\.venv\Scripts\python.exe -m agent_town
+```
+
 ## Troubleshooting
 
 | Symptom | Likely cause | Check | Fix |
@@ -223,7 +280,7 @@ There is no deployment target. The project runs locally through PowerShell.
 | Window does not open | Display or Pygame issue | `.\.venv\Scripts\python.exe -m agent_town --smoke-test` | Reinstall through `.\setup.ps1`; check local graphics environment |
 | Local model shows disabled | The in-game toggle is off, no local chat model was found, or `AGENT_TOWN_LLM_AUTO_DISCOVER=0` | Inspect the HUD governor row | Start LM Studio/Ollama, load a model, then press `L`; or set `AGENT_TOWN_LLM_MODEL` exactly as the local server expects it |
 | Local model shows offline | LM Studio/Ollama server is not running or URL is wrong | Check `AGENT_TOWN_LLM_BASE_URL` | Start the local server or change the URL |
-| Local model shows invalid reply | Model returned malformed JSON, unknown action, or the server rejected the request payload | Inspect the HUD governor row | Use a smaller/faster instruct model and keep max tokens low |
+| Local model shows invalid reply | Model returned malformed JSON, unknown action, or the server rejected the request payload | Inspect the HUD governor row | Confirm the game is using the default `AGENT_TOWN_LLM_MAX_TOKENS=320`; if it still repeats, use a smaller/faster instruct model |
 | Workbench validation fails | Required docs missing headings or unresolved placeholders | `.\scripts\validate-workbench.ps1` | Update the named doc and rerun validation |
 
 ## Recovery And Rollback

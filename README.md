@@ -17,10 +17,24 @@ the top job it passed over) and the HUD shows an `Idle` count.
 
 The **Work** button opens the RimWorld-style work-priority grid below; click a
 cell to cycle a pawn's priority (1 highest .. 4 lowest, blank disables it) and
-watch the pawn re-route on the next step. The other command buttons (Architect,
-Assign, Research, History, Menu) are still visual placeholders.
+watch the pawn re-route on the next step. The **History** button opens the
+run-log event feed. The remaining command buttons (Architect, Assign, Research,
+Menu) are still visual placeholders.
 
 ![Work-priority grid](docs/screenshots/work-grid.png)
+
+### Monitoring a run
+
+Every run keeps its own structured record (separate from the LM Studio server
+log, which only shows the model's tokens). Live, the HUD has an `Idle` count and
+a latched **ALERT** dot, and the **History** button opens an event feed (food
+running low/depleted, mental breaks, mood dips, the LLM going offline or dropping
+a decision to the fallback). A real run also streams the same records to a
+gitignored `logs/run-*.jsonl`, which `scripts/analyze_run.py` turns into a health
+report that exits non-zero on a red run (so it doubles as a post-run gate). See
+`RUNBOOK.md` "Monitoring A Run".
+
+![Run-log event feed and alert](docs/screenshots/monitoring.png)
 
 ## Architecture Stance
 

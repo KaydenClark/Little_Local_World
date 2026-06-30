@@ -504,14 +504,30 @@ class LLMGovernor:
         # ``propose`` lets tests inject a context->payload function in place of a
         # live model call.
         self._propose = propose
+        # Telemetry-only (does not affect decisions): how the last decide() went -
+        # "model" (used the LLM), "fallback" (model returned nothing usable), or
+        # "error" (model/parse failed and the hard fallback covered).
+        self.last_outcome = "idle"
+        self.last_error = ""
 
     def decide(self, context: dict[str, Any]) -> list[GovernorAction]:
         try:
             payload = self._propose(context) if self._propose is not None else self._ask_model(context)
             actions = parse_action_list(payload)
-        except Exception:
+        except Exception as exc:
+            # "disabled" (no model loaded - fallback by design) is not a failure;
+            # only a configured model that errors/parses-badly counts as dropped.
+            disabled = self._propose is None and (self.client is None or not self.client.enabled)
+            self.last_outcome = "disabled" if disabled else "error"
+            self.last_error = str(exc)
             return self.fallback.decide(context)
-        return actions if actions else self.fallback.decide(context)
+        if actions:
+            self.last_outcome = "model"
+            self.last_error = ""
+            return actions
+        self.last_outcome = "fallback"
+        self.last_error = "empty"
+        return self.fallback.decide(context)
 
     def _ask_model(self, context: dict[str, Any]) -> dict[str, Any]:
         if self.client is None:

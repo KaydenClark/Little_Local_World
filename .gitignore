@@ -12,6 +12,10 @@ dist/
 *.log
 *.db
 *.sqlite
+
+# Run-log telemetry output (our own JSONL run logs). Model-server logs the user
+# captures manually live under docs/lmstudio_logs/ and are not ignored.
+logs/
 .env
 .env.*
 
