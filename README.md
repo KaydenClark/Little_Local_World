@@ -16,12 +16,15 @@ the HUD includes water as the first Build-2 essential, the Civ stats panel shows
 Water, and the selected-pawn sheet has a "Why this job" trace (winning lane,
 reason, and the top job it passed over). The map now separates hover from
 selection, shows idle pawns with an overhead badge, and renders construction
-sites as translucent ghosts with progress bars when they exist.
+sites as translucent ghosts with progress bars when they exist. A compact
+Governor card and right-edge exception stack now keep the current plan,
+bottleneck, confidence, recent policy change, and top active problem visible.
 
 The **Work** button opens the RimWorld-style work-priority grid below; click a
 cell to cycle a pawn's priority (1 highest .. 4 lowest, blank disables it) and
-watch the pawn re-route on the next step. The other command buttons (Architect,
-Assign, Research, History, Menu) are still visual placeholders.
+watch the pawn re-route on the next step. The **History** button opens the live
+event feed. The other command buttons (Architect, Assign, Research, Menu) are
+still visual placeholders.
 
 ![Work-priority grid](docs/screenshots/work-grid.png)
 
@@ -116,7 +119,8 @@ Ollama can use the same adapter with
 - A local LLM Governor behind the same interface, with hard fallback on any
   error.
 - A Pygame civilization viewer with camera pan/zoom, pawn selection, a top pawn
-  roster, right-side pawn sheet, HUD, and local model status.
+  roster, right-side pawn sheet, HUD, local model status, Governor card, and
+  exception stack.
 - A lane-based work-priority arbiter: pawns self-select their best legal job
   (manual priority -> work-type order -> skill), never double-claim a slot, and
   expose a decision trace. The Work button opens a clickable priority grid; the
@@ -124,6 +128,8 @@ Ollama can use the same adapter with
 - A conservation-safe water slice: Water Well production, stockpiled water,
   pawn drinking, thirst mood pressure, Civ Water readout, and a `low_water`
   governor exception.
+- A live History feed plus Governor observer overlay for current plan,
+  bottleneck, confidence, last policy change, and active exceptions.
 - CC0/provenance-tracked civilization sprites under `src\agent_town\assets\colony`.
 - A repeatable civilization scaling benchmark for 100, 500, and 1,000 pawns.
 
@@ -131,10 +137,8 @@ Ollama can use the same adapter with
 
 - Keep lethal starvation deferred until the malnutrition/death timing slice can
   add status, exceptions, viewer surfacing, and food-chain urgency together.
-- Add the map readability pass for current systems: idle badges, construction
-  progress, storage pressure, danger/blocked-job indicators, and hover vs
-  selection conventions.
 - Add the first Paper 7 scale foundations before larger populations:
   reachability-region rejection and deterministic update phases.
+- Add district storage/market pressure before comfort chains.
 - Add save state once the civilization persistence model is designed.
 - Add pathfinding benchmarks before larger maps or blocked terrain.

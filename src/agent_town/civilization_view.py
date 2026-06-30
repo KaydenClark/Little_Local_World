@@ -24,9 +24,17 @@ import pygame
 from . import buildings, economy, engine, health, mood, telemetry, work
 from .assets import CivilizationAssetManifest, load_civilization_manifest
 from .core import (
+    ACTION_ASSIGN_PAWN,
+    ACTION_PLACE_BUILDING,
+    ACTION_SET_PRODUCTION_TARGET,
+    ACTION_SET_RESEARCH,
+    ACTION_SET_SCHEDULE,
+    ACTION_SET_WORK_PRIORITY,
+    CivilizationException,
     ConstructionSite,
     FactionState,
     Good,
+    GovernorAction,
     NEED_FOOD,
     NEED_RECREATION,
     NEED_REST,
@@ -42,6 +50,7 @@ from .governor import (
     CivilizationDecisionScheduler,
     FallbackGovernor,
     Governor,
+    build_exception_queue,
 )
 from .pawns import STATE_WANDERING, STATE_SLACKING
 
@@ -175,6 +184,60 @@ GOVERNOR_STATUS_COLOR = {
     GOV_DISABLED: HUD_MUTED,
 }
 
+EXCEPTION_SEVERITY_RANK = {
+    health.CRITICAL: 0,
+    health.WARN: 1,
+    health.INFO: 2,
+}
+EXCEPTION_SEVERITY = {
+    "pawn_break": health.CRITICAL,
+    "pawn_breaking": health.CRITICAL,
+    "low_water": health.WARN,
+    "missing_inputs": health.WARN,
+    "unstaffed_building": health.WARN,
+    "unhappy_pawn": health.WARN,
+    "idle_pawn": health.WARN,
+    "skill_mismatch": health.WARN,
+}
+EXCEPTION_KIND_RANK = {
+    "pawn_break": 0,
+    "pawn_breaking": 1,
+    "low_water": 2,
+    "missing_inputs": 3,
+    "unstaffed_building": 4,
+    "unhappy_pawn": 5,
+    "skill_mismatch": 6,
+    "idle_pawn": 7,
+}
+GOVERNOR_CARD_WIDTH = 332
+GOVERNOR_CARD_HEIGHT = 146
+EXCEPTION_STACK_WIDTH = 318
+EXCEPTION_STACK_MAX = 4
+
+
+@dataclass(frozen=True)
+class ExceptionStackItem:
+    """One compact, severity-sorted problem for the right-edge observer stack."""
+
+    kind: str
+    severity: str
+    title: str
+    cause: str
+    subject: str = ""
+
+
+@dataclass(frozen=True)
+class GovernorCardSummary:
+    """Short, derived situation report for the always-visible Governor card."""
+
+    plan: str
+    phase: str
+    bottleneck: str
+    confidence: int
+    last_reallocation: str
+    exception_count: int
+    top_exception: ExceptionStackItem | None = None
+
 
 def governor_status_line(gov: Governor) -> tuple[str, tuple[int, int, int]]:
     """A one-line HUD summary of how the civilization is being governed right now.
@@ -200,6 +263,195 @@ def governor_status_line(gov: Governor) -> tuple[str, tuple[int, int, int]]:
     else:  # offline / invalid
         text = f"Governor: LLM {model} unreachable - fallback covering   L: retry"
     return (text, color)
+
+
+def _pawn_name(state: FactionState, pawn_id: str | None) -> str:
+    if not pawn_id:
+        return ""
+    pawn = state.pawns.get(pawn_id)
+    return pawn.name if pawn is not None else pawn_id
+
+
+def _building_name(state: FactionState, building_id: str | None) -> str:
+    if not building_id:
+        return ""
+    building = state.buildings.get(building_id)
+    return building.kind if building is not None else building_id
+
+
+def _exception_severity(exc: CivilizationException) -> str:
+    return EXCEPTION_SEVERITY.get(exc.kind, health.INFO)
+
+
+def _exception_subject(state: FactionState, exc: CivilizationException) -> str:
+    if exc.pawn_id:
+        return _pawn_name(state, exc.pawn_id)
+    if exc.building_id:
+        return _building_name(state, exc.building_id)
+    return "Civilization"
+
+
+def _exception_title_and_cause(state: FactionState, exc: CivilizationException) -> tuple[str, str]:
+    subject = _exception_subject(state, exc)
+    if exc.kind == "pawn_break":
+        return (f"Pawn break: {subject}", f"{subject} is in a mental break ({exc.detail}).")
+    if exc.kind == "pawn_breaking":
+        return (f"Break risk: {subject}", f"{subject} is below the break band ({exc.detail}).")
+    if exc.kind == "unhappy_pawn":
+        return (f"Low mood: {subject}", f"{subject} needs schedule or supply relief ({exc.detail}).")
+    if exc.kind == "idle_pawn":
+        return (f"Idle pawn: {subject}", "No legal job won the work arbiter.")
+    if exc.kind == "skill_mismatch":
+        building = _building_name(state, exc.building_id)
+        return (f"Mismatch: {subject}", f"{subject} is weak for {building} ({exc.detail}).")
+    if exc.kind == "unstaffed_building":
+        return (f"Unstaffed: {subject}", "No pawn has claimed this work slot.")
+    if exc.kind == "missing_inputs":
+        return (f"Missing inputs: {subject}", f"{subject} is blocked on {exc.detail}.")
+    if exc.kind == "low_water":
+        return ("Low water", f"Water reserve or need is below the safe line ({exc.detail}).")
+    return (exc.kind.replace("_", " ").title(), exc.detail or "Needs attention.")
+
+
+def exception_stack_items(state: FactionState) -> list[ExceptionStackItem]:
+    """Active governor exceptions sorted for the observer stack."""
+    items: list[ExceptionStackItem] = []
+    for exc in build_exception_queue(state):
+        title, cause = _exception_title_and_cause(state, exc)
+        items.append(
+            ExceptionStackItem(
+                kind=exc.kind,
+                severity=_exception_severity(exc),
+                title=title,
+                cause=cause,
+                subject=_exception_subject(state, exc),
+            )
+        )
+    return sorted(
+        items,
+        key=lambda item: (
+            EXCEPTION_SEVERITY_RANK.get(item.severity, 99),
+            EXCEPTION_KIND_RANK.get(item.kind, 99),
+            item.title,
+            item.kind,
+        ),
+    )
+
+
+def _action_kinds_from(actions: list[GovernorAction] | tuple | None) -> list[str]:
+    kinds: list[str] = []
+    for action in actions or ():
+        if isinstance(action, str):
+            kinds.append(action)
+        else:
+            kind = getattr(action, "kind", "")
+            if kind:
+                kinds.append(kind)
+    return kinds
+
+
+def _last_reallocation_text(gov: Governor | None, last_actions: list[GovernorAction] | tuple | None) -> str:
+    kinds = _action_kinds_from(last_actions)
+    if not kinds:
+        status = getattr(gov, "status", None)
+        kinds = _action_kinds_from(getattr(status, "last_action_kinds", ()) if status is not None else ())
+    if not kinds:
+        return "No recent policy change"
+
+    labels = {
+        ACTION_SET_WORK_PRIORITY: "Adjusted work priorities",
+        ACTION_SET_SCHEDULE: "Changed schedules",
+        ACTION_ASSIGN_PAWN: "Forced an assignment",
+        ACTION_PLACE_BUILDING: "Queued construction",
+        ACTION_SET_PRODUCTION_TARGET: "Changed production targets",
+        ACTION_SET_RESEARCH: "Changed research",
+    }
+    primary = labels.get(kinds[-1], kinds[-1].replace("_", " ").title())
+    if len(kinds) == 1:
+        return primary
+    return f"{primary} (+{len(kinds) - 1} more)"
+
+
+def _governor_phase(gov: Governor | None) -> str:
+    status = getattr(gov, "status", None)
+    if status is None:
+        return "Fallback autopilot"
+    if status.state == GOV_THINKING:
+        return "Local model thinking"
+    if status.state == GOV_IDLE:
+        return "Local model idle"
+    if status.state in (GOV_OFFLINE, GOV_INVALID):
+        return "Fallback covering model issue"
+    if status.state == GOV_DISABLED:
+        return "Fallback autopilot"
+    return str(status.state).replace("_", " ").title()
+
+
+def _plan_for_exception(item: ExceptionStackItem) -> str:
+    if item.kind == "low_water":
+        return "Stabilize water reserve"
+    if item.kind in ("pawn_break", "pawn_breaking", "unhappy_pawn"):
+        return "Recover pawn mood"
+    if item.kind == "idle_pawn":
+        return "Rebalance idle labour"
+    if item.kind == "unstaffed_building":
+        return "Staff open work"
+    if item.kind == "missing_inputs":
+        return "Unblock production"
+    if item.kind == "skill_mismatch":
+        return "Fix role mismatch"
+    return f"Handle {item.title.lower()}"
+
+
+def _confidence_for(gov: Governor | None, items: list[ExceptionStackItem]) -> int:
+    if not items:
+        confidence = 88
+    elif items[0].severity == health.CRITICAL:
+        confidence = 54
+    else:
+        confidence = 72
+
+    status = getattr(gov, "status", None)
+    if status is not None:
+        if status.state == GOV_THINKING:
+            confidence -= 4
+        elif status.state in (GOV_OFFLINE, GOV_INVALID):
+            confidence -= 10
+    return max(10, min(99, confidence))
+
+
+def governor_card_summary(
+    state: FactionState,
+    gov: Governor | None = None,
+    *,
+    last_actions: list[GovernorAction] | tuple | None = None,
+) -> GovernorCardSummary:
+    """Derive the Governor card from current state; it never mutates the sim."""
+    items = exception_stack_items(state)
+    top = items[0] if items else None
+    if top is not None:
+        plan = _plan_for_exception(top)
+        bottleneck = top.cause
+    elif state.construction_sites:
+        first_site = sorted(state.construction_sites.values(), key=lambda s: s.id)[0]
+        plan = f"Finish {first_site.building_kind}"
+        bottleneck = "Construction work in progress"
+    elif idle_pawn_count(state):
+        plan = "Rebalance idle labour"
+        bottleneck = f"{idle_pawn_count(state)} pawn(s) idle"
+    else:
+        plan = "Keep essentials stable"
+        bottleneck = "No active exceptions"
+
+    return GovernorCardSummary(
+        plan=plan,
+        phase=_governor_phase(gov),
+        bottleneck=bottleneck,
+        confidence=_confidence_for(gov, items),
+        last_reallocation=_last_reallocation_text(gov, last_actions),
+        exception_count=len(items),
+        top_exception=top,
+    )
 
 
 @dataclass
@@ -347,6 +599,7 @@ def render_civilization(
     show_history: bool = False,
     events: list | None = None,
     alert: tuple[str, int] | None = None,
+    governor_summary: GovernorCardSummary | None = None,
 ) -> None:
     """Draw the whole civilization (tiles, nodes, buildings, pawns, HUD) onto ``surface``."""
     camera = camera or Camera()
@@ -423,6 +676,13 @@ def render_civilization(
 
     surface.set_clip(previous_clip)
     _draw_civ_stats(surface, font, state, (map_rect.x + MARGIN, map_rect.y + MARGIN))
+    _draw_exception_stack(surface, font, exception_stack_items(state), map_rect)
+    _draw_governor_card(
+        surface,
+        font,
+        governor_summary or governor_card_summary(state),
+        map_rect,
+    )
     _draw_pawn_roster(surface, state, assets, font, selected_pawn_id, map_rect.width)
     if inspector_rect is not None:
         _draw_inspector(surface, state, font, selected_pawn_id, inspector_rect)
@@ -1080,6 +1340,100 @@ SEVERITY_COLOR = {
 }
 
 
+def _draw_translucent_panel(surface: pygame.Surface, rect: pygame.Rect, *, alpha: int = 220) -> None:
+    panel = pygame.Surface(rect.size, pygame.SRCALPHA)
+    panel.fill((*PANEL_BG, alpha))
+    surface.blit(panel, rect.topleft)
+    pygame.draw.rect(surface, PANEL_BORDER, rect, 1)
+
+
+def _draw_exception_stack(
+    surface: pygame.Surface,
+    font: pygame.font.Font,
+    items: list[ExceptionStackItem],
+    map_rect: pygame.Rect,
+) -> pygame.Rect | None:
+    """Right-edge active-problem stack, sorted by severity and actionability."""
+    width = min(EXCEPTION_STACK_WIDTH, map_rect.width - MARGIN * 2)
+    if width < 220:
+        return None
+    rows = items[:EXCEPTION_STACK_MAX]
+    height = 58 if not rows else 34 + len(rows) * 42 + (20 if len(items) > len(rows) else 8)
+    rect = pygame.Rect(map_rect.right - MARGIN - width, map_rect.y + MARGIN, width, height)
+
+    _draw_translucent_panel(surface, rect)
+    x = rect.x + 10
+    y = rect.y + 8
+    _draw_text(surface, font, "Exceptions", SELECTION, (x, y), width - 96)
+    count_text = "clear" if not items else str(len(items))
+    count_color = NEED_GOOD if not items else SEVERITY_COLOR.get(rows[0].severity, NEED_WARN)
+    _draw_text(surface, font, count_text, count_color, (rect.right - 62, y), 52)
+    y += 24
+
+    if not rows:
+        pygame.draw.circle(surface, NEED_GOOD, (x + 5, y + 8), 4)
+        _draw_text(surface, font, "No active governor exceptions", INSPECTOR_MUTED, (x + 16, y), width - 28)
+        return rect
+
+    for item in rows:
+        color = SEVERITY_COLOR.get(item.severity, INSPECTOR_TEXT)
+        pygame.draw.circle(surface, color, (x + 5, y + 7), 4)
+        _draw_text(surface, font, item.title, INSPECTOR_TEXT, (x + 16, y - 1), width - 28)
+        _draw_text(surface, font, item.cause, INSPECTOR_MUTED, (x + 16, y + 18), width - 28)
+        y += 42
+    remaining = len(items) - len(rows)
+    if remaining > 0:
+        _draw_text(surface, font, f"+{remaining} more", INSPECTOR_MUTED, (x + 16, y), width - 28)
+    return rect
+
+
+def _draw_governor_card(
+    surface: pygame.Surface,
+    font: pygame.font.Font,
+    summary: GovernorCardSummary,
+    map_rect: pygame.Rect,
+) -> pygame.Rect | None:
+    """Bottom-left situation card: plan, bottleneck, confidence, recent policy."""
+    width = min(GOVERNOR_CARD_WIDTH, map_rect.width - MARGIN * 2)
+    if width < 240:
+        return None
+    height = min(GOVERNOR_CARD_HEIGHT, map_rect.height - MARGIN * 2)
+    rect = pygame.Rect(map_rect.x + MARGIN, map_rect.bottom - MARGIN - height, width, height)
+    if rect.y < map_rect.y + MARGIN:
+        rect.y = map_rect.y + MARGIN
+
+    _draw_translucent_panel(surface, rect)
+    x = rect.x + 10
+    y = rect.y + 8
+    confidence_color = NEED_GOOD if summary.confidence >= 80 else NEED_WARN if summary.confidence >= 65 else NEED_BAD
+    _draw_text(surface, font, "Governor", SELECTION, (x, y), width - 88)
+    _draw_text(surface, font, f"{summary.confidence}%", confidence_color, (rect.right - 52, y), 44)
+    y += 22
+
+    rows = (
+        ("Plan", summary.plan),
+        ("Phase", summary.phase),
+        ("Bottleneck", summary.bottleneck),
+        ("Last", summary.last_reallocation),
+    )
+    for label, value in rows:
+        _draw_text(surface, font, label, INSPECTOR_MUTED, (x, y), 76)
+        _draw_text(surface, font, value, INSPECTOR_TEXT, (x + 78, y), width - 88)
+        y += 20
+
+    top = summary.top_exception.title if summary.top_exception is not None else "clear"
+    color = (
+        SEVERITY_COLOR.get(summary.top_exception.severity, INSPECTOR_TEXT)
+        if summary.top_exception is not None
+        else NEED_GOOD
+    )
+    _draw_text(surface, font, "Top", INSPECTOR_MUTED, (x, y), 76)
+    _draw_text(surface, font, top, color, (x + 78, y), width - 88)
+    if summary.exception_count > 1:
+        _draw_text(surface, font, f"{summary.exception_count} active", INSPECTOR_MUTED, (x + 78, y + 18), width - 88)
+    return rect
+
+
 def _draw_history_panel(
     surface: pygame.Surface,
     font: pygame.font.Font,
@@ -1453,6 +1807,11 @@ class CivilizationViewer:
             show_history=self.show_history,
             events=list(self.event_ring.records),
             alert=alert,
+            governor_summary=governor_card_summary(
+                self.state,
+                self._step_governor,
+                last_actions=self._step_governor.last_actions,
+            ),
         )
         pygame.display.flip()
 

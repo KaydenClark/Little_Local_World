@@ -87,10 +87,14 @@ separate, danger rings outrank selection, `work.LANE_IDLE` pawns get an overhead
 idle badge, and active construction sites draw as ghosts with footprint outlines
 and progress bars. Storage-pressure badges stay deferred until stockpile capacity
 exists. The synthesis paper (`research_papers/8.little-local-world-research-synthesis.md`)
-now points next to **governor card + exception stack** before scale foundations
-and deeper economy. Per user direction (2026-06-29) lethal starvation (build-1
-step 5.4) stays deferred behind the visible autonomy/readability work; Build-1
-ships with hunger mood pressure as its stakes.
+Paper 6 governor observer UI is now also live: a compact Governor card shows
+current plan, phase, bottleneck, confidence, last policy change, and top
+exception; the right-edge exception stack sorts active governor exceptions by
+severity/actionability with likely causes. The synthesis paper now points next
+to **Paper 7 scale foundations** before deeper economy. Per user direction
+(2026-06-29) lethal starvation (build-1 step 5.4) stays deferred behind the
+visible autonomy/readability work; Build-1 ships with hunger mood pressure as
+its stakes.
 
 Done when:
 
@@ -272,7 +276,15 @@ from the research-backed queue below, keeping every slice small and verified.
    from the work arbiter get an overhead `!` badge, and construction sites render
    as translucent ghosts with footprint outlines and material/work progress bars.
    Storage 80/95% badges are deliberately deferred until stockpile capacity exists.
-   **Next code task is the queue item below: governor card + exception stack.**
+   Paper 6 governor observer UI followed this as item 9.
+
+9. **(done) Paper 6 governor card + exception stack.** The viewer now derives a
+   read-only Governor card from current exceptions, scheduler status, and recent
+   policy actions: current plan, phase, bottleneck, confidence, last reallocation,
+   and top exception. A right-edge exception stack shows active governor
+   exceptions by severity/actionability with likely causes. It stays observer
+   UI, not a policy editor. **Next code task is Paper 7 scale foundations:
+   reachability `region_id` plus deterministic command/update phases.**
 
 ## Research Paper Implementation Queue
 
@@ -298,9 +310,9 @@ build order. Work the queue in this order, not in paper-number order:
    Idle badge, construction progress, danger-over-selection, and hover vs
    selection are live. Storage 80/95% badges are deferred until storage capacity
    exists.
-5. **Governor card + exception stack (next code task).** Paper 6. Current plan, bottleneck,
-   confidence, last reallocation, top exception and its likely cause.
-6. **Scale foundations.** Paper 7. Reachability `region_id` and deterministic
+5. **Governor card + exception stack (done).** Paper 6. Current plan, bottleneck,
+   confidence, last reallocation, top exception and its likely cause are visible.
+6. **Scale foundations (next code task).** Paper 7. Reachability `region_id` and deterministic
    command/update phases - cheap scaffolding added before population grows.
 7. **Deeper economy.** Paper 4 (remainder). District storage, market/service
    delivery, repair debt, wages -> spending -> taxes, reserve-aware trade.
@@ -367,9 +379,9 @@ material; the numbered order above is what to build.
    - Current status: the first essential economy slice is implemented: Water
      Well production, water reserve/need, thirst mood pressure, Civ readout/HUD
      chip, water days-of-cover, and a `low_water` governor exception.
-   - Next code task: keep deeper economy paused until the Governor card +
-     exception stack is visible. Then add district storage/market pressure before
-     comfort chains.
+   - Next code task: keep deeper economy paused until Paper 7's first scale
+     foundations are in. Then add district storage/market pressure before comfort
+     chains.
    - Tests: water days-of-cover is covered; summer/seasonal demand hook,
      storage-full blocked production, repair input reservation, and wage ->
      spending -> tax accounting remain future tests once those loops start.
@@ -382,7 +394,7 @@ material; the numbered order above is what to build.
       selection outlines, danger-over-selection rings, idle overhead badges from
       `work.LANE_IDLE`, and construction ghosts with footprint/progress.
    - Next code task: none for Paper 5 until storage capacity or larger-map/LOD
-      work lands; proceed to the Paper 6 Governor card + exception stack.
+      work lands; Paper 6 observer UI is now complete.
    - Tests/manual proof: `tests.test_civilization_view` covers construction
       progress math, marker priority, and hovered-pawn render smoke; refreshed
       `docs/screenshots/current-state.png`; inspected a temporary proof frame
@@ -392,15 +404,15 @@ material; the numbered order above is what to build.
       reduce-motion settings.
 6. **Observer-first UI pass** -
    `research_papers/6.ui-report.md`
-   - Current status: the app already has the start of an observer shell, but the
-     Governor's current plan, bottleneck, confidence/health, and recent policy
-     changes are not always visible.
-   - Next code task: add a compact Governor card and alert/exception stack that
-     separate state, cause, and actionability; keep the bottom strip thin and
-     contextual.
-   - Tests/manual proof: render smoke with at least one exception, local model
-     disabled/offline/thinking states, selected pawn sheet still readable, and
-     no persistent UI element exceeding its density budget.
+   - Current status: **done for the current observer shell.** The viewer has a
+     compact Governor card (plan, phase, bottleneck, confidence, last policy
+     change, top exception) plus a right-edge exception stack sorted by severity
+     and actionability. State, cause, and actionability stay separated.
+   - Next code task: none for Paper 6 until a full decision-log drill-down or
+     policy editor is explicitly pulled forward.
+   - Tests/manual proof: `tests.test_civilization_view.GovernorObserverModelTests`
+     covers exception severity ordering, low-water bottleneck surfacing, recent
+     policy action text, and render smoke with an exception.
    - Deferred: full decision-log scrubber, policy editor, multi-civilization
      observer dashboards.
 7. **Scale architecture intake** -
@@ -550,3 +562,4 @@ Append a row when a task changes durable project state. Use actual results, not 
 | 2026-06-29 | Build-2 step 1: lane-based work-priority arbiter + reservations + `set_work_priority` + clickable Work grid (Paper 3) | `.\.venv\Scripts\python.exe -m unittest discover -s tests` (174 tests, was 143); `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; `.\.venv\Scripts\python.exe .\scripts\benchmark_scaling.py --pawns 100 500 1000 --steps 20`; rendered `work_grid_open.png`/`inspector_trace.png` and refreshed `docs\screenshots\current-state.png` + `work-grid.png` | pass | New `work.py` lane-based arbiter (forced/hard-state/self-care/normal-work/idle; medical+emergency are ordered stubs) replaces the governor's routine `assign_pawn`: pawns self-select their best legal job by manual priority -> work-type order -> target urgency (hook) -> distance -> skill, reserve the slot (`job_slots`-aware, no double-claim), keep legal jobs (no thrash), release on break/disable, and get a decision trace (`WorkDecision`/`RejectedJob`). `set_work_priority` action wired through governor validate/apply + LLM schema/prompt; `assign_pawn` is now a forced-lane override. Contract additions (additive, one-file-PR): `Pawn.work_priorities`/`forced_assignment`, `FactionState.work_decisions`, `WorkDecision`/`RejectedJob`, `ACTION_SET_WORK_PRIORITY`, `GovernorAction.work_type/level`+`set_work_priority`. Engine splits needs/arbiter/activity phases. Viewer: clickable RimWorld Work grid (Work button), inspector "Why this job" trace via `work.explain` (lazy O(buildings) per inspected pawn), `Idle N` HUD chip. Oracles held: I1 3-day survival and the LLM-vs-fallback 3-day determinism proof both stay green; default-civ staffing matches the old best-skill matcher. Scale note: arbiter is O(needers x buildings)/hour - microseconds at 12 pawns; the 1000-pawn benchmark rises to ~21 ms/hour (989 unemployed pawns re-scan 11 slots each hour), which is the Paper 7 job-index/cadence work deferred to the scale gates and stays ~28x under the real-time step budget. Lethal starvation still deferred. |
 | 2026-06-29 | Build-2 first essential economy: water need + Water Well + governor exception | `.\.venv\Scripts\python.exe -m unittest tests.test_water`; `.\.venv\Scripts\python.exe -m unittest discover -s tests` (209 tests); `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; `git diff --check`; refreshed and inspected `docs\screenshots\current-state.png` + `work-grid.png` | pass | Added conserved water as the first Townsmen essential: `Good.WATER`, `NEED_WATER`, Water Well production, one-unit drinking, thirst thoughts, Civ Water readout, HUD Water chip, `water` work type/priority, `economy.water_days_of_cover`, and `low_water` governor exception. Default 12-pawn civ starts with one staffed Water Well and water stock. Next: map readability for current systems; district buffers, service queues, seasonal water demand, storage caps, markets, wages/taxes, and deeper logistics remain deferred. |
 | 2026-06-29 22:39 -06:00 | Paper 5 current-systems map readability on `codex/build-2-water-need` (branch equal to origin at start; model gpt-5.5 xhigh) | RED `.\.venv\Scripts\python.exe -m unittest tests.test_civilization_view` failed on missing `_construction_progress`; GREEN `.\.venv\Scripts\python.exe -m unittest tests.test_civilization_view` (29 tests); `.\.venv\Scripts\python.exe -m unittest discover -s tests` (212 tests); `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; `git diff --check`; refreshed and inspected `docs\screenshots\current-state.png` plus temp `local-agent-town-readability-proof.png` | pass | Decision source: Paper 5 "Showing work, idle, construction, danger, and storage pressure" plus Paper 8 "Roadmap implication." Shipped hover-vs-selection outlines, danger-over-selection rings, idle overhead badges from `work.LANE_IDLE`, and construction ghosts/footprint/progress bars. Storage 80/95% badges deferred until stockpile capacity exists; next code task is Governor card + exception stack. |
+| 2026-06-29 23:09 -06:00 | Paper 6 governor card + exception stack on new `codex/governor-card-exception-stack` branch (PR #19 was merged; model gpt-5.5 xhigh; budget metric not readable; `.agent.lock` acquired) | RED `.\.venv\Scripts\python.exe -m unittest tests.test_civilization_view` failed on missing `exception_stack_items`; GREEN `.\.venv\Scripts\python.exe -m unittest tests.test_civilization_view` (33 tests); `.\.venv\Scripts\python.exe -m unittest discover -s tests` (216 tests); `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; `git diff --check`; refreshed and inspected `docs\screenshots\current-state.png` | pass | PR status read: no open PRs; PR #19 was merged cleanly with Mac gate pass. Decision source: Paper 6 "Local AI governor status" / "Suggested Local Agent Town screen layout" plus Paper 8 "Roadmap implication." Added a read-only Governor card (plan, phase, bottleneck, confidence, last reallocation, top exception) and right-edge exception stack sorted by severity/actionability; next code task is Paper 7 scale foundations. |
