@@ -280,7 +280,7 @@ that both tracks rebase on, never a unilateral edit.
 | `ConstructionSite` | id, building_kind, x, y, required, delivered, work_remaining |
 | `Pawn` | id, name, skills, traits, wants, needs, mood, schedule, assignment, x, y, state |
 | `ScheduleTemplate` | name, blocks (24 long); `block_at` |
-| `FactionState` | stockpile, coin, pawns, buildings, construction_sites, research, season, tax_rate, day, time_of_day, grid, resource_nodes |
+| `FactionState` | stockpile, coin, pawns, buildings, construction_sites, research, research_target, research_points, season, tax_rate, day, time_of_day, grid, resource_nodes |
 | `CivilizationException` | kind, pawn_id or None, building_id or None, detail |
 | `GovernorAction` | kind plus the fields for that action (see Governor interface) |
 
@@ -318,9 +318,15 @@ Production chains:
 | Wood | Forester, Sawmill | tree node to logs to planks |
 | Food | Farm, Mill, Bakery | grain to flour to bread |
 | Stone | Quarry | stone node to stone |
+| Research | Laboratory | staffed research work to research points |
 
 Construction consumes planks plus stone. Bread is the consumable that feeds the
 food need.
+
+The current research spine is deliberately minimal: the Governor can select the
+first tech (`efficient_baking`), staffed Laboratory work completes it, and the
+completed tech increases Bakery bread output. The full Space-Age victory spine
+remains a later build target.
 
 Pawn needs currently tracked: rest, food, water, recreation. Rest and recreation
 are 0.0-1.0 satisfaction values that decay over time and are restored by the
@@ -504,7 +510,7 @@ only exist once its supplier and its tech do.
 | 2 | Carpenter / Workshop | planks, parts | furniture | crafting | 2 |
 | 2 | Apothecary | herbs, cloth | medicine | medicine | 2 |
 | 2 | Blacksmith / Forge | metal | tools, parts | smithing | 3 |
-| 3 | Laboratory | books/components + researcher | research points | research | 3 |
+| 2 | Laboratory | researcher labour | research points | research | 2 |
 | 3 | Foundry / Machine shop | metal, parts | components | engineering | 4 |
 | 3 | Space program | components, research | launch readiness | engineering | 4 |
 
@@ -568,10 +574,12 @@ nothing else, RimWorld-style.
 
 ### Research and the Space Age
 
-Research points (Laboratory output) buy techs along a spine that ends in space
-flight. Techs unlock the later building tiers and raise pawn lifespan and
-productivity. Reaching and completing the space-age milestone is the primary
-victory.
+Research points from staffed Laboratory work buy techs along a spine that ends
+in space flight. The current runtime ships only the first truthful slice:
+`efficient_baking` raises Bakery bread output, proving that `set_research`
+causes measurable simulation change. Later techs unlock building tiers, raise
+pawn lifespan/productivity, and eventually complete the space-age milestone.
+Reaching that milestone is the primary victory.
 
 ### Storage
 
@@ -605,9 +613,9 @@ Pawns have RimWorld-style free will: each picks its highest-priority available
 job from its priority list. The Governor's main lever is tuning priorities and
 schedules, not hand-placing pawns in slots - `assign_pawn` is an override for
 the rare case. Watching how the agent balances priorities across the roster is
-the substance of the spectator view. (`set_work_priority` is a build-2 addition;
-build 1 still assigns slots directly. `set_research` is core to the Space-Age
-victory, not a stretch.)
+the substance of the spectator view. `set_research` now selects an active tech
+target; Laboratory work completes it, and completed techs must change simulation
+behavior. The full Space-Age victory remains a later spine, not a stretch goal.
 
 Build-2 autonomy direction from the RimWorld work-priority research:
 
@@ -712,6 +720,7 @@ Rules:
 | Build-2 water slice shipped as the first essential economy extension | `Good.WATER`, `NEED_WATER`, Water Well production, one-unit drinking, thirst thoughts, Civ Water readout, HUD stockpile chip, water work priority, days-of-cover summary, and `low_water` governor exception make the first Townsmen essential conserved and visible. District buffers, service queues, seasonal demand, markets, wages, and storage caps remain deferred | 2026-06-29 build-2 water slice |
 | Paper 5 current-systems readability shipped before the governor card | The viewer now separates hover from selection, draws danger rings above selection, shows `work.LANE_IDLE` pawns with an overhead `!`, and renders construction sites as ghosts with footprint outlines and two-stage material/work progress. Storage 80/95% badges remain deferred until stockpile capacity exists, because uncapped totals cannot produce truthful pressure | 2026-06-29 Paper 5 current-systems slice |
 | Paper 6 governor observer shell shipped | The viewer derives a read-only Governor card from current exceptions, scheduler status, and recent policy actions: plan, phase, bottleneck, confidence, last reallocation, and top exception. A right-edge exception stack sorts active governor exceptions by severity and actionability. It is diagnosis-first UI, not a micromanagement surface; decision-log drill-down and policy editors remain deferred | 2026-06-29 Paper 6 observer UI slice |
+| Minimal research spine shipped before scale work | `set_research` is no longer a dead lever: it selects an active tech target, staffed Laboratory work produces research points through the existing `effective_work` seam, and `efficient_baking` raises Bakery output. This proves the progression lever before the larger Space-Age spine, wages, storage caps, and victory condition land | 2026-06-30 truth-loop cleanup |
 
 ## Health Criteria
 

@@ -62,7 +62,16 @@ class TrackA1Tests(unittest.TestCase):
 
 class TrackA2Tests(unittest.TestCase):
     def test_building_definitions_cover_current_chains(self):
-        expected = {"Forester", "Sawmill", "Farm", "Mill", "Bakery", "Water Well", "Quarry"}
+        expected = {
+            "Forester",
+            "Sawmill",
+            "Farm",
+            "Mill",
+            "Bakery",
+            "Water Well",
+            "Quarry",
+            "Laboratory",
+        }
 
         self.assertEqual({definition.kind for definition in buildings.BUILDING_DEFS.values()}, expected)
         sawmill = buildings.building_def("sawmill")
@@ -72,6 +81,9 @@ class TrackA2Tests(unittest.TestCase):
         well = buildings.building_def("water_well")
         self.assertEqual(well.recipe.outputs, {Good.WATER: 3})
         self.assertEqual(well.recipe.skill, "water")
+        lab = buildings.building_def("Laboratory")
+        self.assertEqual(lab.recipe.outputs, {})
+        self.assertEqual(lab.recipe.skill, "research")
         with self.assertRaisesRegex(ValueError, "Unknown building kind"):
             buildings.building_def("Moon Mill")
 

@@ -21,6 +21,9 @@ from .core import BUILD1_NEEDS, FactionState, Good, Pawn, Recipe, Stockpile
 # Base output rate per unit of summed effective work, per tick.
 BASE_RATE = 1.0
 WATER_UNITS_PER_PAWN_DAY = 1.0
+TECH_EFFICIENT_BAKING = "efficient_baking"
+RESEARCH_COSTS = {TECH_EFFICIENT_BAKING: 4}
+LABORATORY_KIND = "Laboratory"
 
 WorkFn = Callable[[Pawn, Recipe, int], float]
 
@@ -61,11 +64,12 @@ def production_tick(state: FactionState, *, work_fn: WorkFn = mood.effective_wor
         cycles = int(building_output_rate(state, building_id, work_fn) // recipe.work_units)
         if cycles <= 0:
             continue
+        outputs = _effective_outputs(recipe.outputs, state.research)
         input_limit = _input_limited_cycles(state.stockpile, recipe.inputs)
         if input_limit is not None:
             cycles = min(cycles, input_limit)
         target_limit = _target_limited_cycles(
-            state.stockpile, recipe.outputs, building.production_target
+            state.stockpile, outputs, building.production_target
         )
         if target_limit is not None:
             cycles = min(cycles, target_limit)
@@ -74,9 +78,56 @@ def production_tick(state: FactionState, *, work_fn: WorkFn = mood.effective_wor
         for good, amount in recipe.inputs.items():
             _validate_recipe_amount(good, amount)
             state.stockpile.remove(good, amount * cycles)
-        for good, amount in recipe.outputs.items():
+        for good, amount in outputs.items():
             _validate_recipe_amount(good, amount)
             state.stockpile.add(good, amount * cycles)
+
+
+def research_tick(state: FactionState, *, work_fn: WorkFn = mood.effective_work) -> tuple[str, ...]:
+    """Advance active research from staffed Laboratories; return completed techs.
+
+    ``set_research`` selects ``state.research_target``. This function makes that
+    policy real: each staffed Laboratory contributes whole research points using
+    the same effective-work seam as production. Completing a tech records it in
+    ``state.research`` and clears the active target/progress.
+    """
+    target = state.research_target
+    if not target:
+        return ()
+    cost = RESEARCH_COSTS.get(target)
+    if cost is None:
+        state.research_target = None
+        state.research_points = 0
+        return ()
+    if target in state.research:
+        state.research_target = None
+        state.research_points = 0
+        return ()
+
+    gained = 0
+    for building_id, building in state.buildings.items():
+        recipe = building.recipe
+        if (
+            building.kind != LABORATORY_KIND
+            or not building.built
+            or recipe is None
+            or not building.staffed_by
+        ):
+            continue
+        if recipe.work_units <= 0:
+            raise ValueError("Recipe work_units must be positive")
+        gained += int(building_output_rate(state, building_id, work_fn) // recipe.work_units)
+
+    if gained <= 0:
+        return ()
+    state.research_points += gained
+    if state.research_points < cost:
+        return ()
+
+    state.research = state.research + (target,)
+    state.research_target = None
+    state.research_points = 0
+    return (target,)
 
 
 def average_mood(state: FactionState) -> float:
@@ -176,6 +227,15 @@ def _target_limited_cycles(
     if not limits:
         return None
     return min(limits)
+
+
+def _effective_outputs(outputs: dict[Good, int], research: tuple[str, ...]) -> dict[Good, int]:
+    """Return recipe outputs after completed research effects."""
+    if TECH_EFFICIENT_BAKING not in research or Good.BREAD not in outputs:
+        return outputs
+    adjusted = dict(outputs)
+    adjusted[Good.BREAD] = adjusted[Good.BREAD] + 1
+    return adjusted
 
 
 def _validate_recipe_amount(good: Good, amount: int) -> None:

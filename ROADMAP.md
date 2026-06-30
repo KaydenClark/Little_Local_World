@@ -90,11 +90,12 @@ exists. The synthesis paper (`research_papers/8.little-local-world-research-synt
 Paper 6 governor observer UI is now also live: a compact Governor card shows
 current plan, phase, bottleneck, confidence, last policy change, and top
 exception; the right-edge exception stack sorts active governor exceptions by
-severity/actionability with likely causes. The synthesis paper now points next
-to **Paper 7 scale foundations** before deeper economy. Per user direction
-(2026-06-29) lethal starvation (build-1 step 5.4) stays deferred behind the
-visible autonomy/readability work; Build-1 ships with hunger mood pressure as
-its stakes.
+severity/actionability with likely causes. The first truth-loop cleanup is also
+live: `set_production_target` now changes production, and `set_research` now
+selects an active tech that staffed Laboratory work can complete. Per user
+direction (2026-06-29) lethal starvation (build-1 step 5.4) stays deferred
+behind the visible autonomy/readability work; Build-1 ships with hunger mood
+pressure as its stakes.
 
 Done when:
 
@@ -283,8 +284,10 @@ from the research-backed queue below, keeping every slice small and verified.
    policy actions: current plan, phase, bottleneck, confidence, last reallocation,
    and top exception. A right-edge exception stack shows active governor
    exceptions by severity/actionability with likely causes. It stays observer
-   UI, not a policy editor. **Next code task is Paper 7 scale foundations:
-   reachability `region_id` plus deterministic command/update phases.**
+   UI, not a policy editor. Truth-loop cleanup has begun after this: production
+   targets are honored, and a minimal research spine makes `set_research` a real
+   lever. **Next code task is the first economy coupling: wages + storage caps,
+   before further Paper 7 scale work.**
 
 ## Research Paper Implementation Queue
 
@@ -312,9 +315,14 @@ build order. Work the queue in this order, not in paper-number order:
    exists.
 5. **Governor card + exception stack (done).** Paper 6. Current plan, bottleneck,
    confidence, last reallocation, top exception and its likely cause are visible.
-6. **Scale foundations (next code task).** Paper 7. Reachability `region_id` and deterministic
-   command/update phases - cheap scaffolding added before population grows.
-7. **Deeper economy.** Paper 4 (remainder). District storage, market/service
+6. **Truth-loop cleanup (in progress).** Paper 8's "make causality visible"
+   rule now gates scale behind truthful 12-pawn levers. Done so far:
+   `set_production_target` caps output, and `set_research` selects an active tech
+   completed by staffed Laboratory work. Remaining truth-loop slices: first
+   economy coupling (wages + storage caps), then the larger Space-Age spine.
+7. **Scale foundations.** Paper 7. Reachability `region_id` and deterministic
+   command/update phases - cheap scaffolding, but behind the truth-loop work.
+8. **Deeper economy.** Paper 4 (remainder). District storage, market/service
    delivery, repair debt, wages -> spending -> taxes, reserve-aware trade.
 
 Explicit deferrals from Paper 8 (do not start until the autonomy loop is visible
@@ -379,9 +387,9 @@ material; the numbered order above is what to build.
    - Current status: the first essential economy slice is implemented: Water
      Well production, water reserve/need, thirst mood pressure, Civ readout/HUD
      chip, water days-of-cover, and a `low_water` governor exception.
-   - Next code task: keep deeper economy paused until Paper 7's first scale
-     foundations are in. Then add district storage/market pressure before comfort
-     chains.
+   - Next code task: first economy coupling - wages + storage caps - before
+     Paper 7 scale work. District storage/market pressure and comfort chains
+     follow after that.
    - Tests: water days-of-cover is covered; summer/seasonal demand hook,
      storage-full blocked production, repair input reservation, and wage ->
      spending -> tax accounting remain future tests once those loops start.
@@ -419,7 +427,7 @@ material; the numbered order above is what to build.
    `research_papers/7.scalable-sim-report.md`
    - Current status: the benchmark exists and the product target is ~1000 pawns
      per civilization, but current gameplay remains exact and small-population.
-   - Next code task: add the cheap scale foundations before raising population:
+   - Next code task: deferred behind truth-loop cleanup. When it resumes, add
      reachability `region_id`/dirty topology tracking and deterministic
      command/update phases for reservations, job claims, path requests, movement,
      interactions, production, needs, and tax.
@@ -578,3 +586,4 @@ Append a row when a task changes durable project state. Use actual results, not 
 | 2026-06-30 03:55 -06:00 | Full Mac LM acceptance gate for PR #23 `feat/production-target-honored` at `f6834eefbefcb3e0ffa148d89a60d0cf0cc25bb4` | `.venv/bin/python -m pip install -e .`; `.venv/bin/python -m agent_town --smoke-test`; `.venv/bin/python -m unittest discover -s tests` (233 tests); `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/validate-workbench.ps1`; LM Studio ping `http://192.168.1.131:1234/v1/models` found `google/gemma-4-e4b`; Pygame `CivilizationViewer` booted with blocking `LLMGovernor`; 96 simulated viewer hours; `.venv/bin/python scripts/analyze_run.py logs/run-20260630-034953.jsonl --events`; `git diff --check` | amber | Install/smoke/unit/docs/LM ping/viewer boot passed and the current game state stayed healthy: mood 85.8 -> min 72.4 -> end 82.4, idle peak 0, breaks 0, depletions 0, stalls 0. Analyzer returned AMBER because 5/96 model decision hours emitted invalid JSON and fell back; 91/96 hours used model decisions and applied 365 `set_work_priority` actions. Not ready to merge because AMBER is not GREEN; no Apple Silicon-specific failure evidence. See `docs/run_reports/2026-06-30-pr23-mac-lm-gate.md`. |
 | 2026-06-30 04:03 -06:00 | Fix attempt 5 for PR #23 AMBER Mac LM gate on `feat/production-target-honored` (clean detached worktree based on `origin/feat/production-target-honored`; model scheduled gpt-5.5 xhigh; after 04:00 budget metric/safe in-run switch not readable, kept smallest safe slice; `.agent.lock` acquired in `E:\GPTCode\local-agent-town`) | PR status read: `gh pr view 23 --json ...` -> OPEN/CLEAN with latest Mac comment `NOT READY` / AMBER at `a04be56`; `gh pr checks` signal absent. RED `$env:PYTHONPATH=(Resolve-Path src).Path; E:\GPTCode\local-agent-town\.venv\Scripts\python.exe -m unittest tests.test_llm.LocalLLMClientTests.test_complete_json_retries_once_after_malformed_json` failed because malformed model content raised immediately; GREEN `tests.test_llm` (8 tests); GREEN `tests.test_llm_governor tests.test_civilization_governor` (30 tests); `E:\GPTCode\local-agent-town\.venv\Scripts\python.exe -m unittest discover -s tests` (234 tests); `E:\GPTCode\local-agent-town\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; `git diff --check` | pass | Latest Mac gate was healthy except fallback-covered invalid JSON hours (no depletions, no stalls, no breaks, mood recovered). Fix: `LocalLLMClient.complete_json` now retries once after malformed/non-object model JSON with a strict JSON-only reminder, preserving timeout/connection failures; the governor prompt also caps replies at 6 highest-impact actions to reduce oversized/truncated action lists. Continued on PR #23 instead of switching branches because this is the active merge blocker and the next truth-loop slices depend on it. Main `E:\` checkout remains dirty/behind with separate hosted-OpenAI telemetry work and was left untouched. Next: rerun the Mac LM acceptance gate to confirm AMBER -> GREEN. |
 | 2026-06-30 04:25 -06:00 | Full Mac LM acceptance gate for PR #23 `feat/production-target-honored` at `edf828ec778d14e3e9f4b5fa1d44220910a2eadc` | `.venv/bin/python -m pip install -e .`; `.venv/bin/python -m agent_town --smoke-test`; `.venv/bin/python -m unittest discover -s tests` (234 tests); `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/validate-workbench.ps1`; LM Studio ping `http://192.168.1.131:1234/v1/models` found `google/gemma-4-e4b`; Pygame `CivilizationViewer` booted with blocking `LLMGovernor`; 96 simulated viewer hours; `.venv/bin/python scripts/analyze_run.py logs/run-20260630-041958.jsonl --events`; completed-log proof assertion; `git diff --check` | pass | Install/smoke/unit/docs/LM ping/viewer boot passed. The current game state stayed healthy for the full 4-day LM gate: analyzer `RESULT: GREEN`, 96/96 model decisions, 0 dropped/fallback hours, 0 warnings, 0 critical events, mood 85.8 -> min 72.4 -> end 82.4, idle peak 0, breaks 0, depletions 0, stalls 0, final stockpile bread 16 / water 96, and action histogram 396 `set_work_priority` + 2 `place_building`. Ready to merge; no Apple Silicon-specific failure evidence. See `docs/run_reports/2026-06-30-pr23-mac-lm-gate.md`. |
+| 2026-06-30 04:39 -06:00 | Truth-loop slice 2: minimal research spine on `codex/research-spine` (branched from green `origin/feat/production-target-honored`; model scheduled gpt-5.5 xhigh; after 04:00 budget metric/safe in-run switch not readable; `.agent.lock` acquired in `E:\GPTCode\local-agent-town`) | PR status read: #23 OPEN/CLEAN with latest Mac comment `READY TO MERGE`; #22/#21 still open with older red gates. RED `E:\GPTCode\local-agent-town\.venv\Scripts\python.exe -m unittest tests.test_research_spine` failed on missing `TECH_EFFICIENT_BAKING`, missing Laboratory, unknown-tech acceptance, and fallback halting. GREEN `tests.test_research_spine` (6 tests); focused affected set (78 tests); `E:\GPTCode\local-agent-town\.venv\Scripts\python.exe -m unittest discover -s tests` (240 tests); `E:\GPTCode\local-agent-town\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; `git diff --check` | pass | Decision source: Paper 8 "do not scale before the 12-pawn truth loop is satisfying" plus PR #22 truth-loop audit. `set_research` now selects an active tech target instead of instantly appending a dead string; staffed Laboratory work advances research points through the existing `effective_work` seam; completing `efficient_baking` increases Bakery output from 4 to 5 bread per cycle; fallback places a Laboratory after the essentials build order and queues the first incomplete tech. Full Space-Age victory, wages, storage caps, and Paper 7 scale remain deferred. |

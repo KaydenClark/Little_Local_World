@@ -74,6 +74,13 @@ BUILDING_DEFS: dict[str, BuildingDef] = {
         build_cost={Good.PLANKS: 4, Good.STONE: 2},
         build_work=4.0,
     ),
+    "laboratory": BuildingDef(
+        kind="Laboratory",
+        recipe=Recipe(inputs={}, outputs={}, work_units=1.0, skill="research"),
+        job_slots=1,
+        build_cost={Good.PLANKS: 8, Good.STONE: 4},
+        build_work=6.0,
+    ),
 }
 
 

@@ -19,7 +19,8 @@ civilization by one simulated hour:
    double-claiming a slot; each pawn gets a decision trace;
 5. each pawn takes on its activity state (working/sleeping/...) from its fresh
    assignment and steps toward its destination (its workplace on shift, else home);
-6. staffed, input-satisfied buildings produce through the ``effective_work`` seam;
+6. staffed, input-satisfied buildings produce through the ``effective_work`` seam,
+   and staffed Laboratories advance active research;
 7. the clock advances one hour, and tax is collected on a day rollover.
 
 The governor sets policy only (priorities, schedules, placements); the arbiter
@@ -63,6 +64,7 @@ class StepResult:
 
     actions_applied: tuple[GovernorAction, ...] = ()
     buildings_completed: tuple[str, ...] = ()
+    research_completed: tuple[str, ...] = ()
     days_rolled: int = 0
     tax_collected: int = 0
 
@@ -81,6 +83,7 @@ def step_hour(state: FactionState, gov: governor_mod.Governor | None = None) -> 
     work.assign_jobs(state)
     _advance_pawn_activity(state)
     economy.production_tick(state)
+    research_completed = economy.research_tick(state)
 
     days_rolled = schedule.advance_clock(state, 1)
     tax_collected = economy.apply_daily_tax(state) if days_rolled else 0
@@ -88,6 +91,7 @@ def step_hour(state: FactionState, gov: governor_mod.Governor | None = None) -> 
     return StepResult(
         actions_applied=tuple(applied),
         buildings_completed=tuple(completed),
+        research_completed=research_completed,
         days_rolled=days_rolled,
         tax_collected=tax_collected,
     )

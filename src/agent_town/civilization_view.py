@@ -150,6 +150,7 @@ WORK_TYPE_LABEL = {
     "forestry": "Frst",
     "woodworking": "Wood",
     "mining": "Mine",
+    "research": "Rsrch",
 }
 # Priority -> cell colour (1 highest/brightest .. 4 lowest; 0/disabled is blank).
 WORK_PRIORITY_COLOR = {

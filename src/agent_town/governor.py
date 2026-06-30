@@ -46,6 +46,8 @@ LOW_WATER_COVER_DAYS = 1.0
 LOW_WATER_NEED = 0.35
 WATER_BUILDING_KIND = "Water Well"
 WATER_BUILD_LOCATION = (5, 5)
+LABORATORY_BUILDING_KIND = "Laboratory"
+LABORATORY_BUILD_LOCATION = (7, 1)
 
 BROKEN_STATES = (pawns.STATE_SLACKING, pawns.STATE_WANDERING)
 RESCHEDULE_KINDS = ("unhappy_pawn", "pawn_breaking", "pawn_break")
@@ -89,6 +91,9 @@ def build_faction_summary(state: FactionState) -> dict[str, Any]:
         "season": state.season,
         "time_of_day": state.time_of_day,
         "tax_rate": state.tax_rate,
+        "research": list(state.research),
+        "research_target": state.research_target,
+        "research_points": state.research_points,
         "water_days_of_cover": round(economy.water_days_of_cover(state), 3),
         "stockpile": {good.value: count for good, count in state.stockpile.counts.items()},
     }
@@ -275,7 +280,7 @@ def validate_action(state: FactionState, action: GovernorAction) -> bool:
         return True
 
     if action.kind == ACTION_SET_RESEARCH:
-        return bool(action.tech)
+        return bool(action.tech) and action.tech in economy.RESEARCH_COSTS and action.tech not in state.research
 
     return False
 
@@ -317,8 +322,7 @@ def apply_actions(state: FactionState, actions: list[GovernorAction]) -> list[Go
             state.buildings[action.building_id].production_target[action.good] = action.amount
             applied.append(action)
         elif action.kind == ACTION_SET_RESEARCH:
-            if action.tech not in state.research:
-                state.research = state.research + (action.tech,)
+            state.research_target = action.tech
             applied.append(action)
         elif action.kind == ACTION_PLACE_BUILDING:
             # Realized by Track A construction; returning it lets the engine do
@@ -366,6 +370,22 @@ class FallbackGovernor:
             if kind not in existing and kind not in pending:
                 actions.append(GovernorAction.place_building(kind, x, y))
                 break
+        else:
+            if LABORATORY_BUILDING_KIND not in existing and LABORATORY_BUILDING_KIND not in pending:
+                actions.append(
+                    GovernorAction.place_building(
+                        LABORATORY_BUILDING_KIND,
+                        LABORATORY_BUILD_LOCATION[0],
+                        LABORATORY_BUILD_LOCATION[1],
+                    )
+                )
+            else:
+                faction = context.get("faction", {})
+                if not faction.get("research_target"):
+                    for tech in economy.RESEARCH_COSTS:
+                        if tech not in faction.get("research", []):
+                            actions.append(GovernorAction.set_research(tech))
+                            break
 
         return actions
 
@@ -431,7 +451,7 @@ GOVERNOR_SYSTEM_PROMPT = (
     "pawns when needed, you do not place pawns by hand.\n"
     "- set_work_priority {group, work_type, level}: group is a pawn_id or \"all\"; "
     "work_type is a skill (water, farming, milling, baking, forestry, "
-    "woodworking, mining); level 1 is highest, 4 lowest, 0 disables it. This is your main "
+    "woodworking, mining, research); level 1 is highest, 4 lowest, 0 disables it. This is your main "
     "lever for steering labour. For now, only tune essential food/water work "
     "(water, farming, milling, baking), target named pawns, keep it at level 1 or "
     "2, and never disable or demote it. Do not use group \"all\" for work "
@@ -443,7 +463,7 @@ GOVERNOR_SYSTEM_PROMPT = (
     "- place_building {building_kind, x, y}: queue the next missing production "
     "building.\n"
     "- set_production_target {building_id, good, amount}.\n"
-    "- set_research {tech}.\n"
+    "- set_research {tech}: select a known research target; Laboratory work completes it.\n"
     "Prefer tuning work priorities and resting unhappy pawns over forcing "
     "assignments. Return at most 6 highest-impact actions per turn. Reply with "
     "valid JSON only - no prose, no markdown, no chain of thought."

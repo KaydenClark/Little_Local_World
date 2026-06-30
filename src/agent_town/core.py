@@ -292,7 +292,12 @@ class FactionState:
     # The work arbiter's latest per-pawn decision trace (keyed by pawn id),
     # rewritten each engine hour. Pure telemetry the viewer reads; not gameplay.
     work_decisions: dict[str, WorkDecision] = field(default_factory=dict)
+    # Completed research tech ids plus the active target/progress. Research is
+    # build-2 truth-loop state: set_research selects a target; Laboratory work
+    # completes it; completed techs must affect simulation behavior.
     research: tuple[str, ...] = ()
+    research_target: str | None = None
+    research_points: int = 0
     season: str = "spring"
     tax_rate: float = 0.1
     day: int = 0

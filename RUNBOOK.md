@@ -130,6 +130,17 @@ Work-priority arbiter manual check (build-2 step 1):
   count rises if you disable a work type that leaves a pawn with nothing legal.
 - Select that pawn and read the inspector's "Why this job" trace to see the lane
   it won under and the job it rejected (e.g. `Passed over Bakery: reserved/full`).
+- `Research` appears as a work type once Laboratory work exists; the bottom-strip
+  `Research` button is still a placeholder until a research panel is built.
+
+Research spine manual check (truth-loop slice):
+
+- A `Laboratory` is buildable after the essential build order. The fallback
+  Governor then selects the first tech, `efficient_baking`.
+- A staffed Laboratory advances `research_points`; when the tech completes,
+  Bakery output rises from 4 bread per cycle to 5.
+- For a headless proof, run
+  `.\.venv\Scripts\python.exe -m unittest tests.test_research_spine`.
 
 Water essential manual check (build-2 water slice):
 

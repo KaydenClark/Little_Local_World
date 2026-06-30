@@ -21,6 +21,7 @@ BUILDING_COIN_COSTS = {
     "Bakery": 10,
     "Water Well": 6,
     "Quarry": 6,
+    "Laboratory": 12,
 }
 
 
