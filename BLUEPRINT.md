@@ -584,8 +584,11 @@ Reaching that milestone is the primary victory.
 ### Storage
 
 Stockpile capacity is finite and raised by the Storehouse; a "storage full %"
-readout surfaces it (see `ROADMAP.md`). Build 1 keeps the uncapped stockpile;
-caps and hauling pressure land in build 2.
+readout surfaces it (see `ROADMAP.md`). The current Build-2 slice gives the
+default civilization a conservative global stockpile cap, blocks production
+that would grow storage past the cap, and logs storage fullness. Storehouse
+capacity upgrades, per-district storage, hauling pressure, and 80/95% storage
+badges remain later Build-2 work.
 
 ### Disasters (operator as storyteller)
 
@@ -721,6 +724,7 @@ Rules:
 | Paper 5 current-systems readability shipped before the governor card | The viewer now separates hover from selection, draws danger rings above selection, shows `work.LANE_IDLE` pawns with an overhead `!`, and renders construction sites as ghosts with footprint outlines and two-stage material/work progress. Storage 80/95% badges remain deferred until stockpile capacity exists, because uncapped totals cannot produce truthful pressure | 2026-06-29 Paper 5 current-systems slice |
 | Paper 6 governor observer shell shipped | The viewer derives a read-only Governor card from current exceptions, scheduler status, and recent policy actions: plan, phase, bottleneck, confidence, last reallocation, and top exception. A right-edge exception stack sorts active governor exceptions by severity and actionability. It is diagnosis-first UI, not a micromanagement surface; decision-log drill-down and policy editors remain deferred | 2026-06-29 Paper 6 observer UI slice |
 | Minimal research spine shipped before scale work | `set_research` is no longer a dead lever: it selects an active tech target, staffed Laboratory work produces research points through the existing `effective_work` seam, and `efficient_baking` raises Bakery output. This proves the progression lever before the larger Space-Age spine, wages, storage caps, and victory condition land | 2026-06-30 truth-loop cleanup |
+| Finite storage capacity shipped before wages/markets | Storage saturation is now a real bottleneck: `Stockpile.capacity` blocks net-growing production before inputs are consumed, telemetry records storage used/capacity/fullness, and the HUD shows storage percent. Storehouse upgrades, storage pressure badges, wages, markets, and trade stay deferred | 2026-06-30 Paper 4 storage slice |
 
 ## Health Criteria
 

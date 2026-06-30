@@ -103,9 +103,25 @@ class Stockpile:
     """Faction-wide good counts. Behaviour implemented by Track A (A1)."""
 
     counts: dict[Good, int] = field(default_factory=dict)
+    # None means uncapped legacy storage. Build-2 scenarios can set a finite
+    # capacity so downstream saturation blocks production instead of hiding it.
+    capacity: int | None = None
+
+    def __post_init__(self) -> None:
+        if self.capacity is not None:
+            if self.capacity < 0:
+                raise ValueError("Stockpile capacity must be non-negative")
+            used = self.used_capacity()
+            if used > self.capacity:
+                raise ValueError(f"Stockpile capacity exceeded: used {used}, capacity {self.capacity}")
 
     def add(self, good: Good, amount: int) -> None:
         _validate_good_amount(good, amount)
+        if not self.has_capacity_for(amount):
+            used = self.used_capacity()
+            raise ValueError(
+                f"Stockpile capacity exceeded: used {used}, adding {amount}, capacity {self.capacity}"
+            )
         self.counts[good] = self.counts.get(good, 0) + amount
 
     def remove(self, good: Good, amount: int) -> None:
@@ -125,6 +141,27 @@ class Stockpile:
         if amount < 0:
             raise ValueError("Stockpile required amounts must be non-negative")
         return self.counts.get(good, 0) >= amount
+
+    def used_capacity(self) -> int:
+        return sum(self.counts.values())
+
+    def available_capacity(self) -> int | None:
+        if self.capacity is None:
+            return None
+        return max(0, self.capacity - self.used_capacity())
+
+    def has_capacity_for(self, amount: int) -> bool:
+        if amount < 0:
+            raise ValueError("Stockpile capacity check amount must be non-negative")
+        available = self.available_capacity()
+        return available is None or available >= amount
+
+    def fullness(self) -> float | None:
+        if self.capacity is None:
+            return None
+        if self.capacity == 0:
+            return 1.0
+        return min(1.0, self.used_capacity() / self.capacity)
 
 
 def _validate_good_amount(good: Good, amount: int) -> None:

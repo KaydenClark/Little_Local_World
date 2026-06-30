@@ -73,6 +73,9 @@ def production_tick(state: FactionState, *, work_fn: WorkFn = mood.effective_wor
         )
         if target_limit is not None:
             cycles = min(cycles, target_limit)
+        storage_limit = _storage_limited_cycles(state.stockpile, recipe.inputs, outputs)
+        if storage_limit is not None:
+            cycles = min(cycles, storage_limit)
         if cycles <= 0:
             continue
         for good, amount in recipe.inputs.items():
@@ -159,6 +162,11 @@ def water_days_of_cover(state: FactionState) -> float:
     return state.stockpile.counts.get(Good.WATER, 0) / (population * WATER_UNITS_PER_PAWN_DAY)
 
 
+def storage_fullness(state: FactionState) -> float | None:
+    """Faction stockpile fullness in [0, 1], or None when storage is uncapped."""
+    return state.stockpile.fullness()
+
+
 def daily_tax_income(state: FactionState) -> int:
     """Coin earned for one day from ``f(avg_mood, population, tax_rate)``.
 
@@ -227,6 +235,24 @@ def _target_limited_cycles(
     if not limits:
         return None
     return min(limits)
+
+
+def _storage_limited_cycles(
+    stockpile: Stockpile, inputs: dict[Good, int], outputs: dict[Good, int]
+) -> int | None:
+    """Cycles allowed by finite stockpile capacity.
+
+    Capacity is measured as total stored units. Only recipes that grow total
+    stored units need limiting; transforms such as logs -> planks can still run
+    while full because consuming inputs frees more capacity than the output uses.
+    """
+    available = stockpile.available_capacity()
+    if available is None:
+        return None
+    net_growth = sum(outputs.values()) - sum(inputs.values())
+    if net_growth <= 0:
+        return None
+    return available // net_growth
 
 
 def _effective_outputs(outputs: dict[Good, int], research: tuple[str, ...]) -> dict[Good, int]:

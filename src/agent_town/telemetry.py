@@ -59,6 +59,7 @@ def build_snapshot(state: FactionState, step_result: Any) -> dict[str, Any]:
         "needs": {need: round(economy.average_need(state, need), 3) for need in BUILD1_NEEDS},
         "coin": state.coin,
         "stockpile": {good.value: count for good, count in sorted(state.stockpile.counts.items(), key=lambda kv: kv[0].value)},
+        "storage": _storage_record(state),
         "idle": idle,
         "broken": len(broken_ids),
         "broken_pawn_ids": broken_ids,
@@ -85,6 +86,15 @@ def _construction_records(state: FactionState) -> list[dict[str, Any]]:
             }
         )
     return sites
+
+
+def _storage_record(state: FactionState) -> dict[str, Any]:
+    fullness = state.stockpile.fullness()
+    return {
+        "used": state.stockpile.used_capacity(),
+        "capacity": state.stockpile.capacity,
+        "fullness": None if fullness is None else round(fullness, 3),
+    }
 
 
 def _multiset_diff(proposed: list[str], applied: list[str]) -> list[str]:

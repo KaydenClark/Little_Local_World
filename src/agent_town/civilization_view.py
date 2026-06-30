@@ -1489,7 +1489,7 @@ def _draw_hud(
     population = len(state.pawns)
     avg_mood = economy.average_mood(state)
     sites = len(state.construction_sites)
-    stat_items = (
+    stat_items = [
         f"Day {state.day}",
         f"{state.time_of_day:02d}:00",
         f"Pop {population}",
@@ -1497,7 +1497,10 @@ def _draw_hud(
         f"Coin {state.coin}",
         f"Idle {idle_pawn_count(state)}",
         f"Sites {sites}",
-    )
+    ]
+    storage = economy.storage_fullness(state)
+    if storage is not None:
+        stat_items.append(f"Storage {round(storage * 100)}%")
 
     text, color = status_line or ("Governor: fallback (autopilot)   pawns coloured by mood", HUD_MUTED)
     x = MARGIN

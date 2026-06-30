@@ -14,6 +14,7 @@ from .core import FactionState, Good, Pawn
 
 CIVILIZATION_WIDTH = 24
 CIVILIZATION_HEIGHT = 16
+DEFAULT_STOCKPILE_CAPACITY = 240
 
 # (kind, tile_x, tile_y) for the starting build-1 buildings. Positions are
 # visual only - build-1 recipes do not consume the underlying tile/node.
@@ -64,6 +65,7 @@ def create_default_civilization(*, seed: int = 7) -> FactionState:
         grid=grid,
         resource_nodes=nodes,
     )
+    state.stockpile.capacity = DEFAULT_STOCKPILE_CAPACITY
     state.stockpile.add(Good.BREAD, 48)
     state.stockpile.add(Good.WATER, 24)
 

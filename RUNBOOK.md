@@ -101,8 +101,8 @@ Expected result:
   assignment, needs, skills, and traits, plus a "Why this job" trace: the winning
   decision lane, the reason, and the top job the pawn passed over.
 - The HUD shows an `Idle N` count (pawns with no work the arbiter could give)
-  and stockpile chips including Bread and Water; idle pawns also get a small
-  overhead `!` badge after the arbiter marks them idle.
+  and storage fullness plus stockpile chips including Bread and Water; idle
+  pawns also get a small overhead `!` badge after the arbiter marks them idle.
 - Hovering a pawn shows a lighter world outline than selection; selected pawns
   keep a double outline, and break/stress danger rings draw above selection.
 - Active construction sites render as translucent building ghosts with a
@@ -152,6 +152,16 @@ Water essential manual check (build-2 water slice):
   It covers Water Well production, drinking, days of cover, and the `low_water`
   governor exception.
 
+Storage-cap manual check (Paper 4 storage slice):
+
+- Start the viewer and confirm the HUD stat row includes `Storage N%`.
+- For a headless proof, run
+  `.\.venv\Scripts\python.exe -m unittest tests.test_storage_caps`.
+  It covers finite stockpile capacity, storage-full blocked production, net
+  shrinking transforms, overflow invariants, and telemetry fullness.
+- Storehouse capacity upgrades and 80/95% map badges are still deferred; do not
+  fake district storage pressure before those systems exist.
+
 Map readability manual check (Paper 5 current-systems slice):
 
 - Move the mouse across pawns and confirm hover uses a thin amber outline while
@@ -160,8 +170,9 @@ Map readability manual check (Paper 5 current-systems slice):
   and confirm the idle pawn has an overhead `!` badge matching the HUD `Idle N`.
 - Create or observe an active construction site and confirm it shows a ghost,
   footprint outline, and progress bar before completion.
-- Storage pressure badges are intentionally deferred until stockpile capacity
-  exists; do not fake 80/95% storage warnings from uncapped stockpile totals.
+- Storage pressure badges are intentionally deferred until Storehouse capacity
+  upgrades and district/slot behavior exist; do not fake 80/95% map warnings from
+  the single global cap alone.
 
 ## Monitoring A Run
 

@@ -105,6 +105,10 @@ def check_invariants(state: FactionState) -> list[str]:
     for good, count in state.stockpile.counts.items():
         if count < 0:
             violations.append(f"stockpile {good.value} is negative ({count})")
+    if state.stockpile.capacity is not None:
+        used = state.stockpile.used_capacity()
+        if used > state.stockpile.capacity:
+            violations.append(f"stockpile over capacity ({used}/{state.stockpile.capacity})")
     for pid, pawn in sorted(state.pawns.items()):
         if not (0.0 <= pawn.mood <= 100.0):
             violations.append(f"pawn {pid} mood out of range ({pawn.mood})")
