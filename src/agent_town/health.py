@@ -63,6 +63,14 @@ SUSTAINED_ZERO_HOURS = 12
 # Everything else is an intermediate that cycles through zero by design.
 STAPLE_GOODS: frozenset[str] = frozenset({Good.BREAD.value})
 
+# Intermediates can sit at zero because the downstream building consumes them
+# immediately. Treat the chain as healthy while the downstream buffer exists.
+DOWNSTREAM_BUFFERS: dict[str, tuple[str, ...]] = {
+    Good.LOGS.value: (Good.PLANKS.value,),
+    Good.GRAIN.value: (Good.FLOUR.value, Good.BREAD.value),
+    Good.FLOUR.value: (Good.BREAD.value,),
+}
+
 # Governor states that mean the local model is not answering (kept as literals so
 # this module stays decoupled from governor.py; they mirror GOV_OFFLINE/INVALID).
 _GOV_OFFLINE_STATES = ("offline", "invalid")
@@ -202,7 +210,10 @@ class EventMonitor:
                     self.depleted_alarmed.discard(good)
             else:
                 # Intermediate: only a *sustained* empty stretch is worth a WARN.
-                if self.zero_streaks[good] >= SUSTAINED_ZERO_HOURS and good not in self.stalled_alarmed:
+                if count <= 0 and _has_downstream_buffer(stock, good):
+                    self.zero_streaks[good] = 0
+                    self.stalled_alarmed.discard(good)
+                elif self.zero_streaks[good] >= SUSTAINED_ZERO_HOURS and good not in self.stalled_alarmed:
                     self.stalled_alarmed.add(good)
                     events.append(_event(EV_GOOD_STALLED, WARN, day, hour, f"{good.capitalize()} empty {self.zero_streaks[good]}h - supply chain stalled", good=good, hours=self.zero_streaks[good]))
                 elif count > 0:
@@ -238,6 +249,10 @@ class EventMonitor:
         elif self.llm_offline and not offline and recovered:
             self.llm_offline = False
             events.append(_event(EV_LLM_RECOVERED, INFO, day, hour, "LLM governor recovered"))
+
+
+def _has_downstream_buffer(stock: dict[str, Any], good: str) -> bool:
+    return any(int(stock.get(buffer, 0)) > 0 for buffer in DOWNSTREAM_BUFFERS.get(good, ()))
 
 
 def max_severity(events: list[dict[str, Any]]) -> str | None:

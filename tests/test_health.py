@@ -59,12 +59,12 @@ class DepletionDebounceTests(unittest.TestCase):
             self.assertEqual([e for e in events if e["kind"] == health.EV_GOOD_DEPLETED], [])
             self.assertEqual([e for e in events if e["kind"] == health.EV_GOOD_STALLED], [])
 
-    def test_intermediate_good_stalled_after_sustained_zero(self):
+    def test_intermediate_good_stalled_after_sustained_zero_without_downstream_buffer(self):
         monitor = health.EventMonitor()
         stalls = []
         for hour in range(health.SUSTAINED_ZERO_HOURS + 2):
             events = monitor.observe(
-                _snapshot(hour=hour, stockpile={"flour": 0, "bread": 50}),
+                _snapshot(hour=hour, stockpile={"logs": 0, "bread": 50}),
                 _decision(hour=hour),
                 [],
             )
@@ -72,6 +72,18 @@ class DepletionDebounceTests(unittest.TestCase):
         # Fires exactly once when the streak crosses the threshold (latched).
         self.assertEqual(len(stalls), 1)
         self.assertEqual(stalls[0]["severity"], health.WARN)
+
+    def test_consumed_intermediate_empty_with_downstream_buffer_is_silent(self):
+        monitor = health.EventMonitor()
+        stalls = []
+        for hour in range(health.SUSTAINED_ZERO_HOURS + 2):
+            events = monitor.observe(
+                _snapshot(hour=hour, stockpile={"logs": 0, "planks": 5, "bread": 50}),
+                _decision(hour=hour),
+                [],
+            )
+            stalls += [e for e in events if e["kind"] == health.EV_GOOD_STALLED]
+        self.assertEqual(stalls, [])
 
     def test_staple_depletion_is_critical_and_fires_once(self):
         monitor = health.EventMonitor()
