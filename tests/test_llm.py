@@ -98,5 +98,14 @@ class LocalLLMClientTests(unittest.TestCase):
         self.assertFalse(client.enabled)
 
 
+class DefaultsTests(unittest.TestCase):
+    def test_loosened_defaults_for_local_4b_models(self):
+        # Tuned up so a slow 4B model is not falsely recorded as dropped.
+        from agent_town import llm
+
+        self.assertEqual(llm.DEFAULT_TIMEOUT, 8.0)
+        self.assertEqual(llm.DEFAULT_MAX_TOKENS, 320)
+
+
 if __name__ == "__main__":
     unittest.main()

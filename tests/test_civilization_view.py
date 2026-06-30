@@ -236,5 +236,39 @@ class CivilizationViewerSmokeTests(unittest.TestCase):
         self.assertTrue(parse_args(["--smoke-test"]).smoke_test)
 
 
+class HistoryFeedTests(unittest.TestCase):
+    def _surface(self):
+        return pygame.Surface((900, 700))
+
+    def test_render_with_history_panel_and_alert_does_not_crash(self):
+        state = civilization.create_default_civilization()
+        assets = load_civilization_assets()
+        font = pygame.font.Font(None, 16)
+        events = [
+            {"type": "event", "day": 0, "hour": 8, "severity": "warn", "kind": "good_low", "text": "Bread low"},
+            {"type": "event", "day": 0, "hour": 9, "severity": "critical", "kind": "good_depleted", "text": "Bread depleted"},
+        ]
+        render_civilization(
+            self._surface(), state, assets, font, (12, 12),
+            show_inspector=True, show_history=True, events=events, alert=("critical", 2),
+        )
+
+    def test_smoke_viewer_logs_events_to_ring(self):
+        viewer = CivilizationViewer(smoke_test=True)
+        viewer.run()
+        # The events ring is event-only and never holds snapshots/decisions.
+        self.assertTrue(all(r.get("type") == "event" for r in viewer.event_ring.records))
+
+    def test_opening_history_acknowledges_alert(self):
+        viewer = CivilizationViewer(smoke_test=True)
+        viewer._alert_severity = "critical"
+        viewer._alert_count = 3
+        buttons = hud_button_rects(viewer.screen.get_width(), viewer.screen.get_height())
+        viewer._handle_click(buttons["History"].center)
+        self.assertTrue(viewer.show_history)
+        self.assertIsNone(viewer._alert_severity)
+        self.assertEqual(viewer._alert_count, 0)
+
+
 if __name__ == "__main__":
     unittest.main()
