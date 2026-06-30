@@ -44,7 +44,14 @@ def building_output_rate(state: FactionState, building_id: str, work_fn: WorkFn)
 
 
 def production_tick(state: FactionState, *, work_fn: WorkFn = mood.effective_work) -> None:
-    """Advance every staffed, built, input-satisfied building by one tick."""
+    """Advance every staffed, built, input-satisfied building by one tick.
+
+    A building's ``production_target`` (set by the governor's
+    ``set_production_target`` lever) caps each named output good at ``amount`` in
+    the stockpile: once the civilization already holds that much, the building
+    stops making it. This makes the lever real - without it the governor could
+    "set a target" that changed nothing. Untargeted goods stay unbounded.
+    """
     for building_id, building in state.buildings.items():
         recipe = building.recipe
         if not building.built or recipe is None or not building.staffed_by:
@@ -57,6 +64,11 @@ def production_tick(state: FactionState, *, work_fn: WorkFn = mood.effective_wor
         input_limit = _input_limited_cycles(state.stockpile, recipe.inputs)
         if input_limit is not None:
             cycles = min(cycles, input_limit)
+        target_limit = _target_limited_cycles(
+            state.stockpile, recipe.outputs, building.production_target
+        )
+        if target_limit is not None:
+            cycles = min(cycles, target_limit)
         if cycles <= 0:
             continue
         for good, amount in recipe.inputs.items():
@@ -135,6 +147,34 @@ def _input_limited_cycles(stockpile: Stockpile, inputs: dict[Good, int]) -> int 
     for good, amount in inputs.items():
         _validate_recipe_amount(good, amount)
         limits.append(stockpile.counts.get(good, 0) // amount)
+    return min(limits)
+
+
+def _target_limited_cycles(
+    stockpile: Stockpile, outputs: dict[Good, int], targets: dict[Good, int]
+) -> int | None:
+    """Cycles allowed before any targeted output good reaches its stock target.
+
+    A production target caps a good at ``amount`` in the stockpile. Because a
+    cycle is atomic, the cap is the largest whole batch that does not overshoot
+    the target, so the stock settles at the nearest multiple of the per-cycle
+    yield at or below ``amount`` (never above it). A target already met yields 0
+    cycles, so the building idles instead of overproducing. Returns ``None`` when
+    no output good is targeted, leaving production unbounded as before.
+    """
+    if not targets:
+        return None
+    limits = []
+    for good, per_cycle in outputs.items():
+        target = targets.get(good)
+        if target is None:
+            continue
+        if per_cycle <= 0:
+            continue
+        remaining = target - stockpile.counts.get(good, 0)
+        limits.append(max(0, remaining) // per_cycle)
+    if not limits:
+        return None
     return min(limits)
 
 
