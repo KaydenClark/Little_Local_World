@@ -60,6 +60,13 @@ BUILDING_DEFS: dict[str, BuildingDef] = {
         build_cost={Good.PLANKS: 4, Good.STONE: 2},
         build_work=4.0,
     ),
+    "water well": BuildingDef(
+        kind="Water Well",
+        recipe=Recipe(inputs={}, outputs={Good.WATER: 3}, work_units=1.0, skill="water"),
+        job_slots=1,
+        build_cost={Good.PLANKS: 4, Good.STONE: 2},
+        build_work=4.0,
+    ),
     "quarry": BuildingDef(
         kind="Quarry",
         recipe=Recipe(inputs={}, outputs={Good.STONE: 1}, work_units=1.0, skill="mining"),
@@ -72,7 +79,7 @@ BUILDING_DEFS: dict[str, BuildingDef] = {
 
 def building_def(kind: str) -> BuildingDef:
     """Look up a building definition by kind."""
-    normalized = kind.strip().lower()
+    normalized = kind.strip().lower().replace("_", " ").replace("-", " ")
     try:
         return BUILDING_DEFS[normalized]
     except KeyError as exc:

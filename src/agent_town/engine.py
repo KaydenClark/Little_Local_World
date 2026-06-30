@@ -163,6 +163,8 @@ def _advance_pawn_needs(state: FactionState) -> None:
         # Opportunistic eating: any waking hour, hungry enough, bread on hand.
         if not asleep and pawns.wants_food(pawn):
             pawns.eat(pawn, state.stockpile)
+        if not asleep and pawns.wants_water(pawn):
+            pawns.drink(pawn, state.stockpile)
         pawn.mood_target = mood.mood_target(pawn)
         pawn.mood = mood.drift_mood(pawn.mood, pawn.mood_target, asleep=asleep)
         pawns.age_thoughts(pawn)

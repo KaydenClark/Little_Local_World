@@ -24,10 +24,10 @@ CIVILIZATION_MODULES = [
 
 
 class ContractDataclassTests(unittest.TestCase):
-    def test_goods_enum_has_build1_chain(self):
+    def test_goods_enum_has_current_chain_goods(self):
         names = {g.value for g in core.Good}
         self.assertEqual(
-            names, {"logs", "planks", "grain", "flour", "bread", "stone"}
+            names, {"logs", "planks", "grain", "flour", "bread", "water", "stone"}
         )
 
     def test_faction_state_is_the_root_container(self):

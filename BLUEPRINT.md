@@ -197,11 +197,11 @@ Current research inputs, in implementation order:
 8. `research_papers/8.little-local-world-research-synthesis.md` - the project
    synthesis and the sequencing authority over Papers 1-7. It collapses them into
    one product rule, *make autonomous causality visible*, and one strict build
-   order: food (done) -> work priorities + reservations -> water -> map
-   readability -> governor card -> scale foundations -> deeper economy. The next
-   code task it names is the lane-based work-priority arbiter with reservations
-   and `set_work_priority` (Paper 3); lethal starvation and deeper economy are
-   explicitly deferred behind the visible autonomy loop.
+   order: food (done) -> work priorities + reservations (done) -> water (done)
+   -> map readability -> governor card -> scale foundations -> deeper economy.
+   The next code task after the water slice is map readability for the current
+   systems; lethal starvation and deeper economy remain deferred behind the
+   visible autonomy loop.
 
 When these papers conflict with current implementation, the conflict becomes a
 roadmap task instead of being silently folded into docs. Paper 8 sets the order
@@ -269,7 +269,7 @@ that both tracks rebase on, never a unilateral edit.
 
 | Entity | Key fields |
 |---|---|
-| `Good` (enum) | logs, planks, grain, flour, bread, stone |
+| `Good` (enum) | logs, planks, grain, flour, bread, water, stone |
 | `GridMap` | width, height, tiles; `in_bounds`, `tile_at` |
 | `ResourceNode` | kind (a Good), amount, x, y |
 | `Stockpile` | counts (Good to int); `add`, `remove`, `has` |
@@ -321,15 +321,15 @@ Production chains:
 Construction consumes planks plus stone. Bread is the consumable that feeds the
 food need.
 
-Pawn needs (build 1): rest, food, recreation. Rest and recreation are 0.0-1.0
-satisfaction values that decay over time and are restored by the matching
-schedule block. Food is different: it is a RimWorld-style **nutrition/saturation
-reserve** (0.0-1.0 nutrition, max 1.0) drained by hunger and refilled only by
-eating. The implemented Build-1 pass treats one bread as a large satisfying food
-unit; the hunger research recommends a follow-up retune to 0.25 nutrition per
-bread, with up to four bread eaten at once, before starvation death becomes
-lethal. No schedule block or idle hour grants food for free (conservation law);
-full design in "Mood: the RimWorld model" below.
+Pawn needs currently tracked: rest, food, water, recreation. Rest and recreation
+are 0.0-1.0 satisfaction values that decay over time and are restored by the
+matching schedule block. Food is a RimWorld-style **nutrition/saturation
+reserve** (0.0-1.0 nutrition, max 1.0) refilled only by eating bread portions
+(0.25 nutrition each, up to four per eat job). Water is the first Build-2
+essential reserve: it decays over time, is refilled only by consuming stockpiled
+water, and creates thirst mood pressure plus a governor `low_water` exception
+when supply or need is low. No schedule block or idle hour grants food or water
+for free (conservation law); full design in "Mood: the RimWorld model" below.
 
 Trait subset: industrious or lazy (work speed), tough or frail (mood floor now,
 combat later), optimist or pessimist (mood floor), loner (solo jobs lift mood),
@@ -400,9 +400,10 @@ architecture rather than replacing it.
   consecutive breaks. Breaks remain the Governor's early-warning exceptions and
   still cut `effective_work`.
 - **Civ stats bar.** "Civ" (Civilization, the renamed civilization) mood is the average
-  of all pawns; a Civ stats bar shows four Civ-wide averages - Mood, Food,
-  Recreation, Rest - as coloured percentages. Build 1 adds a mood consequence
-  only for food; the other three are readouts.
+  of all pawns; a Civ stats bar shows five Civ-wide averages - Mood, Food,
+  Water, Recreation, Rest - as coloured percentages. Food and water now have
+  direct mood consequences; recreation and rest remain readouts until their
+  richer thought slices.
 
 Deferred to build 2, in the same architecture: **expectations** (a wealth-driven
 mood treadmill, +30 early to 0 when rich - needs wealth valuation; stubbed
@@ -488,7 +489,7 @@ only exist once its supplier and its tech do.
 | 0 | Forester | tree node | logs | forestry | 1 |
 | 0 | Quarry | stone node | stone | mining | 1 |
 | 0 | Farm (crops) | field node | grain, vegetables | farming | 1 |
-| 0 | Water Well | water table | water | hauling | 2 |
+| 0 | Water Well | water table | water | water | 2 |
 | 0 | Mine | ore node | ore | mining | 3 |
 | 0 | Pasture / Animal Farm | feed (grain) | raw meat, hide, wool | herding | 3 |
 | 0 | Hunter's Hut | wild game node | raw meat, hide | hunting | 3 |
@@ -512,8 +513,8 @@ raises building quality, which raises mood (see needs).
 ### Pawn needs (full set)
 
 Each need is 0.0 to 1.0, decays over time, and is restored by the matching
-good/building on a schedule block. Build 1 ships rest, food, recreation; the
-rest follow.
+good/building or schedule block. The current runtime ships rest, food, water,
+and recreation; the rest follow.
 
 | Need | Restored by | Build |
 |---|---|---|
@@ -705,8 +706,10 @@ Rules:
 | Build-2 economy starts with district logistics and essentials before comfort | Water, food, storage, repair, wages, spending, taxes, and trade should surface bottlenecks through days-of-cover, blocked time, travel share, queue wait, and reserve-aware export rules | 2026-06-29 research intake |
 | Viewer readability follows AoE-style silhouette/layer/status rules and observer UI density budgets | Identity should read through silhouette and anchor consistency first; state/cause/actionability stay visually separated; persistent UI stays compact while detail lives in inspectors | 2026-06-29 research intake |
 | Scale work starts with reachability regions and deterministic phases, not a new engine | Paper 7 says exactness should stay near player-visible truth while job search, long movement, update cadence, and overlays become indexed, batched, or approximate as population grows | 2026-06-29 research intake |
-| Adopt the Paper 8 synthesis build order; work priorities + reservations is the confirmed next slice | The seven source papers collapse into one rule - make autonomous causality visible - and one build order. After the food correction the highest-leverage step is the lane-based work-priority arbiter with reservations and `set_work_priority` (Paper 3), where pawns start living in the town instead of being hourly counters; lethal starvation and deeper economy stay deferred behind the visible autonomy loop | 2026-06-29 research synthesis + user direction |
-| Build-2 step 1 shipped: pawns self-select work via `work.py`; the governor stops routine `assign_pawn` | A deterministic lane arbiter (forced -> hard-state -> self-care -> normal work -> idle; medical/emergency are ordered stubs) does staffing by manual priority -> work-type order -> distance -> skill, with `job_slots`-aware reservations (no double-claim), no-thrash job retention, and a `work.explain` decision trace. `set_work_priority` is the governor/LLM lever and the player's clickable Work grid; `assign_pawn` becomes the forced override. Self-care is a lane label only in build 1 (eating stays instant); job-candidate indexes (Paper 7) and emergency/medical content are deferred. Both survival oracles (I1 3-day, LLM==fallback) stay green | 2026-06-29 build-2 step 1 |
+| Adopt the Paper 8 synthesis build order as sequencing authority | The seven source papers collapse into one rule - make autonomous causality visible - and one build order. Food, work priorities, and water are now implemented in that order; lethal starvation and deeper economy stay deferred behind the visible autonomy loop | 2026-06-29 research synthesis + user direction |
+| Build-2 step 1 shipped: pawns self-select work via `work.py`; the governor stops routine `assign_pawn` | A deterministic lane arbiter (forced -> hard-state -> self-care -> normal work -> idle; medical/emergency are ordered stubs) does staffing by manual priority -> work-type order -> distance -> skill, with `job_slots`-aware reservations (no double-claim), no-thrash job retention, and a `work.explain` decision trace. `set_work_priority` is the governor/LLM lever and the player's clickable Work grid; `assign_pawn` becomes the forced override. Self-care is a lane label only (eating/drinking stays instant); job-candidate indexes (Paper 7) and emergency/medical content are deferred. Both survival oracles (I1 3-day, LLM==fallback) stay green | 2026-06-29 build-2 step 1 |
+| Build-2 water slice shipped as the first essential economy extension | `Good.WATER`, `NEED_WATER`, Water Well production, one-unit drinking, thirst thoughts, Civ Water readout, HUD stockpile chip, water work priority, days-of-cover summary, and `low_water` governor exception make the first Townsmen essential conserved and visible. District buffers, service queues, seasonal demand, markets, wages, and storage caps remain deferred | 2026-06-29 build-2 water slice |
+| Paper 5 current-systems readability shipped before the governor card | The viewer now separates hover from selection, draws danger rings above selection, shows `work.LANE_IDLE` pawns with an overhead `!`, and renders construction sites as ghosts with footprint outlines and two-stage material/work progress. Storage 80/95% badges remain deferred until stockpile capacity exists, because uncapped totals cannot produce truthful pressure | 2026-06-29 Paper 5 current-systems slice |
 
 ## Health Criteria
 

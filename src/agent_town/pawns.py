@@ -24,6 +24,7 @@ from .core import (
     NEED_FOOD,
     NEED_RECREATION,
     NEED_REST,
+    NEED_WATER,
     Pawn,
     SCHEDULE_ANY,
     SCHEDULE_BLOCK_KINDS,
@@ -46,6 +47,7 @@ STATE_WANDERING = "wandering"  # broken: left the job
 NEED_DECAY_PER_HOUR: dict[str, float] = {
     NEED_REST: 0.035,
     NEED_FOOD: 0.045,
+    NEED_WATER: 0.030,
     NEED_RECREATION: 0.025,
 }
 
@@ -65,6 +67,12 @@ EAT_FOOD_THRESHOLD = 0.30
 # the rounded RimWorld-style portion is three bread, with up to four per eat job.
 BREAD_NUTRITION = 0.25
 MAX_BREAD_PER_MEAL = 4
+
+# Water is the first build-2 essential economy extension. One unit is roughly a
+# pawn-day at the current 12-pawn scale; the strict drink threshold keeps the
+# pressure visible without making a full well produce mysterious free need fill.
+DRINK_WATER_THRESHOLD = 0.30
+WATER_SATISFACTION = 1.0
 
 # Mental-break bands on the 0-100 mood scale (RimWorld 1:1). Each is the mood at
 # or below which the pawn becomes *eligible* for that break; the break then fires
@@ -123,7 +131,7 @@ def decay_needs(pawn: Pawn, dt: float) -> None:
 def restore_need(pawn: Pawn, need: str, amount: float) -> None:
     """Raise ``need`` toward 1.0 (clamped) (B1)."""
     if need not in BUILD1_NEEDS:
-        raise ValueError(f"unknown build-1 need: {need!r}")
+        raise ValueError(f"unknown tracked need: {need!r}")
     _validate_non_negative(amount, "amount")
     _ensure_build1_needs(pawn)
     pawn.needs[need] = _clamp01(pawn.needs[need] + amount)
@@ -151,6 +159,12 @@ def wants_food(pawn: Pawn) -> bool:
     return pawn.needs[NEED_FOOD] < EAT_FOOD_THRESHOLD
 
 
+def wants_water(pawn: Pawn) -> bool:
+    """Whether the pawn is below the strict drink-job threshold."""
+    _ensure_build1_needs(pawn)
+    return pawn.needs[NEED_WATER] < DRINK_WATER_THRESHOLD
+
+
 def eat(pawn: Pawn, stockpile: Stockpile) -> bool:
     """Consume bread portions to refill the nutrition reserve.
 
@@ -168,6 +182,17 @@ def eat(pawn: Pawn, stockpile: Stockpile) -> bool:
     count = min(available, MAX_BREAD_PER_MEAL, desired)
     stockpile.remove(Good.BREAD, count)
     pawn.needs[NEED_FOOD] = _clamp01(pawn.needs[NEED_FOOD] + BREAD_NUTRITION * count)
+    return True
+
+
+def drink(pawn: Pawn, stockpile: Stockpile) -> bool:
+    """Consume one water unit to refill the pawn's water reserve."""
+    available = stockpile.counts.get(Good.WATER, 0)
+    if available <= 0:
+        return False
+    _ensure_build1_needs(pawn)
+    stockpile.remove(Good.WATER, 1)
+    pawn.needs[NEED_WATER] = _clamp01(pawn.needs[NEED_WATER] + WATER_SATISFACTION)
     return True
 
 

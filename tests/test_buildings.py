@@ -11,11 +11,12 @@ EXPECTED_BUILDINGS = {
     "Farm": 4,
     "Mill": 2,
     "Bakery": 2,
+    "Water Well": 1,
 }
 
 
 class DefaultBuildingTests(unittest.TestCase):
-    def test_default_civilization_has_expected_build1_buildings(self):
+    def test_default_civilization_has_expected_buildings(self):
         state = civilization.create_default_civilization()
         counts: dict[str, int] = {}
         for building in state.buildings.values():
@@ -23,7 +24,7 @@ class DefaultBuildingTests(unittest.TestCase):
 
         self.assertEqual(counts, EXPECTED_BUILDINGS)
 
-    def test_each_build1_building_has_definition_and_viewer_sprite(self):
+    def test_each_building_has_definition_and_viewer_sprite(self):
         for kind in EXPECTED_BUILDINGS:
             with self.subTest(kind=kind):
                 definition = buildings.building_def(kind)

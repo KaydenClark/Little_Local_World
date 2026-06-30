@@ -6,6 +6,7 @@ os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 import pygame
 
 from agent_town import civilization, engine, work
+from agent_town.core import ConstructionSite, Good
 from agent_town.civilization_view import (
     BUILDING_SPRITE,
     INSPECTOR_WIDTH,
@@ -13,8 +14,10 @@ from agent_town.civilization_view import (
     WORK_GRID_TYPES,
     Camera,
     CivilizationViewer,
+    _construction_progress,
     _need_bar_color,
     _mood_color,
+    _pawn_readability_markers,
     _pawn_status_label,
     _top_skills,
     cycle_work_priority,
@@ -124,9 +127,83 @@ class WorkGridTests(unittest.TestCase):
 
     def test_idle_pawn_count_after_arbiter_runs(self):
         state = civilization.create_default_civilization()
+        state.buildings.pop("waterwell1")
         engine.step_hour(state)
-        # The default civ has 12 pawns for 11 slots, so exactly one stays idle.
+        # Removing the well leaves 12 pawns for 11 legal slots, so one stays idle.
         self.assertEqual(idle_pawn_count(state), 1)
+
+
+class MapReadabilityTests(unittest.TestCase):
+    def test_construction_progress_counts_materials_before_work(self):
+        site = ConstructionSite(
+            id="site1",
+            building_kind="Sawmill",
+            x=3,
+            y=4,
+            required={Good.PLANKS: 4, Good.STONE: 2},
+            delivered={Good.PLANKS: 2},
+            work_remaining=999.0,
+        )
+
+        self.assertAlmostEqual(_construction_progress(site), 1 / 6, places=2)
+
+        site.delivered = {Good.PLANKS: 4, Good.STONE: 2}
+        self.assertAlmostEqual(_construction_progress(site), 0.5)
+
+        site.work_remaining = 0.0
+        self.assertEqual(_construction_progress(site), 1.0)
+
+    def test_pawn_readability_markers_distinguish_hover_selection_idle_and_danger(self):
+        state = civilization.create_default_civilization()
+        state.buildings.pop("waterwell1")
+        engine.step_hour(state)
+        idle_pawn = next(
+            pawn
+            for pawn in state.pawns.values()
+            if state.work_decisions[pawn.id].lane == work.LANE_IDLE
+        )
+
+        self.assertIn(
+            "idle",
+            _pawn_readability_markers(state, idle_pawn, selected=False, hovered=False),
+        )
+        self.assertIn(
+            "hover",
+            _pawn_readability_markers(state, idle_pawn, selected=False, hovered=True),
+        )
+
+        idle_pawn.state = STATE_SLACKING
+        markers = _pawn_readability_markers(state, idle_pawn, selected=True, hovered=True)
+
+        self.assertIn("selection", markers)
+        self.assertNotIn("hover", markers)
+        self.assertEqual(markers[-1], "danger")
+
+    def test_render_with_hovered_pawn_and_construction_site_does_not_crash(self):
+        assets = load_civilization_assets()
+        font = pygame.font.Font(None, 16)
+        state = civilization.create_default_civilization()
+        state.construction_sites["site1"] = ConstructionSite(
+            id="site1",
+            building_kind="Sawmill",
+            x=4,
+            y=5,
+            required={Good.PLANKS: 4},
+            delivered={Good.PLANKS: 2},
+            work_remaining=10.0,
+        )
+        surface = pygame.Surface((state.grid.width * 25 + 24 + INSPECTOR_WIDTH, state.grid.height * 25 + 200))
+
+        render_civilization(
+            surface,
+            state,
+            assets,
+            font,
+            (12, 12),
+            selected_pawn_id="pawn00",
+            hovered_pawn_id="pawn01",
+            show_inspector=True,
+        )
 
 
 class MoodColorTests(unittest.TestCase):

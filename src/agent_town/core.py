@@ -20,23 +20,25 @@ from enum import Enum
 
 
 class Good(Enum):
-    """Tradeable / storable goods in the build-1 economy."""
+    """Tradeable / storable goods in the civilization economy."""
 
     LOGS = "logs"
     PLANKS = "planks"
     GRAIN = "grain"
     FLOUR = "flour"
     BREAD = "bread"
+    WATER = "water"
     STONE = "stone"
 
 
-# Pawn need keys tracked in build 1 (Pawn.needs). Convention: each value is in
+# Pawn need keys tracked by the current civilization economy (Pawn.needs). Convention: each value is in
 # [0.0, 1.0] where 1.0 == fully satisfied and it decays toward 0.0 over time,
 # restored by the matching schedule block plus the right good/building.
 NEED_REST = "rest"
 NEED_FOOD = "food"
+NEED_WATER = "water"
 NEED_RECREATION = "recreation"
-BUILD1_NEEDS = (NEED_REST, NEED_FOOD, NEED_RECREATION)
+BUILD1_NEEDS = (NEED_REST, NEED_FOOD, NEED_WATER, NEED_RECREATION)
 
 # ScheduleTemplate.blocks entries - one per hour, 24 long.
 SCHEDULE_WORK = "work"
