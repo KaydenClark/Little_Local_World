@@ -23,6 +23,8 @@ BASE_RATE = 1.0
 WATER_UNITS_PER_PAWN_DAY = 1.0
 DAILY_WAGE = 1
 MARKET_KIND = "Market"
+STOREHOUSE_KIND = "Storehouse"
+STOREHOUSE_CAPACITY_BONUS = 120
 MARKET_DAILY_BREAD_EXPORT_LIMIT = 4
 MARKET_BREAD_RESERVE_PER_PAWN = 6
 MARKET_BREAD_PRICE = 1
@@ -60,6 +62,7 @@ def production_tick(state: FactionState, *, work_fn: WorkFn = mood.effective_wor
     stops making it. This makes the lever real - without it the governor could
     "set a target" that changed nothing. Untargeted goods stay unbounded.
     """
+    refresh_storage_capacity(state)
     for building_id, building in state.buildings.items():
         recipe = building.recipe
         if not building.built or recipe is None or not building.staffed_by:
@@ -169,7 +172,25 @@ def water_days_of_cover(state: FactionState) -> float:
 
 def storage_fullness(state: FactionState) -> float | None:
     """Faction stockpile fullness in [0, 1], or None when storage is uncapped."""
+    refresh_storage_capacity(state)
     return state.stockpile.fullness()
+
+
+def refresh_storage_capacity(state: FactionState) -> int | None:
+    """Apply built Storehouse capacity bonuses to the finite stockpile cap."""
+    if state.stockpile.capacity is None and state.stockpile.base_capacity is None:
+        return None
+    base = state.stockpile.base_capacity
+    if base is None:
+        base = state.stockpile.capacity or 0
+        state.stockpile.base_capacity = base
+    storehouses = sum(
+        1
+        for building in state.buildings.values()
+        if building.kind == STOREHOUSE_KIND and building.built
+    )
+    state.stockpile.capacity = base + storehouses * STOREHOUSE_CAPACITY_BONUS
+    return state.stockpile.capacity
 
 
 def daily_tax_income(state: FactionState) -> int:

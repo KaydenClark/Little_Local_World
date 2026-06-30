@@ -91,6 +91,7 @@ def _construction_records(state: FactionState) -> list[dict[str, Any]]:
 
 
 def _storage_record(state: FactionState) -> dict[str, Any]:
+    economy.refresh_storage_capacity(state)
     fullness = state.stockpile.fullness()
     return {
         "used": state.stockpile.used_capacity(),

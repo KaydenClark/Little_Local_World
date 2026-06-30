@@ -106,11 +106,19 @@ class Stockpile:
     # None means uncapped legacy storage. Build-2 scenarios can set a finite
     # capacity so downstream saturation blocks production instead of hiding it.
     capacity: int | None = None
+    # The non-building capacity floor. Storehouse bonuses are recalculated from
+    # this so each economy tick can refresh capacity without double-counting.
+    base_capacity: int | None = None
 
     def __post_init__(self) -> None:
         if self.capacity is not None:
             if self.capacity < 0:
                 raise ValueError("Stockpile capacity must be non-negative")
+            if self.base_capacity is None:
+                self.base_capacity = self.capacity
+        if self.base_capacity is not None and self.base_capacity < 0:
+            raise ValueError("Stockpile base_capacity must be non-negative")
+        if self.capacity is not None:
             used = self.used_capacity()
             if used > self.capacity:
                 raise ValueError(f"Stockpile capacity exceeded: used {used}, capacity {self.capacity}")

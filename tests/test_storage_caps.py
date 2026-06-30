@@ -90,6 +90,40 @@ class StorageCapTests(unittest.TestCase):
 
         self.assertEqual(snap["storage"], {"used": 5, "capacity": 20, "fullness": 0.25})
 
+    def test_built_storehouses_raise_capacity_without_double_counting(self):
+        state = FactionState(stockpile=Stockpile({Good.BREAD: 5}, capacity=20))
+        state.buildings["storehouse1"] = buildings.make_building(
+            "Storehouse", 0, 0, building_id="storehouse1"
+        )
+        state.buildings["storehouse2"] = buildings.make_building(
+            "Storehouse", 2, 0, building_id="storehouse2"
+        )
+        state.buildings["ghost"] = buildings.make_building(
+            "Storehouse", 4, 0, building_id="ghost", built=False
+        )
+
+        self.assertEqual(economy.refresh_storage_capacity(state), 260)
+        self.assertEqual(economy.refresh_storage_capacity(state), 260)
+        self.assertEqual(state.stockpile.base_capacity, 20)
+        self.assertEqual(state.stockpile.capacity, 260)
+
+    def test_storehouse_capacity_is_applied_before_storage_limited_production(self):
+        building, pawn = staffed("Forester", "forestry", building_id="forester1")
+        state = FactionState(
+            time_of_day=8,
+            stockpile=Stockpile({Good.STONE: 2}, capacity=2),
+            buildings={building.id: building},
+            pawns={pawn.id: pawn},
+        )
+        state.buildings["storehouse1"] = buildings.make_building(
+            "Storehouse", 2, 0, building_id="storehouse1"
+        )
+
+        economy.production_tick(state)
+
+        self.assertEqual(state.stockpile.counts, {Good.STONE: 2, Good.LOGS: 1})
+        self.assertEqual(state.stockpile.capacity, 122)
+
     def test_invariants_flag_over_capacity_state(self):
         state = FactionState(stockpile=Stockpile({Good.BREAD: 5}, capacity=5))
         state.stockpile.counts[Good.WATER] = 1

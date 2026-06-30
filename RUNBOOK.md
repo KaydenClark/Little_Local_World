@@ -155,12 +155,16 @@ Water essential manual check (build-2 water slice):
 Storage-cap manual check (Paper 4 storage slice):
 
 - Start the viewer and confirm the HUD stat row includes `Storage N%`.
+- With a Storehouse present and storage >=80% full, confirm the HUD storage chip
+  turns amber; at >=95%, confirm it turns red and Storehouse buildings show the
+  matching world badge.
 - For a headless proof, run
   `.\.venv\Scripts\python.exe -m unittest tests.test_storage_caps`.
   It covers finite stockpile capacity, storage-full blocked production, net
-  shrinking transforms, overflow invariants, and telemetry fullness.
-- Storehouse capacity upgrades and 80/95% map badges are still deferred; do not
-  fake district storage pressure before those systems exist.
+  shrinking transforms, Storehouse capacity upgrades, overflow invariants, and
+  telemetry fullness.
+- Per-district storage pressure and hauling pressure are still deferred; do not
+  fake those before the systems exist.
 
 Map readability manual check (Paper 5 current-systems slice):
 
@@ -170,9 +174,9 @@ Map readability manual check (Paper 5 current-systems slice):
   and confirm the idle pawn has an overhead `!` badge matching the HUD `Idle N`.
 - Create or observe an active construction site and confirm it shows a ghost,
   footprint outline, and progress bar before completion.
-- Storage pressure badges are intentionally deferred until Storehouse capacity
-  upgrades and district/slot behavior exist; do not fake 80/95% map warnings from
-  the single global cap alone.
+- Storage pressure badges are now valid for the finite global cap and built
+  Storehouses. District/slot behavior is still deferred; do not fake per-district
+  warnings from the single global cap alone.
 
 ## Monitoring A Run
 

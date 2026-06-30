@@ -72,6 +72,7 @@ class TrackA2Tests(unittest.TestCase):
             "Quarry",
             "Laboratory",
             "Market",
+            "Storehouse",
         }
 
         self.assertEqual({definition.kind for definition in buildings.BUILDING_DEFS.values()}, expected)
@@ -88,6 +89,9 @@ class TrackA2Tests(unittest.TestCase):
         market = buildings.building_def("Market")
         self.assertEqual(market.recipe.outputs, {})
         self.assertEqual(market.recipe.skill, "commerce")
+        storehouse = buildings.building_def("Storehouse")
+        self.assertIsNone(storehouse.recipe)
+        self.assertEqual(storehouse.job_slots, 0)
         with self.assertRaisesRegex(ValueError, "Unknown building kind"):
             buildings.building_def("Moon Mill")
 

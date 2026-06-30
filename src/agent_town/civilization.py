@@ -66,6 +66,7 @@ def create_default_civilization(*, seed: int = 7) -> FactionState:
         resource_nodes=nodes,
     )
     state.stockpile.capacity = DEFAULT_STOCKPILE_CAPACITY
+    state.stockpile.base_capacity = DEFAULT_STOCKPILE_CAPACITY
     state.stockpile.add(Good.BREAD, 48)
     state.stockpile.add(Good.WATER, 24)
 

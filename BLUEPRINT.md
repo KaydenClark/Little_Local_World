@@ -588,9 +588,10 @@ Reaching that milestone is the primary victory.
 Stockpile capacity is finite and raised by the Storehouse; a "storage full %"
 readout surfaces it (see `ROADMAP.md`). The current Build-2 slice gives the
 default civilization a conservative global stockpile cap, blocks production
-that would grow storage past the cap, and logs storage fullness. Storehouse
-capacity upgrades, per-district storage, hauling pressure, and 80/95% storage
-badges remain later Build-2 work.
+that would grow storage past the cap, and logs storage fullness. Built
+Storehouses raise the cap, and 80/95% storage pressure is shown in the HUD and
+on Storehouse buildings. Per-district storage and hauling pressure remain later
+Build-2 work.
 
 ### Disasters (operator as storyteller)
 
@@ -728,6 +729,7 @@ Rules:
 | Minimal research spine shipped before scale work | `set_research` is no longer a dead lever: it selects an active tech target, staffed Laboratory work produces research points through the existing `effective_work` seam, and `efficient_baking` raises Bakery output. This proves the progression lever before the larger Space-Age spine, wages, storage caps, and victory condition land | 2026-06-30 truth-loop cleanup |
 | Finite storage capacity shipped before wages/markets | Storage saturation is now a real bottleneck: `Stockpile.capacity` blocks net-growing production before inputs are consumed, telemetry records storage used/capacity/fullness, and the HUD shows storage percent. Storehouse upgrades, storage pressure badges, wages, markets, and trade stay deferred | 2026-06-30 Paper 4 storage slice |
 | First wage/market money loop shipped | Pawns now have personal coin, assigned pawns receive deterministic daily wages from the treasury, and a staffed Market can export a small bread surplus above reserve into treasury coin. This starts the money loop without replacing the legacy abstract tax floor; household service spending, wage pressure, reserve-aware trade, and Storehouse capacity upgrades remain future Build-2 slices | 2026-06-30 wage/market slice |
+| Storehouse capacity and pressure badges shipped | Built Storehouses add deterministic global storage capacity, while the HUD and Storehouse world badge shift from normal to amber at 80% and critical red at 95%. This keeps storage pressure truthful without faking district storage or hauling pressure before those systems exist | 2026-06-30 Storehouse slice |
 
 ## Health Criteria
 
