@@ -24,6 +24,7 @@ from .core import (
     NEED_FOOD,
     NEED_RECREATION,
     NEED_REST,
+    NEED_WATER,
     Pawn,
     Recipe,
     SCHEDULE_WORK,
@@ -58,6 +59,14 @@ HUNGER_RAVENOUS_BAND = 0.12  # below this (and > 0): Ravenously hungry
 HUNGER_HUNGRY_VALUE = -6.0
 HUNGER_RAVENOUS_VALUE = -12.0
 HUNGER_MALNOURISHED_VALUE = -20.0
+
+# Water is the first Build-2 essential need. Values are deliberately close to
+# hunger so the mood ledger explains drought pressure without adding lethal
+# dehydration in this slice.
+THIRST_OK_BAND = 0.30
+THIRST_DEHYDRATED_BAND = 0.10
+THIRSTY_VALUE = -8.0
+DEHYDRATED_VALUE = -18.0
 
 
 def _clamp_mood(value: float) -> float:
@@ -137,6 +146,16 @@ def hunger_thought(pawn: Pawn) -> Thought | None:
     return Thought("hunger", "Hungry", HUNGER_HUNGRY_VALUE)
 
 
+def thirst_thought(pawn: Pawn) -> Thought | None:
+    """The water-need thought, or None while the pawn is hydrated."""
+    water = pawn.needs.get(NEED_WATER, 1.0)
+    if water >= THIRST_OK_BAND:
+        return None
+    if water <= THIRST_DEHYDRATED_BAND:
+        return Thought("water", "Dehydrated", DEHYDRATED_VALUE)
+    return Thought("water", "Thirsty", THIRSTY_VALUE)
+
+
 def rest_rec_thought(pawn: Pawn) -> Thought:
     """A blended rest+recreation thought (food is its own thought now)."""
     rest = pawn.needs.get(NEED_REST, 1.0)
@@ -171,6 +190,9 @@ def situational_thoughts(pawn: Pawn, met_wants: frozenset[str] = frozenset()) ->
     hunger = hunger_thought(pawn)
     if hunger is not None:
         thoughts.append(hunger)
+    thirst = thirst_thought(pawn)
+    if thirst is not None:
+        thoughts.append(thirst)
     thoughts.append(rest_rec_thought(pawn))
     thoughts.extend(trait_thoughts(pawn))
     thoughts.extend(want_thoughts(pawn, met_wants))

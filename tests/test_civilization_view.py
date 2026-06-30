@@ -124,8 +124,9 @@ class WorkGridTests(unittest.TestCase):
 
     def test_idle_pawn_count_after_arbiter_runs(self):
         state = civilization.create_default_civilization()
+        state.buildings.pop("waterwell1")
         engine.step_hour(state)
-        # The default civ has 12 pawns for 11 slots, so exactly one stays idle.
+        # Removing the well leaves 12 pawns for 11 legal slots, so one stays idle.
         self.assertEqual(idle_pawn_count(state), 1)
 
 

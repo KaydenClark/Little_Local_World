@@ -20,7 +20,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any, Callable, Protocol
 
-from . import pawns, schedule, work
+from . import economy, pawns, schedule, work
 from .core import (
     ACTION_ASSIGN_PAWN,
     ACTION_PLACE_BUILDING,
@@ -33,6 +33,7 @@ from .core import (
     Good,
     GovernorAction,
     JobRef,
+    NEED_WATER,
 )
 from .llm import LLMClientError, LocalLLMClient, ModelDiscovery
 
@@ -41,6 +42,10 @@ from .llm import LLMClientError, LocalLLMClient, ModelDiscovery
 UNHAPPY_THRESHOLD = 45.0
 # An assigned pawn with role skill below this is a skill mismatch.
 MISMATCH_SKILL = 2
+LOW_WATER_COVER_DAYS = 1.0
+LOW_WATER_NEED = 0.35
+WATER_BUILDING_KIND = "Water Well"
+WATER_BUILD_LOCATION = (5, 5)
 
 BROKEN_STATES = (pawns.STATE_SLACKING, pawns.STATE_WANDERING)
 RESCHEDULE_KINDS = ("unhappy_pawn", "pawn_breaking", "pawn_break")
@@ -51,6 +56,7 @@ BUILD_ORDER: tuple[tuple[str, int, int], ...] = (
     ("Farm", 1, 3),
     ("Mill", 2, 3),
     ("Bakery", 3, 3),
+    (WATER_BUILDING_KIND, WATER_BUILD_LOCATION[0], WATER_BUILD_LOCATION[1]),
     ("Quarry", 4, 1),
 )
 
@@ -81,6 +87,7 @@ def build_faction_summary(state: FactionState) -> dict[str, Any]:
         "season": state.season,
         "time_of_day": state.time_of_day,
         "tax_rate": state.tax_rate,
+        "water_days_of_cover": round(economy.water_days_of_cover(state), 3),
         "stockpile": {good.value: count for good, count in state.stockpile.counts.items()},
     }
 
@@ -166,6 +173,17 @@ def build_exception_queue(state: FactionState) -> list[CivilizationException]:
                 exceptions.append(
                     CivilizationException("missing_inputs", building_id=building.id, detail=",".join(missing))
                 )
+
+    if state.pawns:
+        water_cover = economy.water_days_of_cover(state)
+        water_need = economy.average_need(state, NEED_WATER)
+        if water_cover < LOW_WATER_COVER_DAYS or water_need < LOW_WATER_NEED:
+            exceptions.append(
+                CivilizationException(
+                    "low_water",
+                    detail=f"{round(water_cover, 2)} days cover, {round(water_need * 100)}% need",
+                )
+            )
 
     for pawn in sorted(state.pawns.values(), key=lambda p: p.id):
         broken = pawn.state in BROKEN_STATES
@@ -337,6 +355,11 @@ class FallbackGovernor:
         # engine/Track A owns cost checks and construction-site realization.
         existing = {building["kind"] for building in buildings}
         pending = {site["building_kind"] for site in construction}
+        if any(exc["kind"] == "low_water" for exc in exceptions):
+            if WATER_BUILDING_KIND not in existing and WATER_BUILDING_KIND not in pending:
+                actions.append(GovernorAction.place_building(WATER_BUILDING_KIND, *WATER_BUILD_LOCATION))
+                return actions
+
         for kind, x, y in BUILD_ORDER:
             if kind not in existing and kind not in pending:
                 actions.append(GovernorAction.place_building(kind, x, y))
@@ -405,8 +428,8 @@ GOVERNOR_SYSTEM_PROMPT = (
     "Pawns now choose their own jobs from their work priorities - you tune the "
     "priorities, you do not place pawns by hand.\n"
     "- set_work_priority {group, work_type, level}: group is a pawn_id or \"all\"; "
-    "work_type is a skill (farming, milling, baking, forestry, woodworking, "
-    "mining); level 1 is highest, 4 lowest, 0 disables it. This is your main "
+    "work_type is a skill (water, farming, milling, baking, forestry, "
+    "woodworking, mining); level 1 is highest, 4 lowest, 0 disables it. This is your main "
     "lever for steering labour.\n"
     "- assign_pawn {pawn_id, building_id, role}: a rare FORCED override that pins "
     "one pawn to one building slot. Prefer set_work_priority instead.\n"

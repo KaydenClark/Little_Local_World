@@ -17,12 +17,14 @@ SEEDED_BUILDINGS = (
     ("Bakery", "baking"),
     ("Bakery", "baking"),
     ("Bakery", "baking"),
+    ("Water Well", "water"),
 )
 
 
 def make_state() -> FactionState:
     state = FactionState(day=0, time_of_day=7, tax_rate=0.2)
     state.stockpile.add(Good.BREAD, 24)
+    state.stockpile.add(Good.WATER, 24)
     for index, (_kind, specialty) in enumerate(SEEDED_BUILDINGS):
         pawn = Pawn(
             id=f"pawn{index:02d}",
@@ -38,7 +40,7 @@ def make_state() -> FactionState:
     counts: dict[str, int] = {}
     for index, (kind, _skill) in enumerate(SEEDED_BUILDINGS):
         counts[kind] = counts.get(kind, 0) + 1
-        building = buildings.make_building(kind, index, 0, building_id=f"{kind.lower()}{counts[kind]}")
+        building = buildings.make_building(kind, index, 0, building_id=f"{kind.lower().replace(' ', '')}{counts[kind]}")
         state.buildings[building.id] = building
     return state
 

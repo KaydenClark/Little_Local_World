@@ -8,22 +8,23 @@ os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 import pygame
 
 from agent_town import civilization, economy
-from agent_town.core import FactionState, NEED_FOOD, NEED_RECREATION, NEED_REST, Pawn
+from agent_town.core import FactionState, NEED_FOOD, NEED_RECREATION, NEED_REST, NEED_WATER, Pawn
 from agent_town.civilization_view import CIV_STATS_WIDTH, _draw_civ_stats, load_civilization_assets
 
 
-def _pawn(pid, food, rest, rec):
-    return Pawn(id=pid, name=pid, needs={NEED_FOOD: food, NEED_REST: rest, NEED_RECREATION: rec})
+def _pawn(pid, food, rest, water, rec):
+    return Pawn(id=pid, name=pid, needs={NEED_FOOD: food, NEED_REST: rest, NEED_WATER: water, NEED_RECREATION: rec})
 
 
 class AverageNeedTests(unittest.TestCase):
     def test_average_need_is_the_mean_across_pawns(self):
         state = FactionState()
-        state.pawns["a"] = _pawn("a", food=0.2, rest=1.0, rec=0.5)
-        state.pawns["b"] = _pawn("b", food=0.4, rest=0.0, rec=0.5)
+        state.pawns["a"] = _pawn("a", food=0.2, rest=1.0, water=0.3, rec=0.5)
+        state.pawns["b"] = _pawn("b", food=0.4, rest=0.0, water=0.7, rec=0.5)
 
         self.assertAlmostEqual(economy.average_need(state, NEED_FOOD), 0.3)
         self.assertAlmostEqual(economy.average_need(state, NEED_REST), 0.5)
+        self.assertAlmostEqual(economy.average_need(state, NEED_WATER), 0.5)
         self.assertAlmostEqual(economy.average_need(state, NEED_RECREATION), 0.5)
 
     def test_empty_civilization_reads_zero(self):

@@ -12,8 +12,9 @@ Pygame is the local viewer for the civilization state.
 This is a screenshot of the current local viewer state: a RimWorld-style pawn
 roster, selected-pawn sheet, readable civilization map, resource HUD, and bottom
 command strip. Pawns now self-select their work through the lane-based arbiter,
-so the selected-pawn sheet has a "Why this job" trace (winning lane, reason, and
-the top job it passed over) and the HUD shows an `Idle` count.
+the HUD includes water as the first Build-2 essential, the Civ stats panel shows
+Water, and the selected-pawn sheet has a "Why this job" trace (winning lane,
+reason, and the top job it passed over).
 
 The **Work** button opens the RimWorld-style work-priority grid below; click a
 cell to cycle a pawn's priority (1 highest .. 4 lowest, blank disables it) and
@@ -118,6 +119,9 @@ Ollama can use the same adapter with
   (manual priority -> work-type order -> skill), never double-claim a slot, and
   expose a decision trace. The Work button opens a clickable priority grid; the
   rest of the bottom command strip is still placeholder.
+- A conservation-safe water slice: Water Well production, stockpiled water,
+  pawn drinking, thirst mood pressure, Civ Water readout, and a `low_water`
+  governor exception.
 - CC0/provenance-tracked civilization sprites under `src\agent_town\assets\colony`.
 - A repeatable civilization scaling benchmark for 100, 500, and 1,000 pawns.
 
@@ -125,8 +129,9 @@ Ollama can use the same adapter with
 
 - Keep lethal starvation deferred until the malnutrition/death timing slice can
   add status, exceptions, viewer surfacing, and food-chain urgency together.
-- Start the first Townsmen-style essentials slice: Water Well -> water need ->
-  Civ readout -> governor exception.
+- Add the map readability pass for current systems: idle badges, construction
+  progress, storage pressure, danger/blocked-job indicators, and hover vs
+  selection conventions.
 - Add the first Paper 7 scale foundations before larger populations:
   reachability-region rejection and deterministic update phases.
 - Add save state once the civilization persistence model is designed.

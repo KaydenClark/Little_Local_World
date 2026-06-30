@@ -100,7 +100,9 @@ Expected result:
 - Clicking a pawn, or pressing `Tab`, updates the pawn sheet with status,
   assignment, needs, skills, and traits, plus a "Why this job" trace: the winning
   decision lane, the reason, and the top job the pawn passed over.
-- The HUD shows an `Idle N` count (pawns with no work the arbiter could give).
+- The HUD shows an `Idle N` count (pawns with no work the arbiter could give)
+  and stockpile chips including Bread and Water.
+- The Civ stats panel shows Mood, Food, Water, Recreation, and Rest.
 - Pressing `L` connects to or disconnects from LM Studio/Ollama while the game is running.
 - The HUD shows local model state: disabled, idle, thinking, offline, or invalid.
 - The `Work` button opens the work-priority grid; the `History` button opens a
@@ -119,6 +121,16 @@ Work-priority arbiter manual check (build-2 step 1):
   count rises if you disable a work type that leaves a pawn with nothing legal.
 - Select that pawn and read the inspector's "Why this job" trace to see the lane
   it won under and the job it rejected (e.g. `Passed over Bakery: reserved/full`).
+
+Water essential manual check (build-2 water slice):
+
+- Start the viewer and confirm the default civilization has a Water Well,
+  Water in the HUD stockpile chips, and a Water row in the Civ stats panel.
+- Open the `Work` grid and confirm `Water` is a work type. A water-skilled pawn
+  should staff the Water Well under the arbiter.
+- For a headless proof, run `.\.venv\Scripts\python.exe -m unittest tests.test_water`.
+  It covers Water Well production, drinking, days of cover, and the `low_water`
+  governor exception.
 
 ## Monitoring A Run
 

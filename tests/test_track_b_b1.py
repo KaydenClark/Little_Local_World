@@ -7,6 +7,7 @@ from agent_town.core import (
     NEED_FOOD,
     NEED_RECREATION,
     NEED_REST,
+    NEED_WATER,
     Pawn,
     SCHEDULE_ANY,
     SCHEDULE_REC,
@@ -72,11 +73,11 @@ class PawnNeedsTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             pawns.restore_need(pawn, NEED_FOOD, -0.1)
 
-    def test_schedule_blocks_restore_rest_and_recreation_but_not_food(self):
+    def test_schedule_blocks_restore_rest_and_recreation_but_not_food_or_water(self):
         pawn = Pawn(
             id="p1",
             name="Ada",
-            needs={NEED_REST: 0.2, NEED_FOOD: 0.2, NEED_RECREATION: 0.2},
+            needs={NEED_REST: 0.2, NEED_FOOD: 0.2, NEED_WATER: 0.2, NEED_RECREATION: 0.2},
         )
 
         pawns.apply_schedule_block(pawn, SCHEDULE_SLEEP, 1)
@@ -89,13 +90,14 @@ class PawnNeedsTests(unittest.TestCase):
         self.assertGreater(pawn.needs[NEED_RECREATION], 0.2)
         # Food is a nutrition reserve now: no schedule block restores it for free.
         self.assertEqual(pawn.needs[NEED_FOOD], 0.2)
+        self.assertEqual(pawn.needs[NEED_WATER], 0.2)
         self.assertEqual(pawn.needs, before_work)
 
     def test_needs_satisfaction_is_mean_of_tracked_needs(self):
         pawn = Pawn(
             id="p1",
             name="Ada",
-            needs={NEED_REST: 1.0, NEED_FOOD: 0.5, NEED_RECREATION: -1.0},
+            needs={NEED_REST: 1.0, NEED_FOOD: 0.5, NEED_WATER: 0.5, NEED_RECREATION: -1.0},
         )
 
         self.assertEqual(pawns.needs_satisfaction(pawn), 0.5)

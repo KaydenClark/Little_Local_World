@@ -45,6 +45,7 @@ class DefaultCivilizationTests(unittest.TestCase):
         # proves staffed buildings are producing under autopilot.
         stock = state.stockpile.counts
         self.assertGreater(stock.get(Good.BREAD, 0), 0)
+        self.assertGreater(stock.get(Good.WATER, 0), 0)
         self.assertGreater(stock.get(Good.STONE, 0), 0)
         self.assertGreater(stock.get(Good.LOGS, 0) + stock.get(Good.PLANKS, 0), 0)
 

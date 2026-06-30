@@ -18,14 +18,14 @@ Each engine hour :func:`assign_jobs` re-plans the roster:
    candidates) so the spectator can see *why* a pawn chose one job over another.
 
 Decision lanes, in priority order: forced/manual -> hard-state -> medical-rest
--> self-care -> emergency -> normal-work -> idle. Build 1's economy only has
+-> self-care -> emergency -> normal-work -> idle. The current economy only has
 normal-work jobs (staffing a production building), so forced, hard-state,
-self-care (hungry), normal-work, and idle are live; medical-rest and emergency
+self-care (food/water), normal-work, and idle are live; medical-rest and emergency
 are defined for ordering but have no content until injuries/fires exist.
 
-Work types in build 1 *are* the production skills already declared on recipes
-(``Building.recipe.skill``): forestry, woodworking, farming, milling, baking,
-mining. The governor or player tunes per-pawn priorities via
+Work types are the production skills already declared on recipes
+(``Building.recipe.skill``): water, forestry, woodworking, farming, milling,
+baking, mining. The governor or player tunes per-pawn priorities via
 ``set_work_priority``; with no override a pawn's priorities are derived from its
 skill so a fresh civilization staffs itself sensibly with zero micro.
 """
@@ -38,6 +38,7 @@ from .core import (
     FactionState,
     JobRef,
     NEED_FOOD,
+    NEED_WATER,
     Pawn,
     RejectedJob,
     SCHEDULE_SLEEP,
@@ -69,6 +70,7 @@ LANE_ORDER = (
 # is project-chosen (research-derived from the food-chain dependency, not a
 # verified RimWorld constant) so the survival staple resolves ties first.
 WORK_TYPE_ORDER: dict[str, int] = {
+    "water": 75,
     "farming": 70,
     "milling": 65,
     "baking": 60,
@@ -156,20 +158,34 @@ def _is_broken(pawn: Pawn) -> bool:
 
 
 def _wants_self_care(state: FactionState, pawn: Pawn) -> bool:
-    """Whether self-care (eating) outranks work for this waking hour.
+    """Whether self-care outranks work for this waking hour.
 
-    Build-1 self-care is a lane label: a hungry pawn's winning lane flips to
-    self-care so the spectator sees it prioritising food. Eating is instantaneous
-    (see ``pawns.eat``), so this does not yet cost a work hour - that arrives with
-    build-2 building-based services.
+    Self-care is still a lane label: a hungry or thirsty pawn's winning lane
+    flips to self-care so the spectator sees it prioritising essentials.
+    Eating/drinking is instantaneous, so this does not yet cost a work hour -
+    that arrives with building-based services.
     """
     if schedule.block_for(pawn.schedule, state.time_of_day) == SCHEDULE_SLEEP:
         return False
-    return pawn.needs.get(NEED_FOOD, 1.0) < pawns.EAT_FOOD_THRESHOLD
+    return (
+        pawn.needs.get(NEED_FOOD, 1.0) < pawns.EAT_FOOD_THRESHOLD
+        or pawn.needs.get(NEED_WATER, 1.0) < pawns.DRINK_WATER_THRESHOLD
+    )
+
+
+def _self_care_reason(pawn: Pawn) -> str:
+    """Readable reason for the self-care lane."""
+    hungry = pawn.needs.get(NEED_FOOD, 1.0) < pawns.EAT_FOOD_THRESHOLD
+    thirsty = pawn.needs.get(NEED_WATER, 1.0) < pawns.DRINK_WATER_THRESHOLD
+    if hungry and thirsty:
+        return "Hungry and thirsty - self-care before work"
+    if thirsty:
+        return "Thirsty - drinking before work"
+    return "Hungry - eating before work"
 
 
 def _live_lane(state: FactionState, pawn: Pawn, base_lane: str) -> str:
-    """Promote a working pawn's lane to self-care when it is hungry this hour."""
+    """Promote a working pawn's lane to self-care when essentials are low."""
     if base_lane in (LANE_FORCED, LANE_NORMAL_WORK) and _wants_self_care(state, pawn):
         return LANE_SELF_CARE
     return base_lane
@@ -328,7 +344,7 @@ def _kept_decision(state: FactionState, pawn: Pawn, reserved: dict[str, int]) ->
         base_lane = LANE_FORCED if forced else LANE_NORMAL_WORK
         lane = _live_lane(state, pawn, base_lane)
         if lane == LANE_SELF_CARE:
-            reason = "Hungry - eating before work"
+            reason = _self_care_reason(pawn)
         elif forced:
             reason = "Forced by governor"
         else:

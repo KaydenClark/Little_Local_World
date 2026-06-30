@@ -29,6 +29,7 @@ STARTING_BUILDINGS: tuple[tuple[str, int, int], ...] = (
     ("Mill", 17, 5),
     ("Bakery", 14, 10),
     ("Bakery", 17, 10),
+    ("Water Well", 20, 8),
 )
 
 # (name, primary skill) for the dozen starting pawns. Skills line up with the
@@ -45,7 +46,7 @@ STARTING_PAWNS: tuple[tuple[str, str], ...] = (
     ("Baker Rye", "baking"),
     ("Baker Pim", "baking"),
     ("Hand Mly", "farming"),
-    ("Hand Dob", "baking"),
+    ("Wellkeeper Vale", "water"),
 )
 
 # Mood-positive traits keep the seeded civilization alive under the fallback governor,
@@ -64,11 +65,13 @@ def create_default_civilization(*, seed: int = 7) -> FactionState:
         resource_nodes=nodes,
     )
     state.stockpile.add(Good.BREAD, 48)
+    state.stockpile.add(Good.WATER, 24)
 
     counts: dict[str, int] = {}
     for kind, x, y in STARTING_BUILDINGS:
         counts[kind] = counts.get(kind, 0) + 1
-        building = buildings.make_building(kind, x, y, building_id=f"{kind.lower()}{counts[kind]}")
+        building_id = f"{kind.lower().replace(' ', '')}{counts[kind]}"
+        building = buildings.make_building(kind, x, y, building_id=building_id)
         state.buildings[building.id] = building
 
     for index, (name, skill) in enumerate(STARTING_PAWNS):

@@ -20,6 +20,7 @@ from .core import BUILD1_NEEDS, FactionState, Good, Pawn, Recipe, Stockpile
 
 # Base output rate per unit of summed effective work, per tick.
 BASE_RATE = 1.0
+WATER_UNITS_PER_PAWN_DAY = 1.0
 
 WorkFn = Callable[[Pawn, Recipe, int], float]
 
@@ -80,11 +81,19 @@ def average_need(state: FactionState, need: str) -> float:
     (1.0), matching the "needs start full" convention in ``pawns.decay_needs``.
     """
     if need not in BUILD1_NEEDS:
-        raise ValueError(f"unknown build-1 need: {need!r}")
+        raise ValueError(f"unknown tracked need: {need!r}")
     if not state.pawns:
         return 0.0
     total = sum(max(0.0, min(1.0, pawn.needs.get(need, 1.0))) for pawn in state.pawns.values())
     return total / len(state.pawns)
+
+
+def water_days_of_cover(state: FactionState) -> float:
+    """How many pawn-days the current water stockpile can cover."""
+    population = len(state.pawns)
+    if population == 0:
+        return float("inf")
+    return state.stockpile.counts.get(Good.WATER, 0) / (population * WATER_UNITS_PER_PAWN_DAY)
 
 
 def daily_tax_income(state: FactionState) -> int:

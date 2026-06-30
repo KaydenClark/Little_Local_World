@@ -23,7 +23,7 @@ import pygame
 
 from . import economy, engine, health, mood, telemetry, work
 from .assets import CivilizationAssetManifest, load_civilization_manifest
-from .core import FactionState, Good, NEED_FOOD, NEED_RECREATION, NEED_REST
+from .core import FactionState, Good, NEED_FOOD, NEED_RECREATION, NEED_REST, NEED_WATER
 from .civilization import create_default_civilization
 from .governor import (
     GOV_DISABLED,
@@ -89,6 +89,7 @@ BUILDING_SPRITE = {
     "Sawmill": "house",
     "Mill": "house",
     "Bakery": "house",
+    "Water Well": "house3",
 }
 DEFAULT_BUILDING_SPRITE = "house"
 
@@ -98,6 +99,7 @@ NODE_MARKER_COLOR = {Good.GRAIN: (214, 188, 84), Good.STONE: (150, 150, 158)}
 
 HUD_GOODS = (
     ("Bread", Good.BREAD),
+    ("Water", Good.WATER),
     ("Grain", Good.GRAIN),
     ("Flour", Good.FLOUR),
     ("Logs", Good.LOGS),
@@ -106,9 +108,10 @@ HUD_GOODS = (
 )
 
 # Civ-wide need readouts shown in the top-left Civ stats panel. Mood is drawn
-# first (own colour); these three are pure readouts in build 1.
+# first (own colour).
 CIV_STATS_NEEDS = (
     ("Food", NEED_FOOD),
+    ("Water", NEED_WATER),
     ("Recreation", NEED_RECREATION),
     ("Rest", NEED_REST),
 )
@@ -118,6 +121,7 @@ CIV_STATS_WIDTH = 224
 # ordered by their natural priority (the arbiter's tiebreaker), with short labels.
 WORK_GRID_TYPES = sorted(work.WORK_TYPE_ORDER, key=lambda wt: -work.work_type_order(wt))
 WORK_TYPE_LABEL = {
+    "water": "Water",
     "farming": "Farm",
     "milling": "Mill",
     "baking": "Bake",
@@ -137,7 +141,7 @@ LANE_LABEL = {
     work.LANE_FORCED: ("Forced (override)", (214, 180, 110)),
     work.LANE_HARD_STATE: ("Mental break", (224, 130, 110)),
     work.LANE_MEDICAL: ("Medical rest", (224, 130, 110)),
-    work.LANE_SELF_CARE: ("Self-care (eat)", (220, 200, 120)),
+    work.LANE_SELF_CARE: ("Self-care", (220, 200, 120)),
     work.LANE_EMERGENCY: ("Emergency", (224, 130, 110)),
     work.LANE_NORMAL_WORK: ("Normal work", (140, 200, 150)),
     work.LANE_IDLE: ("Idle", (150, 156, 148)),
@@ -563,9 +567,9 @@ def _draw_civ_stats(
     state: FactionState,
     topleft: tuple[int, int],
 ) -> pygame.Rect:
-    """Draw the top-left Civ stats panel: Civ-wide Mood, Food, Recreation, Rest."""
+    """Draw the top-left Civ stats panel: Civ-wide Mood and need readouts."""
     bar_h = 22
-    rows = 1 + len(CIV_STATS_NEEDS)  # mood + the three need readouts
+    rows = 1 + len(CIV_STATS_NEEDS)  # mood + need readouts
     width = CIV_STATS_WIDTH
     height = 30 + rows * bar_h + 6
     x0, y0 = topleft
