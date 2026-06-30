@@ -10,6 +10,7 @@ Phase 0 status: signatures frozen, bodies stubbed. Implemented in milestone A1.
 from __future__ import annotations
 
 import random
+from collections import deque
 
 from .core import GridMap, Good, ResourceNode
 
@@ -19,6 +20,8 @@ TILE_TREE = "tree"
 TILE_FIELD = "field"
 TILE_STONE = "stone"
 TILE_WATER = "water"
+
+IMPASSABLE_TILES = frozenset({TILE_WATER})
 
 
 def generate_map(width: int, height: int, *, seed: int = 0) -> GridMap:
@@ -66,6 +69,65 @@ def create_world(width: int, height: int, *, seed: int = 0) -> tuple[GridMap, li
     """Convenience: map + nodes for a seed."""
     grid = generate_map(width, height, seed=seed)
     return grid, scatter_resource_nodes(grid, seed=seed)
+
+
+def is_walkable(grid: GridMap, x: int, y: int) -> bool:
+    """Whether a pawn can stand on the tile.
+
+    Paper 7 starts with the cheap truth needed before real pathfinding:
+    impossible jobs should be rejected before a pawn spends work-search or path
+    budget on them. For the current terrain set, water is the only blocker.
+    """
+    return grid.in_bounds(x, y) and grid.tile_at(x, y) not in IMPASSABLE_TILES
+
+
+def reachability_regions(grid: GridMap) -> tuple[tuple[int | None, ...], ...]:
+    """Label contiguous walkable regions with stable integer ids.
+
+    Impassable tiles are ``None``. Region ids are deterministic because the
+    flood fill scans tiles top-to-bottom, left-to-right and visits neighbours in
+    a fixed order.
+    """
+    labels: list[list[int | None]] = [[None for _x in range(grid.width)] for _y in range(grid.height)]
+    next_region = 0
+    for y in range(grid.height):
+        for x in range(grid.width):
+            if labels[y][x] is not None or not is_walkable(grid, x, y):
+                continue
+            _fill_region(grid, labels, x, y, next_region)
+            next_region += 1
+    return tuple(tuple(row) for row in labels)
+
+
+def same_reachability_region(
+    grid: GridMap,
+    ax: int,
+    ay: int,
+    bx: int,
+    by: int,
+    *,
+    regions: tuple[tuple[int | None, ...], ...] | None = None,
+) -> bool:
+    """True when two coordinates are in the same walkable flood-fill region."""
+    if not grid.in_bounds(ax, ay) or not grid.in_bounds(bx, by):
+        return False
+    regions = regions or reachability_regions(grid)
+    start = regions[ay][ax]
+    return start is not None and start == regions[by][bx]
+
+
+def _fill_region(grid: GridMap, labels: list[list[int | None]], start_x: int, start_y: int, region_id: int) -> None:
+    queue: deque[tuple[int, int]] = deque([(start_x, start_y)])
+    labels[start_y][start_x] = region_id
+    while queue:
+        x, y = queue.popleft()
+        for nx, ny in ((x + 1, y), (x, y + 1), (x - 1, y), (x, y - 1)):
+            if not grid.in_bounds(nx, ny):
+                continue
+            if labels[ny][nx] is not None or not is_walkable(grid, nx, ny):
+                continue
+            labels[ny][nx] = region_id
+            queue.append((nx, ny))
 
 
 def harvest_node(node: ResourceNode, amount: int) -> int:

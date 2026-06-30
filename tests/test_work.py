@@ -2,8 +2,8 @@
 
 import unittest
 
-from agent_town import buildings, pawns, work
-from agent_town.core import FactionState, JobRef, Pawn
+from agent_town import buildings, pawns, work, world
+from agent_town.core import FactionState, GridMap, JobRef, Pawn
 
 
 def _pawn(pid, skills=None, **kw):
@@ -89,6 +89,20 @@ class SelectionTests(unittest.TestCase):
         work.assign_jobs(state)
 
         self.assertIsNone(p.assignment)
+
+    def test_unreachable_job_is_rejected_before_priority_ranking(self):
+        p = _pawn("p", {"farming": 20, "baking": 20}, x=0, y=0)
+        work.set_priority(p, "baking", 1)
+        work.set_priority(p, "farming", 4)
+        state = _state(buildings_spec=(("farm1", "Farm", 0, 0), ("bake1", "Bakery", 2, 0)), pawn_list=[p])
+        state.grid = GridMap(3, 1, (("grass", world.TILE_WATER, "grass"),))
+
+        work.assign_jobs(state)
+
+        self.assertEqual(p.assignment, JobRef("farm1", "farming"))
+        self.assertTrue(
+            any(r.building_id == "bake1" and r.reason == "unreachable" for r in state.work_decisions["p"].rejected)
+        )
 
 
 class ReservationTests(unittest.TestCase):

@@ -32,7 +32,7 @@ skill so a fresh civilization staffs itself sensibly with zero micro.
 
 from __future__ import annotations
 
-from . import pawns, schedule
+from . import pawns, schedule, world
 from .core import (
     Building,
     FactionState,
@@ -88,6 +88,8 @@ DERIVED_UNSKILLED_PRIORITY = 4
 
 MAX_SKILL = 20  # RimWorld skill cap, used to normalise skill_fit
 MAX_REJECTED = 4  # how many rejected candidates to keep in the decision trace
+
+ReachabilityRegions = tuple[tuple[int | None, ...], ...]
 
 
 # --- Priorities --------------------------------------------------------------
@@ -219,7 +221,12 @@ def _why_lost(state: FactionState, pawn: Pawn, winner, candidate) -> str:
 
 
 def _scan_candidates(
-    state: FactionState, pawn: Pawn, reserved: dict[str, int], *, exclude_id: str | None = None
+    state: FactionState,
+    pawn: Pawn,
+    reserved: dict[str, int],
+    *,
+    regions: ReachabilityRegions | None = None,
+    exclude_id: str | None = None,
 ) -> tuple[list[tuple[Building, str, int]], list[RejectedJob]]:
     """Split the pawn's possible jobs into ranked legal ones and rejected ones.
 
@@ -236,6 +243,9 @@ def _scan_candidates(
         work_type = building_work_type(building)
         if work_type is None:
             continue
+        if not _reachable_from_pawn(state, pawn, building, regions):
+            illegal.append(RejectedJob(building.id, work_type, "unreachable"))
+            continue
         priority = default_priority(pawn, work_type)
         if priority <= WORK_PRIORITY_DISABLED:
             illegal.append(RejectedJob(building.id, work_type, "work disabled"))
@@ -248,8 +258,17 @@ def _scan_candidates(
     return legal, illegal
 
 
+def _reachable_from_pawn(
+    state: FactionState, pawn: Pawn, building: Building, regions: ReachabilityRegions | None = None
+) -> bool:
+    """Cheap Paper 7 reachability prefilter before ranking/pathing work."""
+    if state.grid is None:
+        return True
+    return world.same_reachability_region(state.grid, pawn.x, pawn.y, building.x, building.y, regions=regions)
+
+
 def select_job(
-    state: FactionState, pawn: Pawn, reserved: dict[str, int]
+    state: FactionState, pawn: Pawn, reserved: dict[str, int], regions: ReachabilityRegions | None = None
 ) -> tuple[Building | None, str | None, list[RejectedJob]]:
     """Choose the pawn's best legal normal-work job, with the rejected trace.
 
@@ -257,7 +276,7 @@ def select_job(
     and an ordered list of rejected candidates: legal runner-ups first (with the
     reason they lost), then illegal ones (disabled / reserved).
     """
-    legal, illegal = _scan_candidates(state, pawn, reserved)
+    legal, illegal = _scan_candidates(state, pawn, reserved, regions=regions)
     if not legal:
         return None, None, illegal[:MAX_REJECTED]
     winner = legal[0]
@@ -265,7 +284,9 @@ def select_job(
     return winner[0], winner[1], (runner_ups + illegal)[:MAX_REJECTED]
 
 
-def _kept_rejected(state: FactionState, pawn: Pawn, reserved: dict[str, int]) -> list[RejectedJob]:
+def _kept_rejected(
+    state: FactionState, pawn: Pawn, reserved: dict[str, int], regions: ReachabilityRegions | None = None
+) -> list[RejectedJob]:
     """The jobs a pawn holding an assignment is passing over, for the trace."""
     assignment = pawn.assignment
     if assignment is None:
@@ -273,7 +294,7 @@ def _kept_rejected(state: FactionState, pawn: Pawn, reserved: dict[str, int]) ->
     building = state.buildings.get(assignment.building_id)
     work_type = building_work_type(building) if building is not None else assignment.role
     winner = (building, work_type, default_priority(pawn, work_type) if work_type else 0)
-    legal, illegal = _scan_candidates(state, pawn, reserved, exclude_id=assignment.building_id)
+    legal, illegal = _scan_candidates(state, pawn, reserved, regions=regions, exclude_id=assignment.building_id)
     runner_ups = [RejectedJob(b.id, wt, _why_lost(state, pawn, winner, (b, wt, prio))) for b, wt, prio in legal]
     return (runner_ups + illegal)[:MAX_REJECTED]
 
@@ -285,15 +306,20 @@ def _matches(assignment: JobRef | None, forced: JobRef) -> bool:
     return assignment is not None and assignment.building_id == forced.building_id
 
 
-def _forced_building_ok(state: FactionState, pawn: Pawn) -> bool:
+def _forced_building_ok(state: FactionState, pawn: Pawn, regions: ReachabilityRegions | None = None) -> bool:
     forced = pawn.forced_assignment
     if forced is None:
         return False
     building = state.buildings.get(forced.building_id)
-    return building is not None and building.built and building.recipe is not None
+    return (
+        building is not None
+        and building.built
+        and building.recipe is not None
+        and _reachable_from_pawn(state, pawn, building, regions)
+    )
 
 
-def _assignment_legal(state: FactionState, pawn: Pawn) -> bool:
+def _assignment_legal(state: FactionState, pawn: Pawn, regions: ReachabilityRegions | None = None) -> bool:
     """Whether a pawn's current (non-forced) assignment is still valid to hold."""
     assignment = pawn.assignment
     if assignment is None:
@@ -305,6 +331,8 @@ def _assignment_legal(state: FactionState, pawn: Pawn) -> bool:
         return False
     work_type = building_work_type(building)
     if work_type is None:
+        return False
+    if not _reachable_from_pawn(state, pawn, building, regions):
         return False
     # A work type the governor/player just disabled releases the pawn to replan.
     return default_priority(pawn, work_type) > WORK_PRIORITY_DISABLED
@@ -363,6 +391,8 @@ def assign_jobs(state: FactionState) -> dict[str, WorkDecision]:
     the same state always produces the same assignments - the integration
     survival oracle and the LLM-vs-fallback equality proof both depend on it.
     """
+    regions = world.reachability_regions(state.grid) if state.grid is not None else None
+
     # Phase A: release assignments that are illegal now or held by broken pawns.
     for pawn in state.pawns.values():
         if pawn.assignment is None:
@@ -370,10 +400,10 @@ def assign_jobs(state: FactionState) -> dict[str, WorkDecision]:
         if _is_broken(pawn):
             _release(state, pawn)
         elif pawn.forced_assignment is not None and _matches(pawn.assignment, pawn.forced_assignment):
-            if not _forced_building_ok(state, pawn):
+            if not _forced_building_ok(state, pawn, regions):
                 _release(state, pawn)
                 pawn.forced_assignment = None
-        elif not _assignment_legal(state, pawn):
+        elif not _assignment_legal(state, pawn, regions):
             _release(state, pawn)
 
     # Phase B: reserve the slots pawns are still holding.
@@ -389,7 +419,7 @@ def assign_jobs(state: FactionState) -> dict[str, WorkDecision]:
         key=lambda p: p.id,
     )
     for pawn in needers:
-        building, work_type, rejected = select_job(state, pawn, reserved)
+        building, work_type, rejected = select_job(state, pawn, reserved, regions)
         if building is not None:
             _seat(state, pawn, building, work_type, reserved)
             decisions[pawn.id] = WorkDecision(
@@ -430,14 +460,15 @@ def explain(state: FactionState, pawn_id: str) -> WorkDecision | None:
     if pawn is None:
         return None
     reserved = _current_reservations(state)
+    regions = world.reachability_regions(state.grid) if state.grid is not None else None
     if _is_broken(pawn):
         return WorkDecision(LANE_HARD_STATE, None, None, f"Mental break ({pawn.state})")
     if pawn.assignment is not None:
         decision = _kept_decision(state, pawn, reserved)
-        decision.rejected = _kept_rejected(state, pawn, reserved)
+        decision.rejected = _kept_rejected(state, pawn, reserved, regions)
         return decision
     # Idle pawn: explain what it would take, or why nothing is legal.
-    building, work_type, rejected = select_job(state, pawn, reserved)
+    building, work_type, rejected = select_job(state, pawn, reserved, regions)
     if building is None:
         return WorkDecision(LANE_IDLE, None, None, "No legal job available", rejected)
     return WorkDecision(

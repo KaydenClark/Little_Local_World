@@ -90,8 +90,10 @@ exists. The synthesis paper (`research_papers/8.little-local-world-research-synt
 Paper 6 governor observer UI is now also live: a compact Governor card shows
 current plan, phase, bottleneck, confidence, last policy change, and top
 exception; the right-edge exception stack sorts active governor exceptions by
-severity/actionability with likely causes. The synthesis paper now points next
-to **Paper 7 scale foundations** before deeper economy. Per user direction
+severity/actionability with likely causes. Paper 7 scale foundations are also
+live: walkable-region ids reject unreachable jobs before ranking, and the engine
+reports its deterministic command/update phase order. The synthesis paper now
+points next to deeper Paper 4 economy before comfort chains. Per user direction
 (2026-06-29) lethal starvation (build-1 step 5.4) stays deferred behind the
 visible autonomy/readability work; Build-1 ships with hunger mood pressure as
 its stakes.
@@ -283,8 +285,16 @@ from the research-backed queue below, keeping every slice small and verified.
    policy actions: current plan, phase, bottleneck, confidence, last reallocation,
    and top exception. A right-edge exception stack shows active governor
    exceptions by severity/actionability with likely causes. It stays observer
-   UI, not a policy editor. **Next code task is Paper 7 scale foundations:
-   reachability `region_id` plus deterministic command/update phases.**
+   UI, not a policy editor. Paper 7 scale foundations followed this as item 10.
+
+10. **(done) Paper 7 scale foundations.** `world.reachability_regions` labels
+    current walkable tiles with deterministic region ids, water is the first
+    impassable terrain, and `work.py` rejects cross-region jobs as
+    `unreachable` before priority ranking. `engine.ENGINE_PHASES` and
+    `StepResult.phases_executed` expose the stable command/update order. Dirty
+    topology recomputation, job indexes, cadence buckets, and path abstraction
+    stay deferred until maps or populations grow. **Next code task is deeper
+    Paper 4 economy: district storage/market pressure before comfort chains.**
 
 ## Research Paper Implementation Queue
 
@@ -312,8 +322,9 @@ build order. Work the queue in this order, not in paper-number order:
    exists.
 5. **Governor card + exception stack (done).** Paper 6. Current plan, bottleneck,
    confidence, last reallocation, top exception and its likely cause are visible.
-6. **Scale foundations (next code task).** Paper 7. Reachability `region_id` and deterministic
-   command/update phases - cheap scaffolding added before population grows.
+6. **Scale foundations (done).** Paper 7. Reachability region ids and
+   deterministic command/update phases are live as cheap scaffolding before
+   population grows.
 7. **Deeper economy.** Paper 4 (remainder). District storage, market/service
    delivery, repair debt, wages -> spending -> taxes, reserve-aware trade.
 
@@ -379,9 +390,7 @@ material; the numbered order above is what to build.
    - Current status: the first essential economy slice is implemented: Water
      Well production, water reserve/need, thirst mood pressure, Civ readout/HUD
      chip, water days-of-cover, and a `low_water` governor exception.
-   - Next code task: keep deeper economy paused until Paper 7's first scale
-     foundations are in. Then add district storage/market pressure before comfort
-     chains.
+   - Next code task: add district storage/market pressure before comfort chains.
    - Tests: water days-of-cover is covered; summer/seasonal demand hook,
      storage-full blocked production, repair input reservation, and wage ->
      spending -> tax accounting remain future tests once those loops start.
@@ -417,15 +426,16 @@ material; the numbered order above is what to build.
      observer dashboards.
 7. **Scale architecture intake** -
    `research_papers/7.scalable-sim-report.md`
-   - Current status: the benchmark exists and the product target is ~1000 pawns
-     per civilization, but current gameplay remains exact and small-population.
-   - Next code task: add the cheap scale foundations before raising population:
-     reachability `region_id`/dirty topology tracking and deterministic
-     command/update phases for reservations, job claims, path requests, movement,
-     interactions, production, needs, and tax.
-   - Tests: unreachable jobs are rejected before pathfinding; region IDs update
-     deterministically after a topology change; identical command batches produce
-     identical state; benchmark still reports core/context/draw timings.
+   - Current status: the first cheap scale foundations are implemented while
+     gameplay remains exact and small-population. `world.reachability_regions`
+     labels current walkable regions, `work.py` rejects cross-region jobs before
+     priority ranking, and `engine.ENGINE_PHASES` reports the deterministic
+     command/update order.
+   - Next code task: none for Paper 7 until dynamic topology or larger
+     populations are pulled forward. Deeper economy resumes next.
+   - Tests: unreachable jobs are rejected before pathfinding; region IDs are
+     deterministic for the current map; identical setups still produce identical
+     state; benchmark still reports core/context/draw timings.
    - Scale gates: at 16-64 pawns add job candidate indexes and cadence buckets;
      at 64-150 add chunk/HPA-style long routes or shared routes to common sinks;
      at 150-400 add district work packets and path budgets; at 400-1000 add
@@ -565,3 +575,4 @@ Append a row when a task changes durable project state. Use actual results, not 
 | 2026-06-29 23:09 -06:00 | Paper 6 governor card + exception stack on new `codex/governor-card-exception-stack` branch (PR #19 was merged; model gpt-5.5 xhigh; budget metric not readable; `.agent.lock` acquired) | RED `.\.venv\Scripts\python.exe -m unittest tests.test_civilization_view` failed on missing `exception_stack_items`; GREEN `.\.venv\Scripts\python.exe -m unittest tests.test_civilization_view` (33 tests); `.\.venv\Scripts\python.exe -m unittest discover -s tests` (216 tests); `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; `git diff --check`; refreshed and inspected `docs\screenshots\current-state.png` | pass | PR status read: no open PRs; PR #19 was merged cleanly with Mac gate pass. Decision source: Paper 6 "Local AI governor status" / "Suggested Local Agent Town screen layout" plus Paper 8 "Roadmap implication." Added a read-only Governor card (plan, phase, bottleneck, confidence, last reallocation, top exception) and right-edge exception stack sorted by severity/actionability; next code task is Paper 7 scale foundations. |
 | 2026-06-29 23:33 -06:00 | skipped, PR #20 status gate on `codex/governor-card-exception-stack` (branch equal to origin at start; model gpt-5.5 xhigh; `.agent.lock` acquired) | `gh pr view codex/governor-card-exception-stack --json ...` -> PR #20 OPEN/CLEAN, no comments, no reviews, no status checks; `gh pr checks 20 --watch=false` -> no checks reported; `.\.venv\Scripts\python.exe -m unittest discover -s tests` (216 tests); `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; `git diff --check` | skipped | PR status read: PR #20 was not red, green, or merged because GitHub reports no check signal. Decision: do not reuse the Paper 6 branch for Paper 7 and do not open a new branch until the active PR is green or merged; next code task remains Paper 7 scale foundations. |
 | 2026-06-30 00:04 -06:00 | skipped, PR #20 status gate on `codex/governor-card-exception-stack` (branch equal to origin at start; model gpt-5.5 xhigh; `.agent.lock` acquired) | `git fetch origin --prune`; `gh pr view 20 --json ...` -> PR #20 OPEN/CLEAN, one prior automation comment, no reviews, no status checks; `gh pr checks 20 --watch=false` -> no checks reported; `.\.venv\Scripts\python.exe -m unittest discover -s tests` (216 tests); `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; `git diff --check` | skipped | PR status read: PR #20 is still not red, green, or merged because GitHub reports no check signal and no Mac PR status/comment was present. Decision: do not reuse the Paper 6 branch for Paper 7 and do not open a new branch until the active PR is green or merged; next code task remains Paper 7 scale foundations. |
+| 2026-06-30 00:39 -06:00 | Paper 7 scale foundations on new `codex/scale-foundations` branch from updated `origin/main` 47bb44f (model gpt-5.5 xhigh; budget metric not readable; `.agent.lock` acquired) | RED `.\.venv\Scripts\python.exe -m unittest tests.test_world_regions tests.test_work` failed on missing `world.reachability_regions` and unreachable job still choosing `bake1`; RED `.\.venv\Scripts\python.exe -m unittest tests.test_engine.EngineDeterminismTests.test_step_hour_reports_stable_phase_order` failed on missing `StepResult.phases_executed`; GREEN `.\.venv\Scripts\python.exe -m unittest tests.test_engine tests.test_world_regions tests.test_work` (27 tests); `.\.venv\Scripts\python.exe -m unittest discover -s tests` (219 tests); `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; `git diff --check`; `.\.venv\Scripts\python.exe .\scripts\benchmark_scaling.py --pawns 100 500 1000 --steps 20` -> 1000 pawns 37.701 engine ms/hour, 3.050 context ms, 16.076 draw ms | pass | PR status read: PR #20 was MERGED at 2026-06-30T06:27:00Z and open PR list was empty, so a new branch was required. Decision source: Paper 7 "Region/reachability IDs before pathing" and "Deterministic update flow" plus Paper 8 sequence. Shipped deterministic walkable-region ids, `unreachable` work rejection before priority ranking, cached region reuse per assignment pass, and `engine.ENGINE_PHASES` / `StepResult.phases_executed`; dirty topology, job indexes, cadence buckets, and path abstraction remain deferred. |

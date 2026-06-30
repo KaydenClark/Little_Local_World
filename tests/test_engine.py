@@ -89,6 +89,21 @@ class EngineArbiterTests(unittest.TestCase):
 
 
 class EngineDeterminismTests(unittest.TestCase):
+    def test_step_hour_reports_stable_phase_order(self):
+        state = _farm_civilization()
+
+        result = engine.step_hour(state)
+
+        self.assertEqual(result.phases_executed, engine.ENGINE_PHASES)
+        self.assertLess(
+            result.phases_executed.index("needs"),
+            result.phases_executed.index("work_arbitration"),
+        )
+        self.assertLess(
+            result.phases_executed.index("work_arbitration"),
+            result.phases_executed.index("movement"),
+        )
+
     def test_same_setup_same_outcome(self):
         first = _farm_civilization()
         second = _farm_civilization()

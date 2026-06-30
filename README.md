@@ -137,8 +137,7 @@ Ollama can use the same adapter with
 
 - Keep lethal starvation deferred until the malnutrition/death timing slice can
   add status, exceptions, viewer surfacing, and food-chain urgency together.
-- Add the first Paper 7 scale foundations before larger populations:
-  reachability-region rejection and deterministic update phases.
 - Add district storage/market pressure before comfort chains.
 - Add save state once the civilization persistence model is designed.
-- Add pathfinding benchmarks before larger maps or blocked terrain.
+- Add dirty reachability recomputation and pathfinding benchmarks before larger
+  maps or dynamic blocked terrain.

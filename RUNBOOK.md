@@ -221,7 +221,7 @@ Expected result:
 Scaling benchmark:
 
 ```powershell
-.\.venv\Scripts\python.exe .\scripts\benchmark_scaling.py --agents 100 500 1000
+.\.venv\Scripts\python.exe .\scripts\benchmark_scaling.py --pawns 100 500 1000
 ```
 
 Expected result:
@@ -232,8 +232,9 @@ Expected result:
 Scale interpretation from `research_papers/7.scalable-sim-report.md`:
 
 - At about 12 pawns, keep player-visible truth exact.
-- Before raising default population, add reachability-region rejection and
-  deterministic update phases.
+- Before raising default population, keep reachability-region rejection and the
+  deterministic `engine.ENGINE_PHASES` surface green.
+- Add dirty-region recomputation only when dynamic topology exists.
 - Around 16 to 64 pawns, add job candidate indexes and cadence buckets.
 - Around 64 to 150 pawns, add long-route abstraction or shared routes for common
   sinks before relying on exact per-pawn paths.

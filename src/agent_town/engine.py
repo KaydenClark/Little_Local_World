@@ -56,6 +56,18 @@ CONSTRUCTION_WORK_PER_HOUR = 1.0
 PAWN_MOVE_TILES_PER_HOUR = 2
 BUILDING_FRONT_OFFSET = 2
 
+ENGINE_PHASES = (
+    "governor_commands",
+    "construction_placements",
+    "construction_work",
+    "needs",
+    "work_arbitration",
+    "movement",
+    "production",
+    "clock",
+    "tax",
+)
+
 
 @dataclass(frozen=True)
 class StepResult:
@@ -65,31 +77,43 @@ class StepResult:
     buildings_completed: tuple[str, ...] = ()
     days_rolled: int = 0
     tax_collected: int = 0
+    phases_executed: tuple[str, ...] = ()
 
 
 def step_hour(state: FactionState, gov: governor_mod.Governor | None = None) -> StepResult:
     """Advance the civilization by one simulated hour under ``gov`` (fallback default)."""
     gov = gov or governor_mod.FallbackGovernor()
+    phases: list[str] = []
 
     actions = gov.decide(governor_mod.build_context(state))
     applied = governor_mod.apply_actions(state, actions)
+    phases.append("governor_commands")
 
     completed = _realize_placements(state, applied)
+    phases.append("construction_placements")
     completed.extend(_advance_construction(state))
+    phases.append("construction_work")
 
     _advance_pawn_needs(state)
+    phases.append("needs")
     work.assign_jobs(state)
+    phases.append("work_arbitration")
     _advance_pawn_activity(state)
+    phases.append("movement")
     economy.production_tick(state)
+    phases.append("production")
 
     days_rolled = schedule.advance_clock(state, 1)
+    phases.append("clock")
     tax_collected = economy.apply_daily_tax(state) if days_rolled else 0
+    phases.append("tax")
 
     return StepResult(
         actions_applied=tuple(applied),
         buildings_completed=tuple(completed),
         days_rolled=days_rolled,
         tax_collected=tax_collected,
+        phases_executed=tuple(phases),
     )
 
 

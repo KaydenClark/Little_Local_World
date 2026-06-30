@@ -198,11 +198,10 @@ Current research inputs, in implementation order:
    synthesis and the sequencing authority over Papers 1-7. It collapses them into
    one product rule, *make autonomous causality visible*, and one strict build
    order: food (done) -> work priorities + reservations (done) -> water (done)
-   -> map readability (done) -> governor card (done) -> scale foundations ->
-   deeper economy. The next code task after the governor observer slice is the
-   first Paper 7 scale foundation: reachability-region rejection and deterministic
-   command/update phases. Lethal starvation and deeper economy remain deferred
-   behind the visible autonomy loop.
+   -> map readability (done) -> governor card (done) -> scale foundations
+   (done) -> deeper economy. The next code task is the remainder of Paper 4's
+   deeper economy: district storage/market pressure before comfort chains.
+   Lethal starvation remains deferred behind the visible autonomy loop.
 
 When these papers conflict with current implementation, the conflict becomes a
 roadmap task instead of being silently folded into docs. Paper 8 sets the order
@@ -217,12 +216,13 @@ inventory transfers, short-range movement, health/death, scarce-resource
 ownership, construction completion, and deterministic event order. Even at that
 scale, build two low-cost foundations early:
 
-- **Reachability regions.** Every walkable tile eventually gets a `region_id`,
-  with dirty-region recomputation when topology changes, so impossible jobs can
-  be rejected before pathfinding.
-- **Deterministic phases.** Job claims, reservations, path requests, movement,
-  interactions, production, needs, and tax advance in stable ordered phases so
-  later batching does not break replayability.
+- **Reachability regions.** `world.reachability_regions` labels every current
+  walkable tile with a deterministic region id, and `work.py` rejects jobs in a
+  different region before ranking. Dirty-region recomputation is deferred until
+  dynamic topology exists.
+- **Deterministic phases.** `engine.ENGINE_PHASES` and
+  `StepResult.phases_executed` expose the stable command/update order so later
+  batching does not break replayability.
 
 Scale thresholds are design guidance, not source claims:
 
@@ -712,6 +712,7 @@ Rules:
 | Build-2 water slice shipped as the first essential economy extension | `Good.WATER`, `NEED_WATER`, Water Well production, one-unit drinking, thirst thoughts, Civ Water readout, HUD stockpile chip, water work priority, days-of-cover summary, and `low_water` governor exception make the first Townsmen essential conserved and visible. District buffers, service queues, seasonal demand, markets, wages, and storage caps remain deferred | 2026-06-29 build-2 water slice |
 | Paper 5 current-systems readability shipped before the governor card | The viewer now separates hover from selection, draws danger rings above selection, shows `work.LANE_IDLE` pawns with an overhead `!`, and renders construction sites as ghosts with footprint outlines and two-stage material/work progress. Storage 80/95% badges remain deferred until stockpile capacity exists, because uncapped totals cannot produce truthful pressure | 2026-06-29 Paper 5 current-systems slice |
 | Paper 6 governor observer shell shipped | The viewer derives a read-only Governor card from current exceptions, scheduler status, and recent policy actions: plan, phase, bottleneck, confidence, last reallocation, and top exception. A right-edge exception stack sorts active governor exceptions by severity and actionability. It is diagnosis-first UI, not a micromanagement surface; decision-log drill-down and policy editors remain deferred | 2026-06-29 Paper 6 observer UI slice |
+| Paper 7 scale foundations shipped | `world.py` now computes deterministic walkable-region ids, water is the first impassable terrain, `work.py` rejects cross-region jobs as `unreachable` before priority ranking, and `engine.py` exposes the stable phase order through `ENGINE_PHASES`/`StepResult.phases_executed`. Dirty topology, job indexes, cadence buckets, and path abstraction remain deferred until maps or populations grow | 2026-06-30 Paper 7 scale foundation slice |
 
 ## Health Criteria
 
