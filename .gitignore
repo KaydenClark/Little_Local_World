@@ -12,6 +12,7 @@ dist/
 *.log
 *.db
 *.sqlite
+logs/
 .env
 .env.*
 

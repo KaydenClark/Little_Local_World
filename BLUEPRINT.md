@@ -138,6 +138,9 @@ Architecture constraints (hard):
   in `llm.py`.
 - The Governor sets policy only; it does not act for individual pawns tick by
   tick.
+- Run telemetry is observer-only at the hour boundary. It reads `FactionState`,
+  `StepResult`, and governor status after a step; it must not feed back into the
+  deterministic core.
 - Determinism: same seed plus same policy equals same outcome. The LLM is the
   only nondeterministic layer and must be swappable for the deterministic
   fallback. Mood and mental-break timing use a seeded PRNG keyed to the civilization
@@ -252,6 +255,8 @@ src\agent_town\
   schedule.py        <- schedule templates, day clock           (Track B)
   governor.py        <- context builder + fallback governor     (Track B)
   llm.py             <- adapter, extended for the governor       (Track B)
+  health.py          <- invariant checks + run health summaries  (observer)
+  telemetry.py       <- JSONL/ring-buffer run telemetry          (observer)
   civilization_view.py    <- Pygame viewer for civilization state            (integration)
 tests\               <- unittest, headless, per module
 ```
@@ -677,6 +682,8 @@ Rules:
   persistence without explicit user approval.
 - Do not commit `.venv`, logs, databases, private exports, tokens, or generated
   dumps.
+- Generated run logs live under `logs/` and are local proof artifacts, not source
+  files.
 - Local LLM use stays local-only. `AGENT_TOWN_LLM_MODEL` overrides discovery,
   and `AGENT_TOWN_LLM_AUTO_DISCOVER=0` disables startup discovery for
   deterministic non-LLM runs.
@@ -707,6 +714,7 @@ Rules:
 | Scale work starts with reachability regions and deterministic phases, not a new engine | Paper 7 says exactness should stay near player-visible truth while job search, long movement, update cadence, and overlays become indexed, batched, or approximate as population grows | 2026-06-29 research intake |
 | Adopt the Paper 8 synthesis build order; work priorities + reservations is the confirmed next slice | The seven source papers collapse into one rule - make autonomous causality visible - and one build order. After the food correction the highest-leverage step is the lane-based work-priority arbiter with reservations and `set_work_priority` (Paper 3), where pawns start living in the town instead of being hourly counters; lethal starvation and deeper economy stay deferred behind the visible autonomy loop | 2026-06-29 research synthesis + user direction |
 | Build-2 step 1 shipped: pawns self-select work via `work.py`; the governor stops routine `assign_pawn` | A deterministic lane arbiter (forced -> hard-state -> self-care -> normal work -> idle; medical/emergency are ordered stubs) does staffing by manual priority -> work-type order -> distance -> skill, with `job_slots`-aware reservations (no double-claim), no-thrash job retention, and a `work.explain` decision trace. `set_work_priority` is the governor/LLM lever and the player's clickable Work grid; `assign_pawn` becomes the forced override. Self-care is a lane label only in build 1 (eating stays instant); job-candidate indexes (Paper 7) and emergency/medical content are deferred. Both survival oracles (I1 3-day, LLM==fallback) stay green | 2026-06-29 build-2 step 1 |
+| Run monitoring is a first-class observer surface | Structured JSONL logs, pure health summaries, analyzer gates, and the in-game History feed make autonomous causality inspectable without changing engine determinism. Logging is boundary-only and generated logs remain local/ignored | 2026-06-29 run-log buildout |
 
 ## Health Criteria
 

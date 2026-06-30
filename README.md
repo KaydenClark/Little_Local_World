@@ -17,8 +17,9 @@ the top job it passed over) and the HUD shows an `Idle` count.
 
 The **Work** button opens the RimWorld-style work-priority grid below; click a
 cell to cycle a pawn's priority (1 highest .. 4 lowest, blank disables it) and
-watch the pawn re-route on the next step. The other command buttons (Architect,
-Assign, Research, History, Menu) are still visual placeholders.
+watch the pawn re-route on the next step. The **History** button opens a live
+event feed from the current run log. The other command buttons (Architect,
+Assign, Research, Menu) are still visual placeholders.
 
 ![Work-priority grid](docs/screenshots/work-grid.png)
 
@@ -87,6 +88,7 @@ Launch Local Agent Town.cmd
 - Zoom: mouse wheel, `+`, or `-`.
 - Select pawn: click a pawn or press `Tab`.
 - Local model governor: press `L` to connect or disconnect LM Studio/Ollama.
+- History feed: click `History` in the bottom strip.
 - Quit: `Esc` or `Q`.
 
 ## Optional Local AI
@@ -117,7 +119,9 @@ Ollama can use the same adapter with
 - A lane-based work-priority arbiter: pawns self-select their best legal job
   (manual priority -> work-type order -> skill), never double-claim a slot, and
   expose a decision trace. The Work button opens a clickable priority grid; the
-  rest of the bottom command strip is still placeholder.
+  History button opens the live event feed.
+- Structured JSONL run logs, a live History feed, pure health checks, and
+  `scripts/analyze_run.py` for post-run health reports.
 - CC0/provenance-tracked civilization sprites under `src\agent_town\assets\colony`.
 - A repeatable civilization scaling benchmark for 100, 500, and 1,000 pawns.
 

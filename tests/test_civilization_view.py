@@ -17,9 +17,11 @@ from agent_town.civilization_view import (
     _mood_color,
     _pawn_status_label,
     _top_skills,
+    alert_summary,
     cycle_work_priority,
     find_pawn_at_screen,
     governor_status_line,
+    history_events,
     hud_button_rects,
     idle_pawn_count,
     load_civilization_assets,
@@ -31,6 +33,7 @@ from agent_town.civilization_view import (
 from agent_town.pawns import STATE_SLACKING
 from agent_town.governor import CivilizationDecisionScheduler, FallbackGovernor
 from agent_town.llm import LocalLLMClient
+from agent_town.telemetry import RingBufferSink
 
 
 class CivilizationAssetTests(unittest.TestCase):
@@ -121,6 +124,7 @@ class WorkGridTests(unittest.TestCase):
     def test_work_button_rect_exists_for_toggle(self):
         rects = hud_button_rects(900, 600)
         self.assertIn("Work", rects)
+        self.assertIn("History", rects)
 
     def test_idle_pawn_count_after_arbiter_runs(self):
         state = civilization.create_default_civilization()
@@ -174,6 +178,55 @@ class GovernorStatusLineTests(unittest.TestCase):
         text, _color = governor_status_line(sched)
         self.assertIn("press L", text)
         sched.shutdown(wait=True)
+
+
+class HistoryFeedTests(unittest.TestCase):
+    def setUp(self):
+        pygame.display.init()
+        pygame.font.init()
+        pygame.display.set_mode((64, 64))
+
+    def test_history_events_filter_ring_buffer_records(self):
+        sink = RingBufferSink(maxlen=5)
+        sink.record({"type": "snapshot", "day": 0})
+        sink.record({"type": "event", "day": 0, "hour": 8, "severity": "warn", "kind": "mass_idle", "text": "Idle spike"})
+
+        self.assertEqual([event["kind"] for event in history_events(sink.records)], ["mass_idle"])
+
+    def test_alert_summary_reflects_seeded_critical_event(self):
+        records = [
+            {"type": "event", "severity": "warn", "kind": "mass_idle"},
+            {"type": "event", "severity": "critical", "kind": "invariant_violation"},
+        ]
+
+        self.assertEqual(alert_summary(records), ("critical", 2))
+
+    def test_render_history_panel_from_ring_buffer_does_not_crash(self):
+        assets = load_civilization_assets()
+        font = pygame.font.Font(None, 16)
+        state = civilization.create_default_civilization()
+        sink = RingBufferSink(maxlen=5)
+        sink.record(
+            {
+                "type": "event",
+                "day": 0,
+                "hour": 8,
+                "severity": "critical",
+                "kind": "invariant_violation",
+                "text": "Invariant violation",
+            }
+        )
+        surface = pygame.Surface((state.grid.width * 25 + 24 + INSPECTOR_WIDTH, state.grid.height * 25 + 200))
+
+        render_civilization(
+            surface,
+            state,
+            assets,
+            font,
+            (12, 12),
+            show_history=True,
+            history_records=sink.records,
+        )
 
 
 class CameraTests(unittest.TestCase):
@@ -230,6 +283,14 @@ class CivilizationViewerSmokeTests(unittest.TestCase):
         viewer = CivilizationViewer(smoke_test=True, governor=gov)
         viewer.run()
         self.assertGreater(gov.calls, 0)
+
+    def test_history_button_toggles_history_panel(self):
+        viewer = CivilizationViewer(smoke_test=True)
+        button = hud_button_rects(viewer.screen.get_width(), viewer.screen.get_height())["History"]
+
+        viewer._handle_click(button.center)
+
+        self.assertTrue(viewer.show_history)
 
     def test_parse_args_smoke_flag(self):
         self.assertFalse(parse_args([]).smoke_test)
