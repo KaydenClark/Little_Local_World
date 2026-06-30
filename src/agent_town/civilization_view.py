@@ -21,9 +21,17 @@ from dataclasses import dataclass, field
 
 import pygame
 
-from . import economy, engine, health, mood, telemetry, work
+from . import buildings, economy, engine, health, mood, telemetry, work
 from .assets import CivilizationAssetManifest, load_civilization_manifest
-from .core import FactionState, Good, NEED_FOOD, NEED_RECREATION, NEED_REST, NEED_WATER
+from .core import (
+    ConstructionSite,
+    FactionState,
+    Good,
+    NEED_FOOD,
+    NEED_RECREATION,
+    NEED_REST,
+    NEED_WATER,
+)
 from .civilization import create_default_civilization
 from .governor import (
     GOV_DISABLED,
@@ -63,6 +71,11 @@ INSPECTOR_BORDER = PANEL_BORDER
 INSPECTOR_TEXT = (222, 228, 216)
 INSPECTOR_MUTED = (158, 166, 154)
 SELECTION = (245, 220, 92)
+SELECTION_OUTER = (245, 248, 238)
+HOVER = (255, 212, 92)
+DANGER = (235, 80, 70)
+IDLE_BADGE_BG = (24, 24, 24)
+IDLE_BADGE_ICON = (255, 196, 0)
 NEED_GOOD = (69, 205, 214)
 NEED_WARN = (232, 150, 79)
 NEED_BAD = (214, 84, 73)
@@ -328,6 +341,7 @@ def render_civilization(
     status_line: tuple[str, tuple[int, int, int]] | None = None,
     camera: Camera | None = None,
     selected_pawn_id: str | None = None,
+    hovered_pawn_id: str | None = None,
     show_inspector: bool = False,
     show_work_grid: bool = False,
     show_history: bool = False,
@@ -380,6 +394,9 @@ def render_civilization(
     for node in state.resource_nodes:
         _draw_node(surface, node, assets, camera, ox, oy, base_ts)
 
+    for site in sorted(state.construction_sites.values(), key=lambda s: (s.y, s.x, s.id)):
+        _draw_construction_site(surface, site, assets, font, camera, ox, oy, base_ts)
+
     for building in sorted(state.buildings.values(), key=lambda b: (b.y, b.x, b.id)):
         _draw_building(surface, building, assets, font, camera, ox, oy, base_ts)
 
@@ -395,6 +412,13 @@ def render_civilization(
             oy,
             base_ts,
             selected=pawn.id == selected_pawn_id,
+            hovered=pawn.id == hovered_pawn_id,
+            idle_badge="idle" in _pawn_readability_markers(
+                state,
+                pawn,
+                selected=pawn.id == selected_pawn_id,
+                hovered=pawn.id == hovered_pawn_id,
+            ),
         )
 
     surface.set_clip(previous_clip)
@@ -442,6 +466,63 @@ def _draw_node(surface, node, assets: CivilizationAssets, camera: Camera, ox: in
     pygame.draw.circle(surface, color, (cx, cy), max(4, ts // 3))
 
 
+def _construction_progress(site: ConstructionSite) -> float:
+    """0..1 visible construction progress: materials first, then build work."""
+    required_total = sum(max(0, amount) for amount in site.required.values())
+    if required_total:
+        delivered_total = sum(
+            min(max(0, site.delivered.get(good, 0)), amount)
+            for good, amount in site.required.items()
+        )
+        material_fraction = delivered_total / required_total
+    else:
+        material_fraction = 1.0
+    material_fraction = max(0.0, min(1.0, material_fraction))
+    if material_fraction < 1.0:
+        return material_fraction * 0.5
+
+    total_work = max(0.0, buildings.building_def(site.building_kind).build_work)
+    if total_work <= 0:
+        work_fraction = 1.0
+    else:
+        work_fraction = 1.0 - min(max(site.work_remaining, 0.0), total_work) / total_work
+    return 0.5 + max(0.0, min(1.0, work_fraction)) * 0.5
+
+
+def _draw_construction_site(
+    surface,
+    site: ConstructionSite,
+    assets: CivilizationAssets,
+    font,
+    camera: Camera,
+    ox: int,
+    oy: int,
+    base_ts: int,
+) -> None:
+    sprite = _scale_for_camera(
+        assets.buildings_scaled[BUILDING_SPRITE.get(site.building_kind, DEFAULT_BUILDING_SPRITE)],
+        camera,
+    ).copy()
+    sprite.set_alpha(92)
+    cx, _cy = camera.tile_center_to_screen(site.x, site.y, (ox, oy), base_ts)
+    tile_left, bottom = camera.tile_top_left_to_screen(site.x, site.y + 1, (ox, oy), base_ts)
+    ts = camera.scaled_tile_size(base_ts)
+    footprint = pygame.Rect(tile_left, bottom - ts, ts * BUILDING_TILE_WIDTH, ts)
+    pygame.draw.rect(surface, (10, 12, 12), footprint, 1)
+    pygame.draw.rect(surface, (115, 216, 255), footprint.inflate(-2, -2), 1)
+    surface.blit(sprite, (cx - sprite.get_width() // 2, bottom - sprite.get_height()))
+
+    progress = _construction_progress(site)
+    bar_w = max(24, round(ts * BUILDING_TILE_WIDTH * 0.86))
+    bar_h = max(4, round(4 * camera.zoom))
+    bar = pygame.Rect(cx - bar_w // 2, bottom - sprite.get_height() - 8, bar_w, bar_h)
+    pygame.draw.rect(surface, (8, 10, 10), bar)
+    pygame.draw.rect(surface, (115, 216, 255), (bar.x, bar.y, round(bar.width * progress), bar.height))
+    pygame.draw.rect(surface, (236, 244, 242), bar, 1)
+    if camera.zoom >= 0.85:
+        _draw_label(surface, font, f"{site.building_kind} {round(progress * 100)}%", cx, bar.y - 2)
+
+
 def _draw_building(surface, building, assets: CivilizationAssets, font, camera: Camera, ox: int, oy: int, base_ts: int) -> None:
     sprite = _scale_for_camera(
         assets.buildings_scaled[BUILDING_SPRITE.get(building.kind, DEFAULT_BUILDING_SPRITE)],
@@ -464,6 +545,27 @@ def _pawn_sprite_key(pawn, keys: list[str]) -> str:
     return keys[index % len(keys)]
 
 
+def _pawn_readability_markers(
+    state: FactionState,
+    pawn,
+    *,
+    selected: bool = False,
+    hovered: bool = False,
+) -> tuple[str, ...]:
+    """World-space readability markers in draw-priority order."""
+    markers: list[str] = []
+    decision = state.work_decisions.get(pawn.id)
+    if decision is not None and decision.lane == work.LANE_IDLE:
+        markers.append("idle")
+    if hovered and not selected:
+        markers.append("hover")
+    if selected:
+        markers.append("selection")
+    if pawn.state in (STATE_WANDERING, STATE_SLACKING):
+        markers.append("danger")
+    return tuple(markers)
+
+
 def _draw_pawn(
     surface,
     pawn,
@@ -475,20 +577,39 @@ def _draw_pawn(
     base_ts: int,
     *,
     selected: bool = False,
+    hovered: bool = False,
+    idle_badge: bool = False,
 ) -> None:
     ts = camera.scaled_tile_size(base_ts)
     sprite = _scale_for_camera(assets.pawns_scaled[_pawn_sprite_key(pawn, pawn_keys)], camera)
     cx, cy = camera.tile_center_to_screen(pawn.x, pawn.y, (ox, oy), base_ts)
     top = cy + 5 - sprite.get_height()
-    if pawn.state in (STATE_WANDERING, STATE_SLACKING):
-        pygame.draw.circle(surface, (235, 80, 70), (cx, cy + 2), 12, 2)
+    if hovered and not selected:
+        pygame.draw.circle(surface, HOVER, (cx, cy + 1), max(9, ts // 2), 1)
     if selected:
-        pygame.draw.circle(surface, SELECTION, (cx, cy + 1), max(10, ts // 2), 2)
+        pygame.draw.circle(surface, SELECTION_OUTER, (cx, cy + 1), max(12, ts // 2 + 2), 2)
+        pygame.draw.circle(surface, SELECTION, (cx, cy + 1), max(9, ts // 2 - 1), 1)
+    if pawn.state in (STATE_WANDERING, STATE_SLACKING):
+        pygame.draw.circle(surface, DANGER, (cx, cy + 2), max(12, ts // 2 + 1), 2)
     surface.blit(sprite, (cx - sprite.get_width() // 2, top))
+    if idle_badge:
+        _draw_idle_badge(surface, cx, top, camera)
     # Mood dot above the head keeps mood readable at a glance.
     dot_y = top - 3
     pygame.draw.circle(surface, (20, 24, 20), (cx, dot_y), 4)
     pygame.draw.circle(surface, _mood_color(pawn.mood / 100), (cx, dot_y), 3)
+
+
+def _draw_idle_badge(surface: pygame.Surface, center_x: int, pawn_top: int, camera: Camera) -> None:
+    radius = max(7, round(8 * camera.zoom))
+    cx = center_x + radius + 2
+    cy = pawn_top - radius + 2
+    pygame.draw.circle(surface, IDLE_BADGE_BG, (cx, cy), radius)
+    pygame.draw.circle(surface, IDLE_BADGE_ICON, (cx, cy), radius - 2, 2)
+    top = cy - max(4, round(5 * camera.zoom))
+    bottom = cy + max(1, round(2 * camera.zoom))
+    pygame.draw.line(surface, IDLE_BADGE_ICON, (cx, top), (cx, bottom), max(1, round(2 * camera.zoom)))
+    pygame.draw.circle(surface, IDLE_BADGE_ICON, (cx, cy + radius - 4), max(1, round(2 * camera.zoom)))
 
 
 def find_pawn_at_screen(
@@ -1101,6 +1222,7 @@ class CivilizationViewer:
         self.governor = governor
         self.camera = Camera()
         self.selected_pawn_id = next(iter(self.state.pawns), None)
+        self.hovered_pawn_id: str | None = None
         self.show_work_grid = False
         self.show_history = False
         # Latched alert: worst severity and count of warn/critical events since
@@ -1168,6 +1290,8 @@ class CivilizationViewer:
                 self._toggle_governor()
             elif event.type == pygame.KEYDOWN:
                 self._handle_camera_key(event.key)
+            elif event.type == pygame.MOUSEMOTION:
+                self._update_hover(event.pos)
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 self._handle_click(event.pos)
             elif event.type == pygame.MOUSEWHEEL:
@@ -1246,6 +1370,18 @@ class CivilizationViewer:
             return  # the feed is read-only; swallow clicks over it
         self._select_pawn_at(pos)
 
+    def _update_hover(self, pos: tuple[int, int]) -> None:
+        if self.show_work_grid or self.show_history or not self._map_rect().collidepoint(pos) or self.assets is None:
+            self.hovered_pawn_id = None
+            return
+        self.hovered_pawn_id = find_pawn_at_screen(
+            self.state,
+            pos,
+            self._map_origin(),
+            self.assets.tile_size,
+            self.camera,
+        )
+
     def _select_pawn_at(self, pos: tuple[int, int]) -> None:
         if not self._map_rect().collidepoint(pos) or self.assets is None:
             return
@@ -1311,6 +1447,7 @@ class CivilizationViewer:
             status_line=governor_status_line(self.governor),
             camera=self.camera,
             selected_pawn_id=self.selected_pawn_id,
+            hovered_pawn_id=self.hovered_pawn_id,
             show_inspector=True,
             show_work_grid=self.show_work_grid,
             show_history=self.show_history,

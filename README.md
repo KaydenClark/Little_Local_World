@@ -14,7 +14,9 @@ roster, selected-pawn sheet, readable civilization map, resource HUD, and bottom
 command strip. Pawns now self-select their work through the lane-based arbiter,
 the HUD includes water as the first Build-2 essential, the Civ stats panel shows
 Water, and the selected-pawn sheet has a "Why this job" trace (winning lane,
-reason, and the top job it passed over).
+reason, and the top job it passed over). The map now separates hover from
+selection, shows idle pawns with an overhead badge, and renders construction
+sites as translucent ghosts with progress bars when they exist.
 
 The **Work** button opens the RimWorld-style work-priority grid below; click a
 cell to cycle a pawn's priority (1 highest .. 4 lowest, blank disables it) and
