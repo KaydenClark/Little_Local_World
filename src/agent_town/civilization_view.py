@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 
 import pygame
 
-from . import economy, engine, mood, work
+from . import economy, engine, health, mood, telemetry, work
 from .assets import CivilizationAssetManifest, load_civilization_manifest
 from .core import FactionState, Good, NEED_FOOD, NEED_RECREATION, NEED_REST
 from .civilization import create_default_civilization
@@ -326,6 +326,9 @@ def render_civilization(
     selected_pawn_id: str | None = None,
     show_inspector: bool = False,
     show_work_grid: bool = False,
+    show_history: bool = False,
+    events: list | None = None,
+    alert: tuple[str, int] | None = None,
 ) -> None:
     """Draw the whole civilization (tiles, nodes, buildings, pawns, HUD) onto ``surface``."""
     camera = camera or Camera()
@@ -397,7 +400,17 @@ def render_civilization(
         _draw_inspector(surface, state, font, selected_pawn_id, inspector_rect)
     if show_work_grid:
         _draw_work_grid(surface, state, font, selected_pawn_id, map_rect)
-    _draw_hud(surface, state, font, status_line, work_grid_open=show_work_grid)
+    if show_history:
+        _draw_history_panel(surface, font, events or [], map_rect)
+    _draw_hud(
+        surface,
+        state,
+        font,
+        status_line,
+        work_grid_open=show_work_grid,
+        history_open=show_history,
+        alert=alert,
+    )
 
 
 def _scale_for_camera(sprite: pygame.Surface, camera: Camera) -> pygame.Surface:
@@ -933,6 +946,51 @@ def _draw_work_grid(
         surface.blit(glyph, (rect.centerx - glyph.get_width() // 2, rect.centery - glyph.get_height() // 2))
 
 
+# --- History / event feed (run-log monitoring) ------------------------------
+
+SEVERITY_COLOR = {
+    health.INFO: (150, 170, 158),
+    health.WARN: NEED_WARN,
+    health.CRITICAL: NEED_BAD,
+}
+
+
+def _draw_history_panel(
+    surface: pygame.Surface,
+    font: pygame.font.Font,
+    events: list[dict],
+    map_rect: pygame.Rect,
+) -> None:
+    """Scrolling feed of recent run-log events (newest first), severity-coloured."""
+    width = min(560, map_rect.width - 2 * MARGIN)
+    height = min(map_rect.height - 2 * MARGIN, 30 + 19 * 18 + 12)
+    panel = pygame.Rect(0, 0, width, height)
+    panel.center = map_rect.center
+
+    backdrop = pygame.Surface((map_rect.width, map_rect.height), pygame.SRCALPHA)
+    backdrop.fill((6, 8, 9, 150))
+    surface.blit(backdrop, map_rect.topleft)
+    pygame.draw.rect(surface, PANEL_BG, panel)
+    pygame.draw.rect(surface, PANEL_BORDER, panel, 1)
+
+    _draw_text(surface, font, "History - recent events (newest first)", SELECTION,
+               (panel.x + WORK_GRID_PAD, panel.y + 8), panel.width - WORK_GRID_PAD * 2)
+    y = panel.y + 32
+    rows = max(1, (panel.bottom - 10 - y) // 18)
+    recent = list(events)[-rows:][::-1]
+    if not recent:
+        _draw_text(surface, font, "No events yet - the town is running clean.", INSPECTOR_MUTED,
+                   (panel.x + WORK_GRID_PAD, y), panel.width - WORK_GRID_PAD * 2)
+        return
+    for event in recent:
+        color = SEVERITY_COLOR.get(event.get("severity"), INSPECTOR_TEXT)
+        stamp = f"d{event.get('day', 0)} {event.get('hour', 0):>2}:00"
+        pygame.draw.circle(surface, color, (panel.x + WORK_GRID_PAD + 4, y + 7), 4)
+        text = f"{stamp}  {event.get('text', event.get('kind', ''))}"
+        _draw_text(surface, font, text, color, (panel.x + WORK_GRID_PAD + 14, y), panel.width - WORK_GRID_PAD * 2 - 14)
+        y += 18
+
+
 def _draw_hud(
     surface: pygame.Surface,
     state: FactionState,
@@ -940,6 +998,8 @@ def _draw_hud(
     status_line: tuple[str, tuple[int, int, int]] | None = None,
     *,
     work_grid_open: bool = False,
+    history_open: bool = False,
+    alert: tuple[str, int] | None = None,
 ) -> None:
     width = surface.get_width()
     top = surface.get_height() - HUD_HEIGHT
@@ -980,13 +1040,33 @@ def _draw_hud(
         surface.blit(glyph, (box.x + 8, box.y + 5))
         x = box.right + 8
 
-    _draw_text(surface, font, text, color, (MARGIN, top + 72), width - MARGIN * 2)
+    alert_severity, alert_count = alert if alert else (None, 0)
+    alert_color = SEVERITY_COLOR.get(alert_severity)
 
+    status_width = width - MARGIN * 2
+    if alert_color is not None:
+        status_width -= 128
+    _draw_text(surface, font, text, color, (MARGIN, top + 72), status_width)
+
+    # Alert chip: lights amber/red and shows the unacknowledged event count when
+    # the latest hours produced warn/critical events.
+    if alert_color is not None:
+        chip = pygame.Rect(width - MARGIN - 116, top + 68, 116, 24)
+        pygame.draw.rect(surface, (35, 30, 28), chip, border_radius=2)
+        pygame.draw.rect(surface, alert_color, chip, 1, border_radius=2)
+        pygame.draw.circle(surface, alert_color, (chip.x + 13, chip.centery), 5)
+        label = f"{alert_count} alert" + ("s" if alert_count != 1 else "")
+        _draw_text(surface, font, label, HUD_TEXT, (chip.x + 26, chip.y + 5), chip.width - 32)
+
+    open_map = {"Work": work_grid_open, "History": history_open}
     for label, button in hud_button_rects(width, surface.get_height()).items():
-        active = label == "Work" and work_grid_open
+        active = open_map.get(label, False)
+        # A closed History button glows in the alert colour when something is wrong.
+        alerting = label == "History" and not active and alert_color is not None
         fill = (101, 75, 43) if active else (31, 42, 45)
+        border = SELECTION if active else (alert_color if alerting else PANEL_BORDER)
         pygame.draw.rect(surface, fill, button)
-        pygame.draw.rect(surface, SELECTION if active else PANEL_BORDER, button, 1)
+        pygame.draw.rect(surface, border, button, 2 if alerting else 1)
         glyph = font.render(label, True, HUD_TEXT)
         surface.blit(glyph, (button.centerx - glyph.get_width() // 2, button.centery - glyph.get_height() // 2))
 
@@ -1018,6 +1098,24 @@ class CivilizationViewer:
         self.camera = Camera()
         self.selected_pawn_id = next(iter(self.state.pawns), None)
         self.show_work_grid = False
+        self.show_history = False
+        # Latched alert: worst severity and count of warn/critical events since
+        # History was last opened, so a one-hour critical does not flash by unseen.
+        self._alert_severity: str | None = None
+        self._alert_count = 0
+        # Run-log telemetry: an events ring backs the live History feed, and (in a
+        # real run) a JSONL file backs offline analysis. A pass-through wrapper
+        # around the governor captures what it proposed each hour. Logging is a
+        # pure observer - it never changes the simulation.
+        self.event_ring = telemetry.RingBufferSink(maxlen=200, types={"event"})
+        log_sinks: list = [self.event_ring]
+        self.log_path = None
+        if not smoke_test:
+            self.log_path = telemetry.default_run_log_path()
+            log_sinks.append(telemetry.JsonlFileSink(self.log_path))
+        self.logger = telemetry.RunLogger(telemetry.MultiSink(log_sinks))
+        self._step_governor = telemetry.TelemetryGovernor(self.governor)
+        self.logger.log_run_start(self.state, self._step_governor, source="viewer")
         self.assets = None  # set after the display mode exists
 
         grid = self.state.grid
@@ -1057,8 +1155,9 @@ class CivilizationViewer:
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_q:
                 self.running = False
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                if self.show_work_grid:
+                if self.show_work_grid or self.show_history:
                     self.show_work_grid = False
+                    self.show_history = False
                 else:
                     self.running = False
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_l:
@@ -1117,9 +1216,19 @@ class CivilizationViewer:
         self.camera.clamp_to_world(world_size, self._map_rect().size)
 
     def _handle_click(self, pos: tuple[int, int]) -> None:
-        # The bottom-strip Work button toggles the grid from anywhere.
-        if hud_button_rects(self.screen.get_width(), self.screen.get_height())["Work"].collidepoint(pos):
+        # The bottom-strip Work / History buttons toggle their panels from
+        # anywhere; the two panels are mutually exclusive (both overlay the map).
+        buttons = hud_button_rects(self.screen.get_width(), self.screen.get_height())
+        if buttons["Work"].collidepoint(pos):
             self.show_work_grid = not self.show_work_grid
+            self.show_history = False
+            return
+        if buttons["History"].collidepoint(pos):
+            self.show_history = not self.show_history
+            self.show_work_grid = False
+            if self.show_history:
+                self._alert_severity = None  # opening the feed acknowledges alerts
+                self._alert_count = 0
             return
         # While the grid is open it is modal over the map: a cell click cycles a
         # priority and the pawn re-routes on the next engine step; other clicks
@@ -1129,6 +1238,8 @@ class CivilizationViewer:
             if cell is not None:
                 cycle_work_priority(self.state, cell[0], cell[1])
             return
+        if self.show_history:
+            return  # the feed is read-only; swallow clicks over it
         self._select_pawn_at(pos)
 
     def _select_pawn_at(self, pos: tuple[int, int]) -> None:
@@ -1155,20 +1266,38 @@ class CivilizationViewer:
             toggle()
 
     def _shutdown_governor(self) -> None:
+        try:
+            self.logger.log_run_end(self.state)
+            self.logger.close()
+        except Exception:
+            pass
         shutdown = getattr(self.governor, "shutdown", None)
         if callable(shutdown):
             shutdown(wait=False)
 
     def _advance(self, dt: float) -> None:
         if self.smoke_test:
-            engine.step_hour(self.state, self.governor)
+            self._step_and_log()
             return
         self._accum += dt
         while self._accum >= STEP_INTERVAL:
-            engine.step_hour(self.state, self.governor)
+            self._step_and_log()
             self._accum -= STEP_INTERVAL
 
+    def _step_and_log(self) -> None:
+        result = engine.step_hour(self.state, self._step_governor)
+        _snap, _decision, events = self.logger.log_hour(self.state, result, self._step_governor)
+        # Latch the worst severity and tally unacknowledged warn/critical events
+        # so the HUD alert persists until the History feed is opened.
+        new_alerts = sum(1 for e in events if e.get("severity") in (health.WARN, health.CRITICAL))
+        if new_alerts:
+            self._alert_count += new_alerts
+            self._alert_severity = health.max_severity(
+                [{"severity": s} for s in (self._alert_severity, self.logger.last_severity) if s]
+            )
+
     def _draw(self) -> None:
+        alert = (self._alert_severity, self._alert_count) if self._alert_severity and not self.show_history else None
         render_civilization(
             self.screen,
             self.state,
@@ -1180,6 +1309,9 @@ class CivilizationViewer:
             selected_pawn_id=self.selected_pawn_id,
             show_inspector=True,
             show_work_grid=self.show_work_grid,
+            show_history=self.show_history,
+            events=list(self.event_ring.records),
+            alert=alert,
         )
         pygame.display.flip()
 

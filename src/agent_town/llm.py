@@ -9,8 +9,12 @@ import urllib.request
 
 
 DEFAULT_BASE_URL = "http://localhost:1234/v1"
-DEFAULT_TIMEOUT = 4.0
-DEFAULT_MAX_TOKENS = 180
+# A 4B local model needs a few seconds to answer and ~300 tokens to emit a full
+# action list; the old 4.0s/180-token ceiling timed out or truncated the JSON on
+# real runs, which the run-log then (correctly) recorded as dropped decisions.
+# Loosening these cuts those false drops without touching the deterministic path.
+DEFAULT_TIMEOUT = 8.0
+DEFAULT_MAX_TOKENS = 320
 DEFAULT_DISCOVERY_TIMEOUT = 0.75
 
 HttpPost = Callable[[dict[str, Any], float], dict[str, Any]]

@@ -103,8 +103,9 @@ Expected result:
 - The HUD shows an `Idle N` count (pawns with no work the arbiter could give).
 - Pressing `L` connects to or disconnects from LM Studio/Ollama while the game is running.
 - The HUD shows local model state: disabled, idle, thinking, offline, or invalid.
-- The `Work` button opens the work-priority grid; the remaining command buttons
-  (`Architect`, `Assign`, `Research`, `History`, `Menu`) are still placeholders.
+- The `Work` button opens the work-priority grid; the `History` button opens a
+  live run-event feed. The remaining command buttons (`Architect`, `Assign`,
+  `Research`, `Menu`) are still placeholders.
 
 Work-priority arbiter manual check (build-2 step 1):
 
@@ -118,6 +119,40 @@ Work-priority arbiter manual check (build-2 step 1):
   count rises if you disable a work type that leaves a pawn with nothing legal.
 - Select that pawn and read the inspector's "Why this job" trace to see the lane
   it won under and the job it rejected (e.g. `Passed over Bakery: reserved/full`).
+
+## Monitoring A Run
+
+Live viewer monitoring:
+
+- Run the app and click `History` in the bottom strip (or press `Esc` to close).
+  The panel shows recent structured events newest-first from an in-memory ring:
+  completed buildings, the food staple depleting, sustained supply stalls, pawn
+  breaks, mass idle, mood dips/collapse, LLM dropped decisions, and invariant
+  violations.
+- When warn/critical events occur the HUD shows a coloured alert chip with a
+  count and the `History` button glows; opening the feed acknowledges them.
+- Live viewer runs also write a JSONL log under `logs\`; these are local proof
+  artifacts and are git-ignored.
+
+Headless run plus analyzer (post-run health gate):
+
+```powershell
+.\.venv\Scripts\python.exe scripts\llm_governor_run.py --hours 24
+.\.venv\Scripts\python.exe scripts\analyze_run.py logs\run-YYYYMMDD-HHMMSS.jsonl --events
+```
+
+Expected result:
+
+- The runner prints each hour's applied actions and the JSONL log path, then a
+  one-line health verdict (`GREEN` / `AMBER` / `RED`).
+- The analyzer prints run metadata (with `run_id`), the health summary, flagged
+  events, and `RESULT: GREEN|AMBER|RED`.
+- The analyzer exits non-zero on a red condition (invariant violation, food
+  staple depletion, mood collapse, or a high dropped-decision rate). An
+  interrupted log with no `run_end` is summarized over completed hours and noted
+  as incomplete rather than failing.
+- A run with no local model loaded logs cleanly as deterministic fallback and is
+  **not** counted as dropped LLM decisions.
 
 ## Test And Build
 
