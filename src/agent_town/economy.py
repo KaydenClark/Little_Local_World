@@ -13,6 +13,7 @@ Phase 0 status: signatures frozen, bodies stubbed. Implemented in A2 and A4.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Callable
 
 from . import mood
@@ -33,6 +34,15 @@ RESEARCH_COSTS = {TECH_EFFICIENT_BAKING: 4}
 LABORATORY_KIND = "Laboratory"
 
 WorkFn = Callable[[Pawn, Recipe, int], float]
+
+
+@dataclass(frozen=True)
+class HouseholdSpendingResult:
+    """Daily household spending through a staffed Market."""
+
+    revenue: int = 0
+    bread_sold: int = 0
+    sales_tax: int = 0
 
 
 def stockpile_add(stockpile: Stockpile, good: Good, amount: int) -> None:
@@ -234,6 +244,43 @@ def apply_market_sales(state: FactionState) -> int:
     return revenue
 
 
+def apply_household_spending(state: FactionState) -> HouseholdSpendingResult:
+    """Let pawns buy one bread each from a staffed Market above the reserve.
+
+    This is the first household-spending slice, not a full private economy:
+    wallets fund purchases, treasury receives Market revenue, and sales tax is
+    collected from remaining buyer wallets when the tax rate produces whole coin.
+    """
+    if not _has_staffed_market(state):
+        return HouseholdSpendingResult()
+
+    bread = state.stockpile.counts.get(Good.BREAD, 0)
+    reserve = len(state.pawns) * MARKET_BREAD_RESERVE_PER_PAWN
+    sellable = max(0, bread - reserve)
+    if sellable <= 0:
+        return HouseholdSpendingResult()
+
+    buyers: list[Pawn] = []
+    for pawn in sorted(state.pawns.values(), key=lambda p: p.id):
+        if sellable <= 0:
+            break
+        if pawn.coin < MARKET_BREAD_PRICE:
+            continue
+        pawn.coin -= MARKET_BREAD_PRICE
+        state.stockpile.remove(Good.BREAD, 1)
+        buyers.append(pawn)
+        sellable -= 1
+
+    revenue = len(buyers) * MARKET_BREAD_PRICE
+    if revenue <= 0:
+        return HouseholdSpendingResult()
+
+    state.coin += revenue
+    sales_tax = _collect_sales_tax(buyers, revenue, state.tax_rate)
+    state.coin += sales_tax
+    return HouseholdSpendingResult(revenue=revenue, bread_sold=len(buyers), sales_tax=sales_tax)
+
+
 def apply_daily_tax(state: FactionState) -> int:
     """Add the day's tax income to ``state.coin``; return the amount added."""
     income = daily_tax_income(state) + _collect_income_tax(state)
@@ -336,6 +383,23 @@ def _collect_income_tax(state: FactionState) -> int:
             continue
         pawn.coin -= tax
         collected += tax
+    return collected
+
+
+def _collect_sales_tax(buyers: list[Pawn], revenue: int, tax_rate: float) -> int:
+    tax_due = int(revenue * max(0.0, tax_rate))
+    if tax_due <= 0:
+        return 0
+    collected = 0
+    for pawn in buyers:
+        if tax_due <= 0:
+            break
+        tax = min(pawn.coin, tax_due)
+        if tax <= 0:
+            continue
+        pawn.coin -= tax
+        collected += tax
+        tax_due -= tax
     return collected
 
 

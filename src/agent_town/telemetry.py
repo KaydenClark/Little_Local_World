@@ -68,6 +68,8 @@ def build_snapshot(state: FactionState, step_result: Any) -> dict[str, Any]:
         "tax_collected": int(getattr(step_result, "tax_collected", 0)),
         "wages_paid": int(getattr(step_result, "wages_paid", 0)),
         "market_revenue": int(getattr(step_result, "market_revenue", 0)),
+        "household_spending": int(getattr(step_result, "household_spending", 0)),
+        "sales_tax_collected": int(getattr(step_result, "sales_tax_collected", 0)),
         "days_rolled": int(getattr(step_result, "days_rolled", 0)),
     }
 
@@ -240,6 +242,8 @@ class _EmptyStep:
     tax_collected = 0
     wages_paid = 0
     market_revenue = 0
+    household_spending = 0
+    sales_tax_collected = 0
 
 
 class RunLogger:

@@ -78,6 +78,48 @@ class MarketLoopTests(unittest.TestCase):
         self.assertEqual(state.coin, 0)
         self.assertEqual(state.stockpile.counts[Good.BREAD], 10)
 
+    def test_households_buy_bread_and_pay_sales_tax_at_staffed_market(self):
+        market = buildings.make_building("Market", 0, 0, building_id="market1")
+        merchant = worker("merchant")
+        buyer = worker("buyer", "farming")
+        market.staffed_by.append(merchant.id)
+        buyer.coin = 5
+        state = FactionState(
+            tax_rate=1.0,
+            buildings={market.id: market},
+            pawns={merchant.id: merchant, buyer.id: buyer},
+            stockpile=Stockpile({Good.BREAD: 14}),
+        )
+
+        result = economy.apply_household_spending(state)
+
+        self.assertEqual(result.bread_sold, 1)
+        self.assertEqual(result.revenue, 1)
+        self.assertEqual(result.sales_tax, 1)
+        self.assertEqual(state.coin, 2)
+        self.assertEqual(buyer.coin, 3)
+        self.assertEqual(state.stockpile.counts[Good.BREAD], 13)
+
+    def test_household_spending_preserves_population_bread_reserve(self):
+        market = buildings.make_building("Market", 0, 0, building_id="market1")
+        merchant = worker("merchant")
+        buyer = worker("buyer", "farming")
+        market.staffed_by.append(merchant.id)
+        buyer.coin = 5
+        state = FactionState(
+            buildings={market.id: market},
+            pawns={merchant.id: merchant, buyer.id: buyer},
+            stockpile=Stockpile({Good.BREAD: 12}),
+        )
+
+        result = economy.apply_household_spending(state)
+
+        self.assertEqual(result.bread_sold, 0)
+        self.assertEqual(result.revenue, 0)
+        self.assertEqual(state.coin, 0)
+        self.assertEqual(buyer.coin, 5)
+        self.assertEqual(state.stockpile.counts[Good.BREAD], 12)
+
 
 class EngineMoneyLoopTests(unittest.TestCase):
     def test_day_rollover_reports_wages_and_market_revenue(self):
@@ -101,7 +143,9 @@ class EngineMoneyLoopTests(unittest.TestCase):
 
         self.assertEqual(result.days_rolled, 1)
         self.assertEqual(result.wages_paid, 2)
-        self.assertEqual(result.market_revenue, 4)
+        self.assertEqual(result.market_revenue, 2)
+        self.assertEqual(result.household_spending, 2)
+        self.assertEqual(result.sales_tax_collected, 0)
         self.assertEqual(state.coin, 7)
 
 

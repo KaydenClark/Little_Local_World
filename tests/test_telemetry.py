@@ -66,7 +66,8 @@ class BuildSnapshotTests(unittest.TestCase):
         snap = telemetry.build_snapshot(state, result)
         for key in ("day", "hour", "population", "avg_mood", "needs", "coin",
                     "stockpile", "idle", "broken", "broken_pawn_ids", "staffed",
-                    "construction", "wages_paid", "market_revenue"):
+                    "construction", "wages_paid", "market_revenue",
+                    "household_spending", "sales_tax_collected"):
             self.assertIn(key, snap)
         self.assertNotIn("_llm_offline", snap)  # no internal-field leakage
 

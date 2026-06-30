@@ -70,6 +70,8 @@ class StepResult:
     tax_collected: int = 0
     wages_paid: int = 0
     market_revenue: int = 0
+    household_spending: int = 0
+    sales_tax_collected: int = 0
 
 
 def step_hour(state: FactionState, gov: governor_mod.Governor | None = None) -> StepResult:
@@ -91,11 +93,16 @@ def step_hour(state: FactionState, gov: governor_mod.Governor | None = None) -> 
     days_rolled = schedule.advance_clock(state, 1)
     wages_paid = 0
     market_revenue = 0
+    household_spending = 0
+    sales_tax_collected = 0
     tax_collected = 0
     if days_rolled:
         wages_paid = economy.pay_daily_wages(state)
+        spending = economy.apply_household_spending(state)
+        household_spending = spending.revenue
+        sales_tax_collected = spending.sales_tax
         market_revenue = economy.apply_market_sales(state)
-        tax_collected = economy.apply_daily_tax(state)
+        tax_collected = sales_tax_collected + economy.apply_daily_tax(state)
 
     return StepResult(
         actions_applied=tuple(applied),
@@ -105,6 +112,8 @@ def step_hour(state: FactionState, gov: governor_mod.Governor | None = None) -> 
         tax_collected=tax_collected,
         wages_paid=wages_paid,
         market_revenue=market_revenue,
+        household_spending=household_spending,
+        sales_tax_collected=sales_tax_collected,
     )
 
 

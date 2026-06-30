@@ -166,6 +166,15 @@ Storage-cap manual check (Paper 4 storage slice):
 - Per-district storage pressure and hauling pressure are still deferred; do not
   fake those before the systems exist.
 
+Money-loop manual check (Paper 4 Market slice):
+
+- Run `.\.venv\Scripts\python.exe -m unittest tests.test_money_loop`.
+- Confirm day rollover pays assigned pawns from treasury, then a staffed Market
+  sells bread to pawn wallets above reserve, records household spending and
+  sales tax, and exports only the remaining bread surplus.
+- District market queues, Tavern comfort spending, repair debt, and
+  reserve-aware imports/exports are intentionally not active yet.
+
 Map readability manual check (Paper 5 current-systems slice):
 
 - Move the mouse across pawns and confirm hover uses a thin amber outline while
