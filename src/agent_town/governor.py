@@ -427,14 +427,15 @@ GOVERNOR_SYSTEM_PROMPT = (
     "kinds and their fields:\n"
     "Mood is on a 0-100 scale (about 50 is neutral; below 35 a pawn starts to "
     "break).\n"
-    "Pawns now choose their own jobs from their work priorities - you tune the "
-    "priorities, you do not place pawns by hand.\n"
+    "Pawns now choose their own jobs from their work priorities - you tune named "
+    "pawns when needed, you do not place pawns by hand.\n"
     "- set_work_priority {group, work_type, level}: group is a pawn_id or \"all\"; "
     "work_type is a skill (water, farming, milling, baking, forestry, "
     "woodworking, mining); level 1 is highest, 4 lowest, 0 disables it. This is your main "
     "lever for steering labour. For now, only tune essential food/water work "
-    "(water, farming, milling, baking), keep it at level 1 or 2, and never disable "
-    "or demote it.\n"
+    "(water, farming, milling, baking), target named pawns, keep it at level 1 or "
+    "2, and never disable or demote it. Do not use group \"all\" for work "
+    "priorities because it erases specialization.\n"
     "- assign_pawn {pawn_id, building_id, role}: a rare FORCED override that pins "
     "one pawn to one building slot. Prefer set_work_priority instead.\n"
     "- set_schedule {group, template}: rest only a named unhappy or breaking pawn; "
@@ -508,9 +509,10 @@ def filter_model_actions(context: dict[str, Any], actions: list[GovernorAction])
 
     Validation still answers "is this action structurally legal?". This answers
     the narrower safety question for model-originated policy: the model may rest
-    named unhappy pawns and raise essential priorities, but it may not churn
-    schedules, boost nonessential work above survival work, or demote the
-    food/water chain below its survival floor.
+    named unhappy pawns and raise essential priorities for named pawns, but it
+    may not churn schedules, flatten the whole town's specializations, boost
+    nonessential work above survival work, or demote the food/water chain below
+    its survival floor.
     """
     return [action for action in actions if _model_action_safe(context, action)]
 
@@ -521,6 +523,8 @@ def _model_action_safe(context: dict[str, Any], action: GovernorAction) -> bool:
             context, action.group
         )
     if action.kind == ACTION_SET_WORK_PRIORITY:
+        if action.group == "all":
+            return False
         if action.work_type not in ESSENTIAL_WORK_TYPES:
             return False
         if action.level is None:

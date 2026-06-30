@@ -44,7 +44,7 @@ def _rest_all_post(payload, timeout):
 
 def _prioritize_farming_post(payload, timeout):
     return _chat_response(
-        {"actions": [{"kind": "set_work_priority", "group": "all", "work_type": "farming", "level": 1}]}
+        {"actions": [{"kind": "set_work_priority", "group": "p1", "work_type": "farming", "level": 1}]}
     )
 
 
@@ -94,7 +94,7 @@ class SchedulerNonBlockingTests(unittest.TestCase):
         sched.shutdown(wait=True)
 
         self.assertIsNotNone(upgraded, "scheduler never surfaced the model's actions")
-        self.assertEqual(upgraded[0].group, "all")
+        self.assertEqual(upgraded[0].group, "p1")
         self.assertEqual(upgraded[0].work_type, "farming")
         self.assertEqual(upgraded[0].level, 1)
         self.assertEqual(sched.status.state, "idle")

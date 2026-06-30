@@ -65,13 +65,13 @@ class LLMGovernorDecideTests(unittest.TestCase):
     def test_uses_model_actions_when_valid(self):
         _state, context = _small_context()
         gov = governor.LLMGovernor(
-            propose=lambda ctx: {"actions": [{"kind": "set_work_priority", "group": "all", "work_type": "farming", "level": 1}]}
+            propose=lambda ctx: {"actions": [{"kind": "set_work_priority", "group": "p1", "work_type": "farming", "level": 1}]}
         )
 
         actions = gov.decide(context)
 
         self.assertEqual([a.kind for a in actions], [ACTION_SET_WORK_PRIORITY])
-        self.assertEqual(actions[0].group, "all")
+        self.assertEqual(actions[0].group, "p1")
         self.assertEqual(actions[0].work_type, "farming")
         self.assertEqual(actions[0].level, 1)
 
@@ -119,6 +119,14 @@ class LLMGovernorDecideTests(unittest.TestCase):
         _state, context = _small_context()
         gov = governor.LLMGovernor(
             propose=lambda ctx: {"actions": [{"kind": "set_work_priority", "group": "all", "work_type": "mining", "level": 1}]}
+        )
+
+        self.assertEqual(gov.decide(context), governor.FallbackGovernor().decide(context))
+
+    def test_unsafe_all_group_essential_priority_defers_to_fallback(self):
+        _state, context = _small_context()
+        gov = governor.LLMGovernor(
+            propose=lambda ctx: {"actions": [{"kind": "set_work_priority", "group": "all", "work_type": "farming", "level": 1}]}
         )
 
         self.assertEqual(gov.decide(context), governor.FallbackGovernor().decide(context))
@@ -222,6 +230,27 @@ class LLMGovernorEngineTests(unittest.TestCase):
             {pid: pawn.schedule for pid, pawn in llm_state.pawns.items()},
             {pid: pawn.schedule for pid, pawn in fb_state.pawns.items()},
         )
+        self.assertEqual(
+            {pid: dict(pawn.work_priorities) for pid, pawn in llm_state.pawns.items()},
+            {pid: dict(pawn.work_priorities) for pid, pawn in fb_state.pawns.items()},
+        )
+
+    def test_all_group_essential_priority_churn_keeps_four_day_fallback_oracle(self):
+        llm_state = civilization.create_default_civilization()
+        fb_state = civilization.create_default_civilization()
+
+        flattening_actions = {
+            "actions": [
+                {"kind": "set_work_priority", "group": "all", "work_type": "water", "level": 1},
+                {"kind": "set_work_priority", "group": "all", "work_type": "farming", "level": 1},
+                {"kind": "set_work_priority", "group": "all", "work_type": "milling", "level": 1},
+                {"kind": "set_work_priority", "group": "all", "work_type": "baking", "level": 1},
+            ]
+        }
+        engine.run(llm_state, governor.LLMGovernor(propose=lambda ctx: flattening_actions), hours=96)
+        engine.run(fb_state, governor.FallbackGovernor(), hours=96)
+
+        self.assertEqual(llm_state.stockpile.counts, fb_state.stockpile.counts)
         self.assertEqual(
             {pid: dict(pawn.work_priorities) for pid, pawn in llm_state.pawns.items()},
             {pid: dict(pawn.work_priorities) for pid, pawn in fb_state.pawns.items()},
