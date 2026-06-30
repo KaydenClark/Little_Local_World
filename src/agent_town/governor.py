@@ -51,6 +51,7 @@ BROKEN_STATES = (pawns.STATE_SLACKING, pawns.STATE_WANDERING)
 RESCHEDULE_KINDS = ("unhappy_pawn", "pawn_breaking", "pawn_break")
 RESTORATIVE_SCHEDULE = "rest"
 ESSENTIAL_WORK_TYPES = frozenset(("water", "farming", "milling", "baking"))
+LOWEST_SAFE_MODEL_ESSENTIAL_PRIORITY = 2
 BUILD_ORDER: tuple[tuple[str, int, int], ...] = (
     ("Forester", 1, 1),
     ("Sawmill", 2, 1),
@@ -431,11 +432,13 @@ GOVERNOR_SYSTEM_PROMPT = (
     "- set_work_priority {group, work_type, level}: group is a pawn_id or \"all\"; "
     "work_type is a skill (water, farming, milling, baking, forestry, "
     "woodworking, mining); level 1 is highest, 4 lowest, 0 disables it. This is your main "
-    "lever for steering labour.\n"
+    "lever for steering labour. For now, only tune essential food/water work "
+    "(water, farming, milling, baking), keep it at level 1 or 2, and never disable "
+    "or demote it.\n"
     "- assign_pawn {pawn_id, building_id, role}: a rare FORCED override that pins "
     "one pawn to one building slot. Prefer set_work_priority instead.\n"
-    "- set_schedule {group, template}: group is a pawn_id or \"all\"; template is "
-    "one of default, night, rest. Put unhappy or breaking pawns on rest.\n"
+    "- set_schedule {group, template}: rest only a named unhappy or breaking pawn; "
+    "do not mass-change schedules.\n"
     "- place_building {building_kind, x, y}: queue the next missing production "
     "building.\n"
     "- set_production_target {building_id, good, amount}.\n"
@@ -505,24 +508,24 @@ def filter_model_actions(context: dict[str, Any], actions: list[GovernorAction])
 
     Validation still answers "is this action structurally legal?". This answers
     the narrower safety question for model-originated policy: the model may rest
-    named unhappy pawns and tune essential priorities, but it may not idle the
-    whole town or disable the whole food/water chain.
+    named unhappy pawns and raise essential priorities, but it may not churn
+    schedules, boost nonessential work above survival work, or demote the
+    food/water chain below its survival floor.
     """
     return [action for action in actions if _model_action_safe(context, action)]
 
 
 def _model_action_safe(context: dict[str, Any], action: GovernorAction) -> bool:
-    if action.kind == ACTION_SET_SCHEDULE and action.template == RESTORATIVE_SCHEDULE:
-        if action.group == "all":
+    if action.kind == ACTION_SET_SCHEDULE:
+        return action.template == RESTORATIVE_SCHEDULE and action.group != "all" and _rest_target_has_exception(
+            context, action.group
+        )
+    if action.kind == ACTION_SET_WORK_PRIORITY:
+        if action.work_type not in ESSENTIAL_WORK_TYPES:
             return False
-        return _rest_target_has_exception(context, action.group)
-    if (
-        action.kind == ACTION_SET_WORK_PRIORITY
-        and action.group == "all"
-        and action.level == 0
-        and action.work_type in ESSENTIAL_WORK_TYPES
-    ):
-        return False
+        if action.level is None:
+            return True
+        return 0 < action.level <= LOWEST_SAFE_MODEL_ESSENTIAL_PRIORITY
     return True
 
 

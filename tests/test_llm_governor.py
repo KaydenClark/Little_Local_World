@@ -91,6 +91,38 @@ class LLMGovernorDecideTests(unittest.TestCase):
 
         self.assertEqual(gov.decide(context), governor.FallbackGovernor().decide(context))
 
+    def test_unsafe_low_essential_priority_defers_to_fallback(self):
+        _state, context = _small_context()
+        gov = governor.LLMGovernor(
+            propose=lambda ctx: {"actions": [{"kind": "set_work_priority", "group": "all", "work_type": "farming", "level": 4}]}
+        )
+
+        self.assertEqual(gov.decide(context), governor.FallbackGovernor().decide(context))
+
+    def test_unsafe_named_essential_disable_defers_to_fallback(self):
+        _state, context = _small_context()
+        gov = governor.LLMGovernor(
+            propose=lambda ctx: {"actions": [{"kind": "set_work_priority", "group": "p1", "work_type": "farming", "level": 0}]}
+        )
+
+        self.assertEqual(gov.decide(context), governor.FallbackGovernor().decide(context))
+
+    def test_model_schedule_churn_defers_to_fallback(self):
+        _state, context = _small_context()
+        gov = governor.LLMGovernor(
+            propose=lambda ctx: {"actions": [{"kind": "set_schedule", "group": "all", "template": "night"}]}
+        )
+
+        self.assertEqual(gov.decide(context), governor.FallbackGovernor().decide(context))
+
+    def test_unsafe_nonessential_priority_boost_defers_to_fallback(self):
+        _state, context = _small_context()
+        gov = governor.LLMGovernor(
+            propose=lambda ctx: {"actions": [{"kind": "set_work_priority", "group": "all", "work_type": "mining", "level": 1}]}
+        )
+
+        self.assertEqual(gov.decide(context), governor.FallbackGovernor().decide(context))
+
     def test_hard_fallback_on_model_error(self):
         _state, context = _small_context()
         def boom(_ctx):
@@ -169,6 +201,31 @@ class LLMGovernorEngineTests(unittest.TestCase):
             {pid: round(p.mood, 6) for pid, p in fb_state.pawns.items()},
         )
         self.assertEqual(llm_state.stockpile.counts, fb_state.stockpile.counts)
+
+    def test_unsafe_model_policy_keeps_three_day_fallback_oracle(self):
+        llm_state = civilization.create_default_civilization()
+        fb_state = civilization.create_default_civilization()
+
+        unsafe_actions = {
+            "actions": [
+                {"kind": "set_schedule", "group": "all", "template": "night"},
+                {"kind": "set_work_priority", "group": "all", "work_type": "farming", "level": 4},
+                {"kind": "set_work_priority", "group": "all", "work_type": "water", "level": 0},
+                {"kind": "set_work_priority", "group": "all", "work_type": "mining", "level": 1},
+            ]
+        }
+        engine.run_days(llm_state, governor.LLMGovernor(propose=lambda ctx: unsafe_actions), days=3)
+        engine.run_days(fb_state, governor.FallbackGovernor(), days=3)
+
+        self.assertEqual(llm_state.stockpile.counts, fb_state.stockpile.counts)
+        self.assertEqual(
+            {pid: pawn.schedule for pid, pawn in llm_state.pawns.items()},
+            {pid: pawn.schedule for pid, pawn in fb_state.pawns.items()},
+        )
+        self.assertEqual(
+            {pid: dict(pawn.work_priorities) for pid, pawn in llm_state.pawns.items()},
+            {pid: dict(pawn.work_priorities) for pid, pawn in fb_state.pawns.items()},
+        )
 
 
 def _raise(_ctx):
