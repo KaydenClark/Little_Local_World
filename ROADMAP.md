@@ -297,8 +297,9 @@ from the research-backed queue below, keeping every slice small and verified.
    the first wage/market loop pays assigned pawns while a staffed Market exports
    surplus bread above reserve. Storehouses now raise capacity and show
    storage-pressure badges. Household spending and sales-tax accounting now make
-   pawn wallets participate in the Market loop. **Next code task is district
-   market/service pressure before further Paper 7 scale work.**
+   pawn wallets participate in the Market loop, and unmet Market bread buyers now
+   surface as `market_service_pressure`. **Next code task is repair debt before
+   further Paper 7 scale work.**
 
 ## Research Paper Implementation Queue
 
@@ -334,9 +335,9 @@ build order. Work the queue in this order, not in paper-number order:
    transitions real. Built Storehouses now raise storage capacity, and storage
    pressure lights at 80/95% in the HUD and on Storehouses. Household spending
    now lets pawn wallets buy Market bread above reserve before off-map exports,
-   with sales tax reported separately. Remaining truth-loop slices: district
-   market/service pressure, repair debt, reserve-aware trade, then the larger
-   Space-Age spine.
+   with sales tax reported separately, and unmet Market bread buyers are reported
+   as the first service-pressure signal. Remaining truth-loop slices: repair
+   debt, reserve-aware trade, then the larger Space-Age spine.
 7. **Scale foundations.** Paper 7. Reachability `region_id` and deterministic
    command/update phases - cheap scaffolding, but behind the truth-loop work.
 8. **Deeper economy.** Paper 4 (remainder). District storage, market/service
@@ -410,12 +411,13 @@ material; the numbered order above is what to build.
      Markets sell surplus bread above reserve. The next slice now lets pawn
      wallets buy Market bread above reserve before export and records sales-tax
      collection.
-   - Next code task: district storage/market service pressure. Repair debt,
-     reserve-aware trade, and comfort chains follow after that.
+   - Next code task: repair debt as the first material/coin maintenance sink.
+     Reserve-aware trade and comfort chains follow after that.
    - Tests: water days-of-cover is covered; summer/seasonal demand hook,
      Storehouse capacity upgrades, and storage pressure badges are covered;
-     household spending -> tax accounting is covered; repair input reservation
-     and district service queues remain future tests once those loops start.
+     household spending -> tax accounting and unmet Market bread demand are
+     covered; repair input reservation and full district service queues remain
+     future tests once those loops start.
    - Deferred: full household economy, private firms, premium/mobile timers,
      large multi-district optimization.
 5. **Age of Empires readability pass** -
@@ -621,3 +623,4 @@ Append a row when a task changes durable project state. Use actual results, not 
 | 2026-06-30 06:18 -06:00 | Full Mac LM acceptance gate for PR #27 `codex/storehouse-capacity-badges` at `889d1a5ba3447df96da12bd37e58dea6da0b8947` | `.venv/bin/python -m pip install -e .`; `.venv/bin/python -m agent_town --smoke-test`; `.venv/bin/python -m unittest discover -s tests` (255 tests); `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/validate-workbench.ps1`; LM Studio ping `http://192.168.1.131:1234/v1/models` found `google/gemma-4-e4b`; Pygame `CivilizationViewer` booted with blocking `LLMGovernor`; 96 simulated viewer hours; `.venv/bin/python scripts/analyze_run.py logs/run-20260630-061901.jsonl --events`; `.venv/bin/python scripts/benchmark_scaling.py --pawns 100 500 1000 --steps 24 --context-repeats 8 --draw-frames 3`; refreshed `docs/screenshots/current-state.png`; `git diff --check` | pass | Install/smoke/unit/docs/LM ping/viewer boot/scaling/screenshot passed. Analyzer returned `RESULT: GREEN`: 96/96 model decisions, 0 dropped/fallback hours, 0 warnings, 0 critical events, mood 85.8 -> min 72.4 -> end 82.4, idle peak 0, breaks 0, depletions 0, stalls 0, final stockpile bread 16 / water 96, final storage 172/240 used, and action histogram 385 `set_work_priority`. Ready to merge; no Apple Silicon-specific failure evidence. See `docs/run_reports/2026-06-30-pr27-mac-lm-gate.md`. |
 | 2026-06-30 06:37 -06:00 | Household spending + sales-tax money-loop slice on new `codex/household-spending-tax-pressure` branch stacked from green `origin/codex/storehouse-capacity-badges` (model scheduled gpt-5.5 xhigh; after 04:00 budget metric/safe in-run switch not readable; `.agent.lock` acquired in `E:\GPTCode\local-agent-town`) | PR status read: #27 OPEN/CLEAN with latest Mac comment `READY TO MERGE`, no GitHub checks; #26/#25/#24/#23 also OPEN/CLEAN. RED `$env:PYTHONPATH='src'; E:\GPTCode\local-agent-town\.venv\Scripts\python.exe -m unittest tests.test_money_loop` failed on missing `apply_household_spending` and missing `StepResult` fields; GREEN `tests.test_money_loop` (7 tests); affected set `tests.test_money_loop tests.test_telemetry tests.test_engine tests.test_storage_caps` (33 tests); `$env:PYTHONPATH='src'; E:\GPTCode\local-agent-town\.venv\Scripts\python.exe -m unittest discover -s tests` (257 tests); `$env:PYTHONPATH='src'; E:\GPTCode\local-agent-town\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; `git diff --check` | pass | Decision source: Paper 4 "Wage, spending, and tax flows" plus truth-loop queue. Added deterministic daily household Market spending: after wages, pawn wallets buy one bread each from a staffed Market above reserve, whole-coin sales tax is collected from buyer wallets, telemetry/engine result fields report household spending and sales tax, and only the remaining surplus is exported. District market/service pressure, Tavern comfort spending, repair debt, reserve-aware trade, and full private economy remain deferred. |
 | 2026-06-30 06:48 -06:00 | Full Mac LM acceptance gate for PR #28 `codex/household-spending-tax-pressure` at `6db779ff317336ec044c82ad5ecc7f29be250d65` | `.venv/bin/python -m pip install -e .`; `.venv/bin/python -m agent_town --smoke-test`; `.venv/bin/python -m unittest discover -s tests` (257 tests); `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/validate-workbench.ps1`; LM Studio ping `http://192.168.1.131:1234/v1/models` found `google/gemma-4-e4b`; Pygame `CivilizationViewer` booted with blocking `LLMGovernor`; 96 simulated viewer hours; `.venv/bin/python scripts/analyze_run.py logs/run-20260630-064817.jsonl --events`; `git diff --check` | pass | Install/smoke/unit/docs/LM ping/viewer boot passed. Analyzer returned `RESULT: GREEN`: 96/96 model decisions, 0 dropped/fallback hours, 0 warnings, 0 critical events, mood 85.8 -> min 72.4 -> end 82.4, idle peak 0, breaks 0, depletions 0, stalls 0, final stockpile bread 16 / water 96, final storage 172/240 used, and action histogram 390 `set_work_priority`. Ready to merge; no Apple Silicon-specific failure evidence. See `docs/run_reports/2026-06-30-pr28-mac-lm-gate.md`. |
+| 2026-06-30 07:06 -06:00 | Market service-pressure signal on new `codex/district-service-pressure` branch stacked from green `origin/codex/household-spending-tax-pressure` (model scheduled gpt-5.5 xhigh; after 04:00 budget metric/safe in-run switch not readable; `.agent.lock` acquired in `E:\GPTCode\local-agent-town`) | PR status read: #28 OPEN/CLEAN with latest Mac comment `READY TO MERGE`, no GitHub checks; #27/#26/#25/#24/#23 also OPEN/CLEAN. RED `$env:PYTHONPATH=(Resolve-Path src).Path; E:\GPTCode\local-agent-town\.venv\Scripts\python.exe -m unittest tests.test_money_loop tests.test_civilization_governor tests.test_telemetry` failed on missing `unmet_bread_buyers`, missing `unmet_market_demand`, missing `market_service_pressure`, and missing telemetry field; GREEN affected set `tests.test_money_loop tests.test_civilization_governor tests.test_telemetry tests.test_engine tests.test_storage_caps` (45 tests); full unit discovery (260 tests); smoke; `.\scripts\validate-workbench.ps1`; `git diff --check` (CRLF warnings only) | pass | Decision source: Paper 4 "Surfacing bottlenecks to players" / "The minimum metric set" plus ROADMAP truth-loop queue. Added a narrow, truthful Market service-pressure signal: staffed Markets count pawn wallets that wanted bread but could not buy above reserve, day rollover reports `unmet_market_demand`, telemetry snapshots include the count, and the governor exception queue raises `market_service_pressure` for observer UI. Full district hubs/queues, Tavern comfort spending, repair debt, and reserve-aware trade remain deferred; next code task is repair debt. |

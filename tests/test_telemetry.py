@@ -67,7 +67,8 @@ class BuildSnapshotTests(unittest.TestCase):
         for key in ("day", "hour", "population", "avg_mood", "needs", "coin",
                     "stockpile", "idle", "broken", "broken_pawn_ids", "staffed",
                     "construction", "wages_paid", "market_revenue",
-                    "household_spending", "sales_tax_collected"):
+                    "household_spending", "sales_tax_collected",
+                    "unmet_market_demand"):
             self.assertIn(key, snap)
         self.assertNotIn("_llm_offline", snap)  # no internal-field leakage
 

@@ -191,6 +191,18 @@ def build_exception_queue(state: FactionState) -> list[CivilizationException]:
                     detail=f"{round(water_cover, 2)} days cover, {round(water_need * 100)}% need",
                 )
             )
+        market_demand = economy.market_bread_demand(state)
+        if market_demand.unmet_buyers > 0:
+            exceptions.append(
+                CivilizationException(
+                    "market_service_pressure",
+                    building_id=market_demand.market_id,
+                    detail=(
+                        f"{market_demand.unmet_buyers} unmet bread buyers, "
+                        f"{market_demand.sellable_bread} sellable bread"
+                    ),
+                )
+            )
 
     for pawn in sorted(state.pawns.values(), key=lambda p: p.id):
         broken = pawn.state in BROKEN_STATES

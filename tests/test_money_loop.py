@@ -120,6 +120,26 @@ class MarketLoopTests(unittest.TestCase):
         self.assertEqual(buyer.coin, 5)
         self.assertEqual(state.stockpile.counts[Good.BREAD], 12)
 
+    def test_household_spending_reports_unmet_market_bread_demand(self):
+        market = buildings.make_building("Market", 0, 0, building_id="market1")
+        merchant = worker("merchant")
+        first = worker("first", "farming")
+        second = worker("second", "milling")
+        market.staffed_by.append(merchant.id)
+        first.coin = 2
+        second.coin = 2
+        state = FactionState(
+            buildings={market.id: market},
+            pawns={merchant.id: merchant, first.id: first, second.id: second},
+            stockpile=Stockpile({Good.BREAD: 19}),
+        )
+
+        result = economy.apply_household_spending(state)
+
+        self.assertEqual(result.bread_sold, 1)
+        self.assertEqual(result.unmet_bread_buyers, 1)
+        self.assertEqual(state.stockpile.counts[Good.BREAD], 18)
+
 
 class EngineMoneyLoopTests(unittest.TestCase):
     def test_day_rollover_reports_wages_and_market_revenue(self):
@@ -146,7 +166,30 @@ class EngineMoneyLoopTests(unittest.TestCase):
         self.assertEqual(result.market_revenue, 2)
         self.assertEqual(result.household_spending, 2)
         self.assertEqual(result.sales_tax_collected, 0)
+        self.assertEqual(result.unmet_market_demand, 0)
         self.assertEqual(state.coin, 7)
+
+    def test_day_rollover_reports_unmet_market_demand(self):
+        market = buildings.make_building("Market", 1, 0, building_id="market1")
+        merchant = worker("merchant")
+        first = worker("first", "farming")
+        second = worker("second", "milling")
+        market.staffed_by.append(merchant.id)
+        first.coin = 2
+        second.coin = 2
+        state = FactionState(
+            time_of_day=23,
+            tax_rate=0.0,
+            buildings={market.id: market},
+            pawns={merchant.id: merchant, first.id: first, second.id: second},
+            stockpile=Stockpile({Good.BREAD: 19, Good.WATER: 4}),
+        )
+
+        result = engine.step_hour(state)
+
+        self.assertEqual(result.days_rolled, 1)
+        self.assertEqual(result.household_spending, 1)
+        self.assertEqual(result.unmet_market_demand, 1)
 
 
 if __name__ == "__main__":

@@ -43,6 +43,17 @@ class HouseholdSpendingResult:
     revenue: int = 0
     bread_sold: int = 0
     sales_tax: int = 0
+    unmet_bread_buyers: int = 0
+
+
+@dataclass(frozen=True)
+class MarketBreadDemand:
+    """Bread demand that a staffed Market can or cannot fulfill today."""
+
+    market_id: str | None = None
+    buyers: int = 0
+    sellable_bread: int = 0
+    unmet_buyers: int = 0
 
 
 def stockpile_add(stockpile: Stockpile, good: Good, amount: int) -> None:
@@ -251,34 +262,62 @@ def apply_household_spending(state: FactionState) -> HouseholdSpendingResult:
     wallets fund purchases, treasury receives Market revenue, and sales tax is
     collected from remaining buyer wallets when the tax rate produces whole coin.
     """
-    if not _has_staffed_market(state):
+    demand = market_bread_demand(state)
+    if demand.market_id is None:
         return HouseholdSpendingResult()
 
-    bread = state.stockpile.counts.get(Good.BREAD, 0)
-    reserve = len(state.pawns) * MARKET_BREAD_RESERVE_PER_PAWN
-    sellable = max(0, bread - reserve)
-    if sellable <= 0:
-        return HouseholdSpendingResult()
+    buyers: list[Pawn] = [
+        pawn
+        for pawn in sorted(state.pawns.values(), key=lambda p: p.id)
+        if pawn.coin >= MARKET_BREAD_PRICE
+    ]
+    if demand.sellable_bread <= 0 or not buyers:
+        return HouseholdSpendingResult(unmet_bread_buyers=demand.unmet_buyers)
 
-    buyers: list[Pawn] = []
+    served = buyers[: demand.sellable_bread]
+    served_ids = {pawn.id for pawn in served}
     for pawn in sorted(state.pawns.values(), key=lambda p: p.id):
-        if sellable <= 0:
-            break
-        if pawn.coin < MARKET_BREAD_PRICE:
+        if pawn.id not in served_ids:
             continue
         pawn.coin -= MARKET_BREAD_PRICE
         state.stockpile.remove(Good.BREAD, 1)
-        buyers.append(pawn)
-        sellable -= 1
 
-    revenue = len(buyers) * MARKET_BREAD_PRICE
+    revenue = len(served) * MARKET_BREAD_PRICE
     if revenue <= 0:
-        return HouseholdSpendingResult()
+        return HouseholdSpendingResult(unmet_bread_buyers=demand.unmet_buyers)
 
     state.coin += revenue
-    sales_tax = _collect_sales_tax(buyers, revenue, state.tax_rate)
+    sales_tax = _collect_sales_tax(served, revenue, state.tax_rate)
     state.coin += sales_tax
-    return HouseholdSpendingResult(revenue=revenue, bread_sold=len(buyers), sales_tax=sales_tax)
+    return HouseholdSpendingResult(
+        revenue=revenue,
+        bread_sold=len(served),
+        sales_tax=sales_tax,
+        unmet_bread_buyers=demand.unmet_buyers,
+    )
+
+
+def market_bread_demand(state: FactionState) -> MarketBreadDemand:
+    """Return staffed-Market bread demand, supply, and unmet buyer count.
+
+    This is the first district/service-pressure signal: if wallets want Market
+    bread but the reserve leaves too little sellable stock, the governor and
+    telemetry can report that the service loop is constrained instead of hiding
+    it behind a quiet zero sale.
+    """
+    market = _staffed_market(state)
+    if market is None:
+        return MarketBreadDemand()
+    buyers = sum(1 for pawn in state.pawns.values() if pawn.coin >= MARKET_BREAD_PRICE)
+    bread = state.stockpile.counts.get(Good.BREAD, 0)
+    reserve = len(state.pawns) * MARKET_BREAD_RESERVE_PER_PAWN
+    sellable = max(0, bread - reserve)
+    return MarketBreadDemand(
+        market_id=market.id,
+        buyers=buyers,
+        sellable_bread=sellable,
+        unmet_buyers=max(0, buyers - sellable),
+    )
 
 
 def apply_daily_tax(state: FactionState) -> int:
@@ -366,9 +405,17 @@ def _effective_outputs(outputs: dict[Good, int], research: tuple[str, ...]) -> d
 
 
 def _has_staffed_market(state: FactionState) -> bool:
-    return any(
-        building.kind == MARKET_KIND and building.built and bool(building.staffed_by)
-        for building in state.buildings.values()
+    return _staffed_market(state) is not None
+
+
+def _staffed_market(state: FactionState):
+    return next(
+        (
+            building
+            for building in state.buildings.values()
+            if building.kind == MARKET_KIND and building.built and bool(building.staffed_by)
+        ),
+        None,
     )
 
 

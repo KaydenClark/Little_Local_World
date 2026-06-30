@@ -12,7 +12,7 @@ import unittest
 from unittest.mock import patch
 
 from agent_town import buildings, governor
-from agent_town.core import ACTION_SET_WORK_PRIORITY, FactionState, Pawn
+from agent_town.core import ACTION_SET_WORK_PRIORITY, FactionState, Good, Pawn, Stockpile
 from agent_town.governor import CivilizationDecisionScheduler, FallbackGovernor
 from agent_town.llm import LocalLLMClient
 from agent_town import pawns
@@ -172,6 +172,27 @@ class SchedulerFallbackTests(unittest.TestCase):
         self.assertEqual(sched.status.state, "disabled")
         self.assertEqual(sched.decide(context), FallbackGovernor().decide(context))
         sched.shutdown(wait=True)
+
+
+class MarketServicePressureTests(unittest.TestCase):
+    def test_exception_queue_reports_unmet_market_bread_demand(self):
+        market = buildings.make_building("Market", 0, 0, building_id="market1")
+        merchant = Pawn(id="merchant", name="Merchant", skills={"commerce": 10}, mood=80.0)
+        buyer = Pawn(id="buyer", name="Buyer", skills={"farming": 10}, mood=80.0)
+        market.staffed_by.append(merchant.id)
+        buyer.coin = 2
+        state = FactionState(
+            buildings={market.id: market},
+            pawns={merchant.id: merchant, buyer.id: buyer},
+            stockpile=Stockpile({Good.BREAD: 12}),
+        )
+
+        exceptions = governor.build_exception_queue(state)
+
+        market_pressure = [exc for exc in exceptions if exc.kind == "market_service_pressure"]
+        self.assertEqual(len(market_pressure), 1)
+        self.assertEqual(market_pressure[0].building_id, market.id)
+        self.assertIn("1 unmet", market_pressure[0].detail)
 
 
 class SchedulerToggleTests(unittest.TestCase):

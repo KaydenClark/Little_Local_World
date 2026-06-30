@@ -172,7 +172,9 @@ Money-loop manual check (Paper 4 Market slice):
 - Confirm day rollover pays assigned pawns from treasury, then a staffed Market
   sells bread to pawn wallets above reserve, records household spending and
   sales tax, and exports only the remaining bread surplus.
-- District market queues, Tavern comfort spending, repair debt, and
+- Confirm unmet bread buyers above the reserve show as `unmet_market_demand`
+  in telemetry and `market_service_pressure` in the governor exception queue.
+- Full district market queues, Tavern comfort spending, repair debt, and
   reserve-aware imports/exports are intentionally not active yet.
 
 Map readability manual check (Paper 5 current-systems slice):
