@@ -445,7 +445,8 @@ GOVERNOR_SYSTEM_PROMPT = (
     "- set_production_target {building_id, good, amount}.\n"
     "- set_research {tech}.\n"
     "Prefer tuning work priorities and resting unhappy pawns over forcing "
-    "assignments. Reply with valid JSON only - no prose, no markdown, no chain of thought."
+    "assignments. Return at most 6 highest-impact actions per turn. Reply with "
+    "valid JSON only - no prose, no markdown, no chain of thought."
 )
 
 
