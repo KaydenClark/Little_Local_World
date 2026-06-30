@@ -90,8 +90,13 @@ exists. The synthesis paper (`research_papers/8.little-local-world-research-synt
 Paper 6 governor observer UI is now also live: a compact Governor card shows
 current plan, phase, bottleneck, confidence, last policy change, and top
 exception; the right-edge exception stack sorts active governor exceptions by
-severity/actionability with likely causes. The synthesis paper now points next
-to **Paper 7 scale foundations** before deeper economy. Per user direction
+severity/actionability with likely causes. A 2026-06-30 code audit then found
+the 12-pawn loop is not yet *truthful*: several governor levers are applied but
+change nothing, the autopilot halts after a fixed build order, and the economy
+can only fail one way. So the next code task is **closing the 12-pawn truth
+loop**, not Paper 7 scale work - see "Truth-loop gaps (close before scale)"
+below. This honors Paper 8's own rule that population must not scale "before the
+12-pawn truth loop is satisfying". Per user direction
 (2026-06-29) lethal starvation (build-1 step 5.4) stays deferred behind the
 visible autonomy/readability work; Build-1 ships with hunger mood pressure as
 its stakes.
@@ -106,6 +111,67 @@ Done when:
 - `BLUEPRINT.md`, `RUNBOOK.md`, and this roadmap are updated if the slice changes
   the product contract or operator workflow;
 - the full verification path still passes.
+
+## Truth-loop gaps (close before scale)
+
+Paper 8 is explicit that population must not scale "before the 12-pawn truth
+loop is satisfying"
+(`research_papers/8.little-local-world-research-synthesis.md`, the scale topic
+and roadmap-implication sections). A 2026-06-30 audit against the merged code
+found the 12-pawn loop is not yet truthful: governor actions that validate and
+"apply" but change no simulation state, an autopilot with no goal beyond a fixed
+build order, and an economy that can only fail one way. These are the next code
+tasks, ahead of further Paper 7 scale work. (PR #21 started scale early; treat
+it as scaffolding and re-sequence it behind this.)
+
+Each gap is a small, verifiable slice:
+
+1. **Dead lever: `set_production_target` changes nothing.** The governor
+   validates and stores it onto `building.production_target`
+   (`governor.py` `apply_actions`), but `economy.production_tick` never reads it -
+   production always runs the maximum input-limited cycles. Either honor the
+   target (cap cycles to it) or reject the action. A validated-and-applied action
+   that mutates no sim state makes the Governor card report a change that did not
+   happen, which violates the Paper 5/6 contract that the UI must let the player
+   verify the simulation is telling the truth.
+   - Tests: a target below the input-limited rate caps output; setting/clearing a
+     target is reflected in the next tick's stockpile delta.
+
+2. **Dead lever: `set_research` has no effect and there is no victory.**
+   `apply_actions` appends the tech string to `state.research`; nothing reads it,
+   there is no cost, no tech effect, and the `FallbackGovernor` never emits it.
+   `BLUEPRINT.md` names the Space Age (research spine) as the *primary* victory,
+   so the stated win condition does not exist in code. Minimum slice: a Laboratory
+   that turns labour into research points, a short linear tech spine, at least one
+   tech with a measurable effect (e.g. +output or +lifespan), and the fallback
+   pursuing it once essentials are stable. This is the autopilot's first real goal
+   function.
+   - Tests: research points accrue from staffed Laboratory work; a completed tech
+     changes a measurable sim value; the fallback queues research after the build
+     order, deterministically.
+
+3. **The autopilot halts.** `FallbackGovernor.decide` walks a hardcoded 7-item
+   `BUILD_ORDER`; once those buildings exist it only reschedules unhappy pawns, so
+   the town reaches a fixed end state with nothing left to spectate -
+   contradicting "watch a town grow over time". The research spine (gap 2) is the
+   minimum end-game; population growth (build 3) is the longer continuation.
+
+4. **The economy is a one-way faucet, not a loop.** Paper 4's core lesson is that
+   coupled loops - wages -> spending -> taxes -> treasury, plus storage pressure,
+   service queues, repair debt - are what turn chains into a town. Today coin
+   enters only via tax (`economy.daily_tax_income`) and leaves only via a finite
+   ~46-coin build order (`construction.BUILDING_COIN_COSTS`); pawns are never
+   paid. Of Paper 4's six bottleneck classes only "upstream shortage"
+   (`missing_inputs`) can occur, so the Governor card's bottleneck field can only
+   ever show one value. The wage loop and storage caps (already in the build-2
+   backlog) are the first coupling and belong with the truth-loop work, not after
+   scale.
+
+Only after these close does Paper 7 scale work pay off - and the game still has
+no in-play way to reach 1000 pawns (no birth or immigration exists; the
+benchmark uses synthetic agents), so scale currently solves a pressure the game
+cannot yet create. Population growth is a build-3 lifecycle item and is what
+makes the real scale need appear.
 
 ## Build arc (the long road)
 
@@ -283,8 +349,10 @@ from the research-backed queue below, keeping every slice small and verified.
    policy actions: current plan, phase, bottleneck, confidence, last reallocation,
    and top exception. A right-edge exception stack shows active governor
    exceptions by severity/actionability with likely causes. It stays observer
-   UI, not a policy editor. **Next code task is Paper 7 scale foundations:
-   reachability `region_id` plus deterministic command/update phases.**
+   UI, not a policy editor. **Next code task is closing the 12-pawn truth loop
+   (the dead governor levers, a minimal research/Space-Age goal, and the first
+   economy coupling) before further Paper 7 scale work - see "Truth-loop gaps
+   (close before scale)" above.**
 
 ## Research Paper Implementation Queue
 
@@ -312,10 +380,18 @@ build order. Work the queue in this order, not in paper-number order:
    exists.
 5. **Governor card + exception stack (done).** Paper 6. Current plan, bottleneck,
    confidence, last reallocation, top exception and its likely cause are visible.
-6. **Scale foundations (next code task).** Paper 7. Reachability `region_id` and deterministic
-   command/update phases - cheap scaffolding added before population grows.
-7. **Deeper economy.** Paper 4 (remainder). District storage, market/service
-   delivery, repair debt, wages -> spending -> taxes, reserve-aware trade.
+6. **Close the 12-pawn truth loop (next code task).** Fix the dead governor
+   levers (`set_production_target`, `set_research`), give the autopilot a goal via
+   a minimal research/Space-Age spine, and add the first economy coupling (wage
+   loop + storage caps) so more than one bottleneck class can occur. See
+   "Truth-loop gaps (close before scale)" above. This makes Paper 8's "the 12-pawn
+   truth loop must be satisfying before scale" concrete.
+7. **Scale foundations.** Paper 7. Reachability `region_id` and deterministic
+   command/update phases - cheap scaffolding, but only after the truth loop, and
+   the real need only appears once population growth (build 3) exists. PR #21
+   started this early; treat it as scaffolding, not the active priority.
+8. **Deeper economy.** Paper 4 (remainder). District storage, market/service
+   delivery, repair debt, full wages -> spending -> taxes, reserve-aware trade.
 
 Explicit deferrals from Paper 8 (do not start until the autonomy loop is visible
 and stable): full RimWorld think-tree parity, full joy/recreation variety,
@@ -379,9 +455,10 @@ material; the numbered order above is what to build.
    - Current status: the first essential economy slice is implemented: Water
      Well production, water reserve/need, thirst mood pressure, Civ readout/HUD
      chip, water days-of-cover, and a `low_water` governor exception.
-   - Next code task: keep deeper economy paused until Paper 7's first scale
-     foundations are in. Then add district storage/market pressure before comfort
-     chains.
+   - Next code task: the *first economy coupling* (wage loop + storage caps) is
+     now part of closing the 12-pawn truth loop (see "Truth-loop gaps"), because
+     without it only one bottleneck class can occur. District storage/market
+     pressure and comfort chains still follow after that.
    - Tests: water days-of-cover is covered; summer/seasonal demand hook,
      storage-full blocked production, repair input reservation, and wage ->
      spending -> tax accounting remain future tests once those loops start.
@@ -419,10 +496,15 @@ material; the numbered order above is what to build.
    `research_papers/7.scalable-sim-report.md`
    - Current status: the benchmark exists and the product target is ~1000 pawns
      per civilization, but current gameplay remains exact and small-population.
-   - Next code task: add the cheap scale foundations before raising population:
-     reachability `region_id`/dirty topology tracking and deterministic
+     PR #21 started the scale foundations early; per the 2026-06-30 audit this is
+     re-sequenced *behind* the truth-loop work, since the game has no in-play way
+     to grow past 12 pawns yet (no birth/immigration; the benchmark uses synthetic
+     agents).
+   - Next code task: deferred behind "Close the 12-pawn truth loop". When it
+     resumes: reachability `region_id`/dirty topology tracking and deterministic
      command/update phases for reservations, job claims, path requests, movement,
-     interactions, production, needs, and tax.
+     interactions, production, needs, and tax. Population growth (build 3) is what
+     makes the scale need real.
    - Tests: unreachable jobs are rejected before pathfinding; region IDs update
      deterministically after a topology change; identical command batches produce
      identical state; benchmark still reports core/context/draw timings.
@@ -565,3 +647,4 @@ Append a row when a task changes durable project state. Use actual results, not 
 | 2026-06-29 23:09 -06:00 | Paper 6 governor card + exception stack on new `codex/governor-card-exception-stack` branch (PR #19 was merged; model gpt-5.5 xhigh; budget metric not readable; `.agent.lock` acquired) | RED `.\.venv\Scripts\python.exe -m unittest tests.test_civilization_view` failed on missing `exception_stack_items`; GREEN `.\.venv\Scripts\python.exe -m unittest tests.test_civilization_view` (33 tests); `.\.venv\Scripts\python.exe -m unittest discover -s tests` (216 tests); `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; `git diff --check`; refreshed and inspected `docs\screenshots\current-state.png` | pass | PR status read: no open PRs; PR #19 was merged cleanly with Mac gate pass. Decision source: Paper 6 "Local AI governor status" / "Suggested Local Agent Town screen layout" plus Paper 8 "Roadmap implication." Added a read-only Governor card (plan, phase, bottleneck, confidence, last reallocation, top exception) and right-edge exception stack sorted by severity/actionability; next code task is Paper 7 scale foundations. |
 | 2026-06-29 23:33 -06:00 | skipped, PR #20 status gate on `codex/governor-card-exception-stack` (branch equal to origin at start; model gpt-5.5 xhigh; `.agent.lock` acquired) | `gh pr view codex/governor-card-exception-stack --json ...` -> PR #20 OPEN/CLEAN, no comments, no reviews, no status checks; `gh pr checks 20 --watch=false` -> no checks reported; `.\.venv\Scripts\python.exe -m unittest discover -s tests` (216 tests); `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; `git diff --check` | skipped | PR status read: PR #20 was not red, green, or merged because GitHub reports no check signal. Decision: do not reuse the Paper 6 branch for Paper 7 and do not open a new branch until the active PR is green or merged; next code task remains Paper 7 scale foundations. |
 | 2026-06-30 00:04 -06:00 | skipped, PR #20 status gate on `codex/governor-card-exception-stack` (branch equal to origin at start; model gpt-5.5 xhigh; `.agent.lock` acquired) | `git fetch origin --prune`; `gh pr view 20 --json ...` -> PR #20 OPEN/CLEAN, one prior automation comment, no reviews, no status checks; `gh pr checks 20 --watch=false` -> no checks reported; `.\.venv\Scripts\python.exe -m unittest discover -s tests` (216 tests); `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; `git diff --check` | skipped | PR status read: PR #20 is still not red, green, or merged because GitHub reports no check signal and no Mac PR status/comment was present. Decision: do not reuse the Paper 6 branch for Paper 7 and do not open a new branch until the active PR is green or merged; next code task remains Paper 7 scale foundations. |
+| 2026-06-30 | Re-sequence roadmap/blueprint: close the 12-pawn truth loop before Paper 7 scale | `.\scripts\validate-workbench.ps1`; `git diff --check` | pass | Docs only. A 2026-06-30 audit against merged code found the 12-pawn loop is not yet truthful: `set_production_target` and `set_research` validate/apply but change no sim state (`economy.production_tick` ignores the target; nothing reads `state.research`), `FallbackGovernor` halts after a 7-item `BUILD_ORDER` (no goal/victory; the Space-Age research spine does not exist in code), and the economy is a one-way faucet (coin in via tax, out via finite construction; pawns unpaid) so only the upstream-shortage bottleneck can occur. Added a ROADMAP "Truth-loop gaps (close before scale)" section, re-pointed the next code task from Paper 7 scale to closing the truth loop (honoring Paper 8's "do not scale before the 12-pawn loop is satisfying"; PR #21 started scale early and is re-sequenced behind it), flagged the money loop and Research/Space-Age BLUEPRINT sections as designed-but-unimplemented, added three Design Decisions rows, and updated the README Next Useful Upgrades. No code changed. |
