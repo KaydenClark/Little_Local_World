@@ -63,6 +63,15 @@ SUSTAINED_ZERO_HOURS = 12
 # Everything else is an intermediate that cycles through zero by design.
 STAPLE_GOODS: frozenset[str] = frozenset({Good.BREAD.value})
 
+# Intermediate buffers can be healthy at zero when their downstream reserve is
+# already stocked. The analyzer should not mark a just-in-time logs -> planks or
+# grain/flour -> bread flow as stalled until the downstream reserve is gone too.
+DOWNSTREAM_RESERVES: dict[str, tuple[str, ...]] = {
+    Good.LOGS.value: (Good.PLANKS.value,),
+    Good.GRAIN.value: (Good.FLOUR.value, Good.BREAD.value),
+    Good.FLOUR.value: (Good.BREAD.value,),
+}
+
 # Governor states that mean the local model is not answering (kept as literals so
 # this module stays decoupled from governor.py; they mirror GOV_OFFLINE/INVALID).
 _GOV_OFFLINE_STATES = ("offline", "invalid")
@@ -192,6 +201,10 @@ class EventMonitor:
         population = max(1, snapshot.get("population", 1))
         for good in sorted(set(self.zero_streaks) | set(stock)):
             count = int(stock.get(good, 0))
+            if count <= 0 and _covered_by_downstream_reserve(good, stock, population):
+                self.zero_streaks[good] = 0
+                self.stalled_alarmed.discard(good)
+                continue
             self.zero_streaks[good] = self.zero_streaks.get(good, 0) + 1 if count <= 0 else 0
             if good in STAPLE_GOODS:
                 # Staple: immediate CRITICAL on depletion, latched, re-arm on refill.
@@ -255,6 +268,21 @@ def _trend(start: float | None, end: float | None) -> str:
     if end > start:
         return "up"
     return "flat"
+
+
+def _covered_by_downstream_reserve(good: str, stock: dict, population: int) -> bool:
+    reserves = DOWNSTREAM_RESERVES.get(good)
+    if not reserves:
+        return False
+    bread_low = BREAD_LOW_PER_PAWN * max(1, population)
+    for reserve in reserves:
+        amount = int(stock.get(reserve, 0))
+        if reserve == Good.BREAD.value:
+            if amount >= bread_low:
+                return True
+        elif amount > 0:
+            return True
+    return False
 
 
 def health_summary(
