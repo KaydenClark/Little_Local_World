@@ -4,6 +4,7 @@ import unittest
 from agent_town import buildings, civilization, engine, governor
 from agent_town.core import (
     ACTION_SET_SCHEDULE,
+    ACTION_SET_WORK_PRIORITY,
     FactionState,
     Good,
     GovernorAction,
@@ -64,14 +65,31 @@ class LLMGovernorDecideTests(unittest.TestCase):
     def test_uses_model_actions_when_valid(self):
         _state, context = _small_context()
         gov = governor.LLMGovernor(
-            propose=lambda ctx: {"actions": [{"kind": "set_schedule", "group": "all", "template": "rest"}]}
+            propose=lambda ctx: {"actions": [{"kind": "set_work_priority", "group": "all", "work_type": "farming", "level": 1}]}
         )
 
         actions = gov.decide(context)
 
-        self.assertEqual([a.kind for a in actions], [ACTION_SET_SCHEDULE])
+        self.assertEqual([a.kind for a in actions], [ACTION_SET_WORK_PRIORITY])
         self.assertEqual(actions[0].group, "all")
-        self.assertEqual(actions[0].template, "rest")
+        self.assertEqual(actions[0].work_type, "farming")
+        self.assertEqual(actions[0].level, 1)
+
+    def test_unsafe_all_rest_model_action_defers_to_fallback(self):
+        _state, context = _small_context()
+        gov = governor.LLMGovernor(
+            propose=lambda ctx: {"actions": [{"kind": "set_schedule", "group": "all", "template": "rest"}]}
+        )
+
+        self.assertEqual(gov.decide(context), governor.FallbackGovernor().decide(context))
+
+    def test_unsafe_disable_all_essential_work_defers_to_fallback(self):
+        _state, context = _small_context()
+        gov = governor.LLMGovernor(
+            propose=lambda ctx: {"actions": [{"kind": "set_work_priority", "group": "all", "work_type": "farming", "level": 0}]}
+        )
+
+        self.assertEqual(gov.decide(context), governor.FallbackGovernor().decide(context))
 
     def test_hard_fallback_on_model_error(self):
         _state, context = _small_context()

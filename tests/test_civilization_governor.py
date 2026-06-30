@@ -12,7 +12,7 @@ import unittest
 from unittest.mock import patch
 
 from agent_town import buildings, governor
-from agent_town.core import ACTION_SET_SCHEDULE, FactionState, Pawn
+from agent_town.core import ACTION_SET_WORK_PRIORITY, FactionState, Pawn
 from agent_town.governor import CivilizationDecisionScheduler, FallbackGovernor
 from agent_town.llm import LocalLLMClient
 from agent_town import pawns
@@ -42,6 +42,12 @@ def _rest_all_post(payload, timeout):
     )
 
 
+def _prioritize_farming_post(payload, timeout):
+    return _chat_response(
+        {"actions": [{"kind": "set_work_priority", "group": "all", "work_type": "farming", "level": 1}]}
+    )
+
+
 class SchedulerNonBlockingTests(unittest.TestCase):
     def test_decide_returns_immediately_and_uses_fallback_while_thinking(self):
         _state, context = _small_context()
@@ -50,7 +56,7 @@ class SchedulerNonBlockingTests(unittest.TestCase):
         def slow_post(payload, timeout):
             calls.append(payload)
             time.sleep(0.2)
-            return _rest_all_post(payload, timeout)
+            return _prioritize_farming_post(payload, timeout)
 
         sched = CivilizationDecisionScheduler(
             LocalLLMClient(model="gemma-test", http_post=slow_post), interval=0.0
@@ -74,14 +80,14 @@ class SchedulerNonBlockingTests(unittest.TestCase):
         # A real cooldown keeps the scheduler from instantly re-submitting after
         # it harvests, so the harvested "idle" state is observable.
         sched = CivilizationDecisionScheduler(
-            LocalLLMClient(model="gemma-test", http_post=_rest_all_post), interval=10.0
+            LocalLLMClient(model="gemma-test", http_post=_prioritize_farming_post), interval=10.0
         )
 
         upgraded = None
         deadline = time.perf_counter() + 1.0
         while time.perf_counter() < deadline:
             actions = sched.decide(context)
-            if [a.kind for a in actions] == [ACTION_SET_SCHEDULE]:
+            if [a.kind for a in actions] == [ACTION_SET_WORK_PRIORITY]:
                 upgraded = actions
                 break
             time.sleep(0.01)
@@ -89,9 +95,28 @@ class SchedulerNonBlockingTests(unittest.TestCase):
 
         self.assertIsNotNone(upgraded, "scheduler never surfaced the model's actions")
         self.assertEqual(upgraded[0].group, "all")
-        self.assertEqual(upgraded[0].template, "rest")
+        self.assertEqual(upgraded[0].work_type, "farming")
+        self.assertEqual(upgraded[0].level, 1)
         self.assertEqual(sched.status.state, "idle")
-        self.assertEqual(sched.status.last_action_kinds, (ACTION_SET_SCHEDULE,))
+        self.assertEqual(sched.status.last_action_kinds, (ACTION_SET_WORK_PRIORITY,))
+
+    def test_unsafe_model_actions_fall_back_when_ready(self):
+        _state, context = _small_context()
+        sched = CivilizationDecisionScheduler(
+            LocalLLMClient(model="gemma-test", http_post=_rest_all_post), interval=10.0
+        )
+
+        fallback_actions = None
+        deadline = time.perf_counter() + 1.0
+        while time.perf_counter() < deadline:
+            actions = sched.decide(context)
+            if sched.status.state == "idle" and not sched.status.last_action_kinds:
+                fallback_actions = actions
+                break
+            time.sleep(0.01)
+        sched.shutdown(wait=True)
+
+        self.assertEqual(fallback_actions, FallbackGovernor().decide(context))
 
     def test_keeps_one_request_in_flight(self):
         _state, context = _small_context()

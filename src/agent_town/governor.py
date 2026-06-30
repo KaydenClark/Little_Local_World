@@ -50,6 +50,7 @@ WATER_BUILD_LOCATION = (5, 5)
 BROKEN_STATES = (pawns.STATE_SLACKING, pawns.STATE_WANDERING)
 RESCHEDULE_KINDS = ("unhappy_pawn", "pawn_breaking", "pawn_break")
 RESTORATIVE_SCHEDULE = "rest"
+ESSENTIAL_WORK_TYPES = frozenset(("water", "farming", "milling", "baking"))
 BUILD_ORDER: tuple[tuple[str, int, int], ...] = (
     ("Forester", 1, 1),
     ("Sawmill", 2, 1),
@@ -499,6 +500,41 @@ def parse_action_list(payload: dict[str, Any]) -> list[GovernorAction]:
     return actions
 
 
+def filter_model_actions(context: dict[str, Any], actions: list[GovernorAction]) -> list[GovernorAction]:
+    """Drop LLM-only policy actions that can shut down survival essentials.
+
+    Validation still answers "is this action structurally legal?". This answers
+    the narrower safety question for model-originated policy: the model may rest
+    named unhappy pawns and tune essential priorities, but it may not idle the
+    whole town or disable the whole food/water chain.
+    """
+    return [action for action in actions if _model_action_safe(context, action)]
+
+
+def _model_action_safe(context: dict[str, Any], action: GovernorAction) -> bool:
+    if action.kind == ACTION_SET_SCHEDULE and action.template == RESTORATIVE_SCHEDULE:
+        if action.group == "all":
+            return False
+        return _rest_target_has_exception(context, action.group)
+    if (
+        action.kind == ACTION_SET_WORK_PRIORITY
+        and action.group == "all"
+        and action.level == 0
+        and action.work_type in ESSENTIAL_WORK_TYPES
+    ):
+        return False
+    return True
+
+
+def _rest_target_has_exception(context: dict[str, Any], group: str | None) -> bool:
+    if not group:
+        return False
+    for exc in context.get("exceptions", []):
+        if exc.get("pawn_id") == group and exc.get("kind") in RESCHEDULE_KINDS:
+            return True
+    return False
+
+
 def _clean_str(value: Any) -> str | None:
     if value is None:
         return None
@@ -537,7 +573,7 @@ class LLMGovernor:
     def decide(self, context: dict[str, Any]) -> list[GovernorAction]:
         try:
             payload = self._propose(context) if self._propose is not None else self._ask_model(context)
-            actions = parse_action_list(payload)
+            actions = filter_model_actions(context, parse_action_list(payload))
         except Exception as exc:
             disabled = self._propose is None and (self.client is None or not self.client.enabled)
             self.last_outcome = "disabled" if disabled else "error"
@@ -760,4 +796,5 @@ class CivilizationDecisionScheduler:
             name="civilization_actions",
         )
         actions = parse_action_list(payload)
+        actions = filter_model_actions(context, actions)
         return actions, self.clock() - start
