@@ -190,6 +190,10 @@ EXCEPTION_SEVERITY_RANK = {
     health.INFO: 2,
 }
 EXCEPTION_SEVERITY = {
+    # Food is the survival staple (health.py alarms bread depletion as CRITICAL),
+    # so a food shortage outranks everything - a starving civ must not read as a
+    # water problem.
+    "low_food": health.CRITICAL,
     "pawn_break": health.CRITICAL,
     "pawn_breaking": health.CRITICAL,
     "low_water": health.WARN,
@@ -200,14 +204,15 @@ EXCEPTION_SEVERITY = {
     "skill_mismatch": health.WARN,
 }
 EXCEPTION_KIND_RANK = {
-    "pawn_break": 0,
-    "pawn_breaking": 1,
-    "low_water": 2,
-    "missing_inputs": 3,
-    "unstaffed_building": 4,
-    "unhappy_pawn": 5,
-    "skill_mismatch": 6,
-    "idle_pawn": 7,
+    "low_food": 0,
+    "pawn_break": 1,
+    "pawn_breaking": 2,
+    "low_water": 3,
+    "missing_inputs": 4,
+    "unstaffed_building": 5,
+    "unhappy_pawn": 6,
+    "skill_mismatch": 7,
+    "idle_pawn": 8,
 }
 GOVERNOR_CARD_WIDTH = 332
 GOVERNOR_CARD_HEIGHT = 146
@@ -308,6 +313,8 @@ def _exception_title_and_cause(state: FactionState, exc: CivilizationException) 
         return (f"Unstaffed: {subject}", "No pawn has claimed this work slot.")
     if exc.kind == "missing_inputs":
         return (f"Missing inputs: {subject}", f"{subject} is blocked on {exc.detail}.")
+    if exc.kind == "low_food":
+        return ("Low food", f"Food reserve or nutrition is below the safe line ({exc.detail}).")
     if exc.kind == "low_water":
         return ("Low water", f"Water reserve or need is below the safe line ({exc.detail}).")
     return (exc.kind.replace("_", " ").title(), exc.detail or "Needs attention.")
@@ -388,6 +395,8 @@ def _governor_phase(gov: Governor | None) -> str:
 
 
 def _plan_for_exception(item: ExceptionStackItem) -> str:
+    if item.kind == "low_food":
+        return "Grow the food supply"
     if item.kind == "low_water":
         return "Stabilize water reserve"
     if item.kind in ("pawn_break", "pawn_breaking", "unhappy_pawn"):

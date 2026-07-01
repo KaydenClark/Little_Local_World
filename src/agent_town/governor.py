@@ -47,11 +47,14 @@ LOW_WATER_COVER_DAYS = 1.0
 LOW_WATER_NEED = 0.35
 WATER_BUILDING_KIND = "Water Well"
 WATER_BUILD_LOCATION = (5, 5)
-# Food early-warning: flag the governor while there is still a buffer to react
-# with, not once the reserve is already gone. Two days of bread cover (or an
-# average nutrition reserve this low) raises ``low_food``.
-LOW_FOOD_COVER_DAYS = 2.0
-LOW_FOOD_NEED = 0.4
+# Food shortage signal. The default economy runs a thin *finished-bread* buffer
+# (production is just-in-time), so a buffer-days trigger would cry wolf at every
+# game start; average nutrition (saturation) is the honest "pawns are actually
+# going hungry" signal. ``low_food`` fires when the civ is genuinely almost out of
+# bread OR the average pawn is under half-fed - the floor+carry runway keeps that
+# recoverable, so it is still early enough for the governor to grow more.
+LOW_FOOD_COVER_DAYS = 0.5
+LOW_FOOD_NEED = 0.5
 
 BROKEN_STATES = (pawns.STATE_SLACKING, pawns.STATE_WANDERING)
 RESCHEDULE_KINDS = ("unhappy_pawn", "pawn_breaking", "pawn_break")

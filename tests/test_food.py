@@ -16,7 +16,8 @@ import unittest
 
 from agent_town import buildings, economy, engine, governor, mood, pawns
 from agent_town.civilization import create_default_civilization
-from agent_town.core import FactionState, Good, NEED_FOOD, Pawn
+from agent_town.civilization_view import exception_stack_items, governor_card_summary
+from agent_town.core import FactionState, Good, NEED_FOOD, NEED_WATER, Pawn
 
 
 def _fed_pawn(pid: str = "p") -> Pawn:
@@ -118,6 +119,46 @@ class FoodSightTests(unittest.TestCase):
 
         kinds = [exc.kind for exc in governor.build_exception_queue(state)]
         self.assertNotIn("low_food", kinds)
+
+
+class FoodVisibleToWatcherTests(unittest.TestCase):
+    """The watcher must see a food crisis as a food crisis.
+
+    Regression guard: `low_food` shipped firing correctly in the data but buried
+    below `low_water`/`skill_mismatch` in the viewer, so a starving civ read as a
+    water problem on screen. Food is the survival staple; it must outrank water.
+    """
+
+    def _starving_and_dry(self) -> FactionState:
+        state = FactionState()
+        for pid in ("a", "b"):
+            pawn = _fed_pawn(pid)
+            pawn.needs[NEED_FOOD] = 0.05  # starving -> low_food
+            state.pawns[pid] = pawn
+        state.stockpile.counts[Good.WATER] = 0  # also dry -> low_water
+        return state
+
+    def test_low_food_outranks_low_water_in_the_stack(self):
+        kinds = [item.kind for item in exception_stack_items(self._starving_and_dry())]
+        self.assertIn("low_food", kinds)
+        self.assertIn("low_water", kinds)
+        self.assertLess(kinds.index("low_food"), kinds.index("low_water"))
+
+    def test_low_food_is_critical(self):
+        items = exception_stack_items(self._starving_and_dry())
+        self.assertEqual(items[0].kind, "low_food")
+        self.assertEqual(items[0].severity, "critical")
+
+    def test_governor_card_names_food_as_the_bottleneck(self):
+        summary = governor_card_summary(self._starving_and_dry())
+        self.assertEqual(summary.top_exception.kind, "low_food")
+        self.assertIn("food", summary.plan.lower())
+        self.assertIn("food", summary.bottleneck.lower())
+
+    def test_healthy_default_civ_shows_no_low_food(self):
+        state = create_default_civilization()
+        engine.run_days(state, governor.FallbackGovernor(), days=3)
+        self.assertNotIn("low_food", [item.kind for item in exception_stack_items(state)])
 
 
 class VisionBoundaryTests(unittest.TestCase):
