@@ -115,6 +115,70 @@ Done when:
   the product contract or operator workflow;
 - the full verification path still passes.
 
+## Truth-loop gaps (audited 2026-06-30; closed by PRs #23-#29)
+
+Paper 8 is explicit that population must not scale "before the 12-pawn truth
+loop is satisfying"
+(`research_papers/8.little-local-world-research-synthesis.md`, the scale topic
+and roadmap-implication sections). A 2026-06-30 audit against the merged code
+found the 12-pawn loop was not yet truthful: governor actions that validated and
+"applied" but changed no simulation state, an autopilot with no goal beyond a
+fixed build order, and an economy that could only fail one way. The truth-loop
+chain (PRs #23-#29) closed gaps 1, 2, and 4 and partially addressed gap 3; Paper
+7 scale work (PR #21) was re-sequenced behind it as scaffolding. This section is
+kept as the record of what was fixed and why. The remaining balance problem -
+the sim can still starve even with the money loop live - is tracked in the
+`docs/run_reports/` observation notes, not here.
+
+Each gap was a small, verifiable slice:
+
+1. **[CLOSED - PR #23] Dead lever: `set_production_target` changes nothing.** The governor
+   validates and stores it onto `building.production_target`
+   (`governor.py` `apply_actions`), but `economy.production_tick` never reads it -
+   production always runs the maximum input-limited cycles. Either honor the
+   target (cap cycles to it) or reject the action. A validated-and-applied action
+   that mutates no sim state makes the Governor card report a change that did not
+   happen, which violates the Paper 5/6 contract that the UI must let the player
+   verify the simulation is telling the truth.
+   - Tests: a target below the input-limited rate caps output; setting/clearing a
+     target is reflected in the next tick's stockpile delta.
+
+2. **[CLOSED - PR #24, victory still partial] Dead lever: `set_research` has no effect and there is no victory.**
+   `apply_actions` appends the tech string to `state.research`; nothing reads it,
+   there is no cost, no tech effect, and the `FallbackGovernor` never emits it.
+   `BLUEPRINT.md` names the Space Age (research spine) as the *primary* victory,
+   so the stated win condition does not exist in code. Minimum slice: a Laboratory
+   that turns labour into research points, a short linear tech spine, at least one
+   tech with a measurable effect (e.g. +output or +lifespan), and the fallback
+   pursuing it once essentials are stable. This is the autopilot's first real goal
+   function.
+   - Tests: research points accrue from staffed Laboratory work; a completed tech
+     changes a measurable sim value; the fallback queues research after the build
+     order, deterministically.
+
+3. **[PARTIAL - PR #24] The autopilot halts.** `FallbackGovernor.decide` walks a hardcoded 7-item
+   `BUILD_ORDER`; once those buildings exist it only reschedules unhappy pawns, so
+   the town reaches a fixed end state with nothing left to spectate -
+   contradicting "watch a town grow over time". The research spine (gap 2) is the
+   minimum end-game; population growth (build 3) is the longer continuation.
+
+4. **[CLOSED - PRs #25-#29] The economy is a one-way faucet, not a loop.** Paper 4's core lesson is that
+   coupled loops - wages -> spending -> taxes -> treasury, plus storage pressure,
+   service queues, repair debt - are what turn chains into a town. Today coin
+   enters only via tax (`economy.daily_tax_income`) and leaves only via a finite
+   ~46-coin build order (`construction.BUILDING_COIN_COSTS`); pawns are never
+   paid. Of Paper 4's six bottleneck classes only "upstream shortage"
+   (`missing_inputs`) can occur, so the Governor card's bottleneck field can only
+   ever show one value. The wage loop and storage caps (already in the build-2
+   backlog) are the first coupling and belong with the truth-loop work, not after
+   scale.
+
+Only after these close does Paper 7 scale work pay off - and the game still has
+no in-play way to reach 1000 pawns (no birth or immigration exists; the
+benchmark uses synthetic agents), so scale currently solves a pressure the game
+cannot yet create. Population growth is a build-3 lifecycle item and is what
+makes the real scale need appear.
+
 ## Build arc (the long road)
 
 The immediate goal above finishes build 1. The product then grows in builds,
@@ -455,7 +519,8 @@ material; the numbered order above is what to build.
    - Next code task: deferred behind truth-loop cleanup. When it resumes, add
      reachability `region_id`/dirty topology tracking and deterministic
      command/update phases for reservations, job claims, path requests, movement,
-     interactions, production, needs, and tax.
+     interactions, production, needs, and tax. Population growth (build 3) is what
+     makes the scale need real.
    - Tests: unreachable jobs are rejected before pathfinding; region IDs update
      deterministically after a topology change; identical command batches produce
      identical state; benchmark still reports core/context/draw timings.

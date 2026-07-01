@@ -198,11 +198,14 @@ Current research inputs, in implementation order:
    synthesis and the sequencing authority over Papers 1-7. It collapses them into
    one product rule, *make autonomous causality visible*, and one strict build
    order: food (done) -> work priorities + reservations (done) -> water (done)
-   -> map readability (done) -> governor card (done) -> scale foundations ->
-   deeper economy. The next code task after the governor observer slice is the
-   first Paper 7 scale foundation: reachability-region rejection and deterministic
-   command/update phases. Lethal starvation and deeper economy remain deferred
-   behind the visible autonomy loop.
+   -> map readability (done) -> governor card (done) -> *close the 12-pawn truth
+   loop* -> scale foundations -> deeper economy. A 2026-06-30 audit found the
+   12-pawn loop is not yet truthful (governor levers that apply but change
+   nothing, an autopilot that halts, a one-way economy), so the next code task is
+   closing that loop, not Paper 7 scale work - this honors Paper 8's own rule that
+   population must not scale before the 12-pawn loop is satisfying. See
+   `ROADMAP.md` "Truth-loop gaps (close before scale)". Lethal starvation and the
+   deeper economy remain deferred behind the visible autonomy loop.
 
 When these papers conflict with current implementation, the conflict becomes a
 roadmap task instead of being silently folded into docs. Paper 8 sets the order
@@ -551,6 +554,12 @@ and recreation; the rest follow.
 
 ### The money loop
 
+**Status (2026-06-30): designed, not implemented.** Today coin only enters via
+tax (`economy.daily_tax_income`) and only leaves via the finite build order;
+pawns are never paid, so "tax" recirculates nothing. The wage loop below is the
+first economy coupling in the truth-loop work (see `ROADMAP.md` "Truth-loop
+gaps"), because without it only the upstream-shortage bottleneck can occur.
+
 Coin is conserved internally and only enters or leaves through trade.
 
 - Wages: treasury to pawn purse each day. Unpaid pawns lose mood.
@@ -730,6 +739,9 @@ Rules:
 | Build-2 water slice shipped as the first essential economy extension | `Good.WATER`, `NEED_WATER`, Water Well production, one-unit drinking, thirst thoughts, Civ Water readout, HUD stockpile chip, water work priority, days-of-cover summary, and `low_water` governor exception make the first Townsmen essential conserved and visible. District buffers, service queues, seasonal demand, markets, wages, and storage caps remain deferred | 2026-06-29 build-2 water slice |
 | Paper 5 current-systems readability shipped before the governor card | The viewer now separates hover from selection, draws danger rings above selection, shows `work.LANE_IDLE` pawns with an overhead `!`, and renders construction sites as ghosts with footprint outlines and two-stage material/work progress. Storage 80/95% badges remain deferred until stockpile capacity exists, because uncapped totals cannot produce truthful pressure | 2026-06-29 Paper 5 current-systems slice |
 | Paper 6 governor observer shell shipped | The viewer derives a read-only Governor card from current exceptions, scheduler status, and recent policy actions: plan, phase, bottleneck, confidence, last reallocation, and top exception. A right-edge exception stack sorts active governor exceptions by severity and actionability. It is diagnosis-first UI, not a micromanagement surface; decision-log drill-down and policy editors remain deferred | 2026-06-29 Paper 6 observer UI slice |
+| Close the 12-pawn truth loop before Paper 7 scale work | A 2026-06-30 audit found dead governor levers (`set_production_target`, `set_research` applied but changed nothing), an autopilot that halted after a 7-item build order, and a one-way economy where only the upstream-shortage bottleneck can occur. Paper 8 itself says not to scale before the 12-pawn loop is satisfying, so scale (PR #21) was re-sequenced behind these fixes. PRs #23-#29 closed them | 2026-06-30 audit + user direction |
+| No Potemkin governor actions: an applied action must change sim state or be rejected | A validated-and-"applied" action that mutates nothing makes the Governor card report changes that did not happen, which breaks the Paper 5/6 truth contract that the UI must let the player verify the sim is honest. `set_production_target` must cap production or be rejected; `set_research` must accrue/spend toward a real tech effect | 2026-06-30 audit |
+| The autopilot needs a goal function; a minimal research/Space-Age spine is the first one | "Watch a town grow over time" fails when the fallback halts at a fixed build order. The stated primary victory (Space Age via research) did not exist in code, so a minimal Laboratory -> research-points -> linear tech spine with at least one real effect is the autopilot's first end-game and the minimum thing worth spectating | 2026-06-30 audit |
 | Household spending starts as a treasury-run Market loop | Build-2 money circulation remains inspectable and conservative: daily wages fund one bread purchase per pawn from a staffed Market above reserve, whole-coin sales tax is collected from buyer wallets, and off-map export only gets the remaining surplus. Full private firms, comfort services, and district market queues stay deferred | 2026-06-30 Paper 4 truth-loop slice |
 | Market service pressure starts as unmet bread demand | The first service-pressure signal stays narrow and truthful: a staffed Market counts pawn wallets that wanted bread but could not buy above the reserve, reports that count in telemetry, and raises `market_service_pressure` for the Governor card/exception stack. Full district hubs, queues, Tavern comfort spending, and reserve-aware trade remain deferred | 2026-06-30 Paper 4 service-pressure slice |
 | Minimal research spine shipped before scale work | `set_research` is no longer a dead lever: it selects an active tech target, staffed Laboratory work produces research points through the existing `effective_work` seam, and `efficient_baking` raises Bakery output. This proves the progression lever before the larger Space-Age spine, deeper economy, and victory condition land | 2026-06-30 truth-loop cleanup |
