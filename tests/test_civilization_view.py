@@ -9,11 +9,20 @@ from agent_town import civilization, engine, work
 from agent_town.core import ConstructionSite, Good, GovernorAction
 from agent_town.civilization_view import (
     BUILDING_SPRITE,
+    COMMAND_PANEL_HEIGHT,
+    COMMAND_STRIP_HEIGHT,
     INSPECTOR_WIDTH,
+    INSPECTOR_TABS,
+    MACRO_STRIP_HEIGHT,
     PAWN_ROSTER_HEIGHT,
+    PANEL_BY_BUTTON,
+    RIGHT_COLUMN_WIDTH,
     WORK_GRID_TYPES,
     Camera,
     CivilizationViewer,
+    assign_panel_target_at,
+    assign_panel_targets,
+    active_panel_from_button,
     _construction_progress,
     _need_bar_color,
     _mood_color,
@@ -26,10 +35,16 @@ from agent_town.civilization_view import (
     governor_card_summary,
     governor_status_line,
     hud_button_rects,
+    history_panel_record_at,
+    history_panel_row_rects,
+    inspector_tab_rects,
     idle_pawn_count,
     load_civilization_assets,
+    menu_speed_button_rects,
     parse_args,
     render_civilization,
+    right_column_regions,
+    viewer_layout,
     work_grid_cell_at,
     work_grid_layout,
 )
@@ -91,6 +106,48 @@ class CivilizationAssetTests(unittest.TestCase):
             show_work_grid=True,
         )
 
+    def test_render_each_command_panel_does_not_crash(self):
+        assets = load_civilization_assets()
+        font = pygame.font.Font(None, 16)
+        state = civilization.create_default_civilization()
+        engine.step_hour(state)
+        events = [
+            {"type": "event", "day": 0, "hour": 9, "severity": "warn", "kind": "missing_inputs", "text": "Flour low"},
+        ]
+
+        for panel in PANEL_BY_BUTTON.values():
+            with self.subTest(panel=panel):
+                surface = pygame.Surface((960, 720))
+                render_civilization(
+                    surface,
+                    state,
+                    assets,
+                    font,
+                    (12, 12),
+                    selected_pawn_id="pawn00",
+                    active_panel=panel,
+                    events=events,
+                )
+
+    def test_render_each_inspector_tab_does_not_crash(self):
+        assets = load_civilization_assets()
+        font = pygame.font.Font(None, 16)
+        state = civilization.create_default_civilization()
+        engine.step_hour(state)
+
+        for tab in (tab.lower() for tab in INSPECTOR_TABS):
+            with self.subTest(tab=tab):
+                surface = pygame.Surface((960, 720))
+                render_civilization(
+                    surface,
+                    state,
+                    assets,
+                    font,
+                    (12, 12),
+                    selected_pawn_id="pawn00",
+                    inspector_tab=tab,
+                )
+
 
 class WorkGridTests(unittest.TestCase):
     def _map_rect(self):
@@ -133,6 +190,47 @@ class WorkGridTests(unittest.TestCase):
         engine.step_hour(state)
         # Removing the well leaves 12 pawns for 11 legal slots, so one stays idle.
         self.assertEqual(idle_pawn_count(state), 1)
+
+
+class ViewerLayoutTests(unittest.TestCase):
+    def test_default_layout_regions_do_not_overlap(self):
+        layout = viewer_layout(900, 700)
+
+        self.assertEqual(layout.macro.height, MACRO_STRIP_HEIGHT)
+        self.assertEqual(layout.roster.height, PAWN_ROSTER_HEIGHT)
+        self.assertEqual(layout.command_strip.height, COMMAND_STRIP_HEIGHT)
+        self.assertEqual(layout.right.width, RIGHT_COLUMN_WIDTH)
+        self.assertIsNone(layout.command_panel)
+
+        fixed_regions = [layout.macro, layout.roster, layout.map, layout.right, layout.command_strip]
+        for index, rect in enumerate(fixed_regions):
+            with self.subTest(region=index):
+                self.assertGreater(rect.width, 0)
+                self.assertGreater(rect.height, 0)
+        for a_index, a in enumerate(fixed_regions):
+            for b_index, b in enumerate(fixed_regions):
+                if a_index >= b_index:
+                    continue
+                self.assertFalse(a.colliderect(b), f"{a} overlaps {b}")
+
+    def test_wide_layout_with_panel_reserves_panel_without_overlap(self):
+        layout = viewer_layout(1280, 800, active_panel="architect")
+
+        self.assertIsNotNone(layout.command_panel)
+        self.assertEqual(layout.command_panel.height, COMMAND_PANEL_HEIGHT)
+        fixed_regions = [layout.macro, layout.roster, layout.map, layout.right, layout.command_panel, layout.command_strip]
+        for a_index, a in enumerate(fixed_regions):
+            for b_index, b in enumerate(fixed_regions):
+                if a_index >= b_index:
+                    continue
+                self.assertFalse(a.colliderect(b), f"{a} overlaps {b}")
+
+    def test_all_bottom_buttons_map_to_panel_ids(self):
+        rects = hud_button_rects(900, 700)
+
+        self.assertEqual(set(rects), set(PANEL_BY_BUTTON))
+        for label in PANEL_BY_BUTTON:
+            self.assertEqual(active_panel_from_button(label), PANEL_BY_BUTTON[label])
 
 
 class MapReadabilityTests(unittest.TestCase):
@@ -365,6 +463,93 @@ class CivilizationViewerSmokeTests(unittest.TestCase):
         self.assertFalse(parse_args([]).smoke_test)
         self.assertTrue(parse_args(["--smoke-test"]).smoke_test)
 
+    def test_bottom_buttons_set_one_active_panel(self):
+        viewer = CivilizationViewer(smoke_test=True)
+        buttons = hud_button_rects(viewer.screen.get_width(), viewer.screen.get_height())
+
+        viewer._handle_click(buttons["Architect"].center)
+        self.assertEqual(viewer.active_panel, "architect")
+        viewer._handle_click(buttons["Work"].center)
+        self.assertEqual(viewer.active_panel, "work")
+        viewer._handle_click(buttons["Work"].center)
+        self.assertIsNone(viewer.active_panel)
+
+    def test_escape_closes_panel_before_quit(self):
+        viewer = CivilizationViewer(smoke_test=True)
+        viewer.active_panel = "menu"
+
+        viewer._handle_escape()
+
+        self.assertIsNone(viewer.active_panel)
+        self.assertTrue(viewer.running)
+
+    def test_work_panel_cell_click_cycles_priority(self):
+        viewer = CivilizationViewer(smoke_test=True)
+        buttons = hud_button_rects(viewer.screen.get_width(), viewer.screen.get_height())
+        viewer._handle_click(buttons["Work"].center)
+        layout = viewer_layout(viewer.screen.get_width(), viewer.screen.get_height(), active_panel="work")
+        rect, pawn_id, work_type = work_grid_layout(layout.command_panel, sorted(viewer.state.pawns)).cells[0]
+        pawn = viewer.state.pawns[pawn_id]
+        before = work.default_priority(pawn, work_type)
+
+        viewer._handle_click(rect.center)
+
+        self.assertEqual(pawn.work_priorities[work_type], {0: 1, 1: 2, 2: 3, 3: 4, 4: 0}[before])
+
+    def test_inspector_tab_click_changes_active_tab(self):
+        viewer = CivilizationViewer(smoke_test=True)
+        engine.step_hour(viewer.state)
+        layout = viewer_layout(viewer.screen.get_width(), viewer.screen.get_height())
+        _exceptions, inspector = right_column_regions(layout.right)
+        tabs = inspector_tab_rects(viewer.state, viewer.selected_pawn_id, inspector)
+
+        viewer._handle_click(tabs["bio"].center)
+
+        self.assertEqual(viewer.inspector_tab, "bio")
+
+    def test_assign_panel_click_forces_open_job_slot(self):
+        viewer = CivilizationViewer(smoke_test=True)
+        viewer.active_panel = "assign"
+        viewer.selected_pawn_id = "pawn00"
+        pawn = viewer.state.pawns["pawn00"]
+        building = next(b for b in viewer.state.buildings.values() if b.built and b.recipe is not None)
+        building.staffed_by.clear()
+        for other in viewer.state.buildings.values():
+            if "pawn00" in other.staffed_by:
+                other.staffed_by = [pid for pid in other.staffed_by if pid != "pawn00"]
+        pawn.assignment = None
+        pawn.forced_assignment = None
+
+        layout = viewer_layout(viewer.screen.get_width(), viewer.screen.get_height(), active_panel="assign")
+        target = next(t for t in assign_panel_targets(viewer.state, viewer.selected_pawn_id, layout.command_panel) if t.building_id == building.id)
+        self.assertEqual(
+            assign_panel_target_at(viewer.state, viewer.selected_pawn_id, layout.command_panel, target.rect.center),
+            target,
+        )
+
+        viewer._handle_click(target.rect.center)
+
+        self.assertEqual(pawn.forced_assignment.building_id, building.id)
+        self.assertIn("pawn00", building.staffed_by)
+        self.assertEqual(viewer.inspector_tab, "log")
+
+    def test_assign_panel_occupied_job_selects_worker(self):
+        viewer = CivilizationViewer(smoke_test=True)
+        viewer.active_panel = "assign"
+        viewer.selected_pawn_id = "pawn00"
+        building = next(b for b in viewer.state.buildings.values() if b.built and b.recipe is not None)
+        building.staffed_by = ["pawn01"]
+        building.job_slots = 1
+        viewer.state.pawns["pawn01"].assignment = None
+
+        layout = viewer_layout(viewer.screen.get_width(), viewer.screen.get_height(), active_panel="assign")
+        target = next(t for t in assign_panel_targets(viewer.state, viewer.selected_pawn_id, layout.command_panel) if t.building_id == building.id)
+
+        viewer._handle_click(target.rect.center)
+
+        self.assertEqual(viewer.selected_pawn_id, "pawn01")
+        self.assertEqual(viewer.inspector_tab, "log")
+
 
 class HistoryFeedTests(unittest.TestCase):
     def _surface(self):
@@ -383,11 +568,58 @@ class HistoryFeedTests(unittest.TestCase):
             show_inspector=True, show_history=True, events=events, alert=("critical", 2),
         )
 
+    def test_render_with_selected_governor_decision_detail_does_not_crash(self):
+        state = civilization.create_default_civilization()
+        assets = load_civilization_assets()
+        font = pygame.font.Font(None, 16)
+        decision = {
+            "type": "decision",
+            "day": 0,
+            "hour": 9,
+            "governor_kind": "FallbackGovernor",
+            "llm_source": "fallback",
+            "proposed": ["set_work_priority", "place_building"],
+            "applied": ["set_work_priority"],
+            "rejected": ["place_building"],
+            "proposed_actions": [
+                {"kind": "set_work_priority", "group": "all", "work_type": "farming", "level": 1},
+                {"kind": "place_building", "building_kind": "Farm", "x": 4, "y": 4},
+            ],
+            "applied_actions": [
+                {"kind": "set_work_priority", "group": "all", "work_type": "farming", "level": 1},
+            ],
+            "rejected_actions": [
+                {"kind": "place_building", "building_kind": "Farm", "x": 4, "y": 4},
+            ],
+            "state_after": {
+                "stockpile": {"bread": 12, "water": 8, "grain": 0, "flour": 0},
+                "needs": {"food": 0.4, "water": 0.7, "rest": 0.8, "recreation": 0.5},
+            },
+            "decide_ms": 2.0,
+            "llm_latency": 0.0,
+        }
+
+        render_civilization(
+            self._surface(), state, assets, font, (12, 12),
+            show_inspector=True, show_history=True, events=[decision], selected_history_record=decision,
+        )
+
+    def test_history_panel_hit_test_returns_decision_row(self):
+        panel = pygame.Rect(0, 360, 900, 300)
+        records = [
+            {"type": "event", "day": 0, "hour": 8, "severity": "warn", "kind": "good_low", "text": "Bread low"},
+            {"type": "decision", "day": 0, "hour": 9, "applied": ["set_work_priority"]},
+        ]
+        rows = history_panel_row_rects(records, panel)
+
+        self.assertEqual(history_panel_record_at(records, panel, rows[0][0].center), records[1])
+
     def test_smoke_viewer_logs_events_to_ring(self):
         viewer = CivilizationViewer(smoke_test=True)
         viewer.run()
         # The events ring is event-only and never holds snapshots/decisions.
         self.assertTrue(all(r.get("type") == "event" for r in viewer.event_ring.records))
+        self.assertTrue(any(r.get("type") == "decision" for r in viewer.history_ring.records))
 
     def test_opening_history_acknowledges_alert(self):
         viewer = CivilizationViewer(smoke_test=True)
@@ -395,9 +627,44 @@ class HistoryFeedTests(unittest.TestCase):
         viewer._alert_count = 3
         buttons = hud_button_rects(viewer.screen.get_width(), viewer.screen.get_height())
         viewer._handle_click(buttons["History"].center)
-        self.assertTrue(viewer.show_history)
+        self.assertEqual(viewer.active_panel, "history")
         self.assertIsNone(viewer._alert_severity)
         self.assertEqual(viewer._alert_count, 0)
+
+    def test_history_panel_click_selects_decision(self):
+        viewer = CivilizationViewer(smoke_test=True)
+        viewer.active_panel = "history"
+        decision = {"type": "decision", "day": 0, "hour": 9, "applied": ["set_work_priority"]}
+        viewer.history_ring.write(decision)
+        layout = viewer_layout(viewer.screen.get_width(), viewer.screen.get_height(), active_panel="history")
+        rows = history_panel_row_rects(list(viewer.history_ring.records), layout.command_panel)
+
+        viewer._handle_click(rows[0][0].center)
+
+        self.assertEqual(viewer.selected_history_record, decision)
+
+    def test_menu_speed_click_sets_watch_speed(self):
+        viewer = CivilizationViewer(smoke_test=True)
+        viewer.active_panel = "menu"
+        layout = viewer_layout(viewer.screen.get_width(), viewer.screen.get_height(), active_panel="menu")
+        buttons = menu_speed_button_rects(layout.command_panel)
+
+        viewer._handle_click(buttons[20].center)
+
+        self.assertEqual(viewer.speed_multiplier, 20)
+
+    def test_twenty_x_speed_advances_twenty_hours_per_normal_interval(self):
+        viewer = CivilizationViewer(smoke_test=False, governor=FallbackGovernor())
+        try:
+            viewer.speed_multiplier = 20
+            before = viewer.state.day * 24 + viewer.state.time_of_day
+
+            viewer._advance(0.6)
+
+            after = viewer.state.day * 24 + viewer.state.time_of_day
+            self.assertEqual(after - before, 20)
+        finally:
+            viewer._shutdown_governor()
 
 
 if __name__ == "__main__":

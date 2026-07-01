@@ -157,6 +157,10 @@ Operator interaction principles:
 - Persistent UI is for scanability, not completeness. Keep the Civ strip, pawn
   roster, alert stack, and governor status short; put causes, full thought
   ledgers, decision traces, and stockpile detail in the inspector or drill-downs.
+- Screen regions are exclusive by default: top macro strip, pawn roster, central
+  map, right inspector/alert column, docked command panel, and bottom command
+  strip. Persistent text boxes should not float over the map except for
+  hover/selection labels, construction progress, and critical world badges.
 - Do not rely on color alone. Critical states need at least two channels such as
   color plus icon, shape, position, or brief motion. Text belongs on dark
   back-plates, not directly on terrain.
@@ -711,7 +715,7 @@ Rules:
 | Build-2 step 1 shipped: pawns self-select work via `work.py`; the governor stops routine `assign_pawn` | A deterministic lane arbiter (forced -> hard-state -> self-care -> normal work -> idle; medical/emergency are ordered stubs) does staffing by manual priority -> work-type order -> distance -> skill, with `job_slots`-aware reservations (no double-claim), no-thrash job retention, and a `work.explain` decision trace. `set_work_priority` is the governor/LLM lever and the player's clickable Work grid; `assign_pawn` becomes the forced override. Self-care is a lane label only (eating/drinking stays instant); job-candidate indexes (Paper 7) and emergency/medical content are deferred. Both survival oracles (I1 3-day, LLM==fallback) stay green | 2026-06-29 build-2 step 1 |
 | Build-2 water slice shipped as the first essential economy extension | `Good.WATER`, `NEED_WATER`, Water Well production, one-unit drinking, thirst thoughts, Civ Water readout, HUD stockpile chip, water work priority, days-of-cover summary, and `low_water` governor exception make the first Townsmen essential conserved and visible. District buffers, service queues, seasonal demand, markets, wages, and storage caps remain deferred | 2026-06-29 build-2 water slice |
 | Paper 5 current-systems readability shipped before the governor card | The viewer now separates hover from selection, draws danger rings above selection, shows `work.LANE_IDLE` pawns with an overhead `!`, and renders construction sites as ghosts with footprint outlines and two-stage material/work progress. Storage 80/95% badges remain deferred until stockpile capacity exists, because uncapped totals cannot produce truthful pressure | 2026-06-29 Paper 5 current-systems slice |
-| Paper 6 governor observer shell shipped | The viewer derives a read-only Governor card from current exceptions, scheduler status, and recent policy actions: plan, phase, bottleneck, confidence, last reallocation, and top exception. A right-edge exception stack sorts active governor exceptions by severity and actionability. It is diagnosis-first UI, not a micromanagement surface; decision-log drill-down and policy editors remain deferred | 2026-06-29 Paper 6 observer UI slice |
+| Paper 6 governor observer shell shipped, with decision audit drilldown | The viewer derives a read-only Governor card from current exceptions, scheduler status, and recent policy actions: plan, phase, bottleneck, confidence, last reallocation, and top exception. A right-edge exception stack sorts active governor exceptions by severity and actionability. History now adds a selectable decision audit showing proposed/applied/rejected policy payloads plus after-state goods/needs and the compact goods/jobs/bottleneck causality map. It is diagnosis-first UI, not a micromanagement surface; policy editors remain deferred | 2026-06-29 Paper 6 observer UI slice, updated 2026-07-01 |
 
 ## Health Criteria
 

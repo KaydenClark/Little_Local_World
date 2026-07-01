@@ -9,22 +9,25 @@ Pygame is the local viewer for the civilization state.
 
 ![Current Local Agent Town UI](docs/screenshots/current-state.png)
 
-This is a screenshot of the current local viewer state: a RimWorld-style pawn
-roster, selected-pawn sheet, readable civilization map, resource HUD, and bottom
-command strip. Pawns now self-select their work through the lane-based arbiter,
-the HUD includes water as the first Build-2 essential, the Civ stats panel shows
-Water, and the selected-pawn sheet has a "Why this job" trace (winning lane,
-reason, and the top job it passed over). The map now separates hover from
-selection, shows idle pawns with an overhead badge, and renders construction
-sites as translucent ghosts with progress bars when they exist. A compact
-Governor card and right-edge exception stack now keep the current plan,
-bottleneck, confidence, recent policy change, and top active problem visible.
+This is a screenshot of the current local viewer state: an Age/Townsmen-style
+macro strip, RimWorld-style pawn roster, readable civilization map, right-side
+alerts plus selected-pawn inspection, and a bottom command strip. Persistent UI
+now stays in reserved regions instead of covering the map. Pawns self-select
+their work through the lane-based arbiter, and the selected-pawn inspector keeps
+the "Why this job" trace visible.
 
-The **Work** button opens the RimWorld-style work-priority grid below; click a
-cell to cycle a pawn's priority (1 highest .. 4 lowest, blank disables it) and
-watch the pawn re-route on the next step. The **History** button opens the live
-event feed. The other command buttons (Architect, Assign, Research, Menu) are
-still visual placeholders.
+Every bottom command opens one real panel. **Architect** shows build costs,
+counts, slots, missing inputs, and construction blockers. **Work** opens the
+RimWorld-style priority grid; click a cell to cycle a pawn's priority (1 highest
+.. 4 lowest, blank disables it). **Assign** opens a direct override browser:
+select a pawn, pin them to an open job slot, or click an occupied slot to inspect
+the worker holding it. The right-side inspector tabs (`Log`, `Gear`, `Social`,
+`Bio`, `Needs`, `Health`) are live. **Research** shows the current research spine
+and honest disabled future entries. **History** opens a live decisions + events
+timeline; click a Governor decision to inspect proposed, applied, and rejected
+policy payloads plus the after-state goods/needs and causality map. **Menu**
+shows run controls, 1x/8x/20x watch speed, local model status, proof path, and
+overlay toggles/status.
 
 ![Work-priority grid](docs/screenshots/work-grid.png)
 
@@ -92,8 +95,12 @@ Launch Local Agent Town.cmd
 - Pan: `WASD` or arrow keys.
 - Zoom: mouse wheel, `+`, or `-`.
 - Select pawn: click a pawn or press `Tab`.
+- Open a command panel: click `Architect`, `Work`, `Assign`, `Research`,
+  `History`, or `Menu` in the bottom strip.
+- Watch speed: open `Menu` and click `1x`, `8x`, or `20x`.
 - Local model governor: press `L` to connect or disconnect LM Studio/Ollama.
-- Quit: `Esc` or `Q`.
+- Close panel / quit: `Esc` closes an open panel first; with no panel open, `Esc`
+  or `Q` quits.
 
 ## Optional Local AI
 
@@ -118,18 +125,20 @@ Ollama can use the same adapter with
 - Construction, daily tax, and a fallback Governor that keeps the civilization moving.
 - A local LLM Governor behind the same interface, with hard fallback on any
   error.
-- A Pygame civilization viewer with camera pan/zoom, pawn selection, a top pawn
-  roster, right-side pawn sheet, HUD, local model status, Governor card, and
-  exception stack.
+- A Pygame civilization viewer with camera pan/zoom, pawn selection, a top macro
+  strip, pawn roster, right-side alerts and pawn inspector, bottom command strip,
+  local model status, and docked command panels.
 - A lane-based work-priority arbiter: pawns self-select their best legal job
   (manual priority -> work-type order -> skill), never double-claim a slot, and
-  expose a decision trace. The Work button opens a clickable priority grid; the
-  rest of the bottom command strip is still placeholder.
+  expose a decision trace. The Work button opens a clickable priority grid, and
+  Assign opens a distinct forced-assignment/slot-inspection browser.
 - A conservation-safe water slice: Water Well production, stockpiled water,
   pawn drinking, thirst mood pressure, Civ Water readout, and a `low_water`
   governor exception.
-- A live History feed plus Governor observer overlay for current plan,
-  bottleneck, confidence, last policy change, and active exceptions.
+- A live History decision audit plus Governor observer surfaces for current plan,
+  bottleneck, confidence, proposed/applied/rejected policy actions, recent
+  policy change, after-state goods/needs, and active exceptions.
+- Menu watch-speed controls for 1x, 8x, and 20x viewer pacing.
 - CC0/provenance-tracked civilization sprites under `src\agent_town\assets\colony`.
 - A repeatable civilization scaling benchmark for 100, 500, and 1,000 pawns.
 

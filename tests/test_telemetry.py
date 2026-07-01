@@ -27,6 +27,16 @@ class _SchedulerLike:
         return []
 
 
+class _ActionGovernor:
+    """Returns one valid policy and one rejected policy for audit-record tests."""
+
+    def decide(self, context):
+        return [
+            GovernorAction.set_work_priority("all", "farming", 1),
+            GovernorAction.place_building("NoSuchBuilding", 0, 0),
+        ]
+
+
 class SinkTests(unittest.TestCase):
     def test_ring_buffer_type_filter(self):
         ring = telemetry.RingBufferSink(maxlen=10, types={"event"})
@@ -96,6 +106,20 @@ class BuildDecisionTests(unittest.TestCase):
         decision = telemetry.build_decision(state, gov, result)
         self.assertEqual(decision["llm_source"], "fallback")
         self.assertFalse(decision["dropped"])
+
+    def test_decision_records_action_payloads_and_after_state(self):
+        gov = telemetry.TelemetryGovernor(_ActionGovernor())
+        state = civilization.create_default_civilization()
+        result = engine.step_hour(state, gov)
+
+        decision = telemetry.build_decision(state, gov, result)
+
+        self.assertEqual(decision["proposed"], ["set_work_priority", "place_building"])
+        self.assertEqual(decision["applied"], ["set_work_priority"])
+        self.assertEqual(decision["proposed_actions"][0]["work_type"], "farming")
+        self.assertEqual(decision["proposed_actions"][0]["level"], 1)
+        self.assertEqual(decision["rejected_actions"][0]["building_kind"], "NoSuchBuilding")
+        self.assertIn("stockpile", decision["state_after"])
 
 
 class TelemetryGovernorTests(unittest.TestCase):

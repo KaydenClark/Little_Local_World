@@ -63,11 +63,12 @@ Important drift or uncertainty:
   through `scripts/llm_governor_run.py --hours 6`, and is wired into the
   real-time viewer through the non-blocking `CivilizationDecisionScheduler`.
 - The I1/I2/I3 bridge goal is complete. Final viewer cleanup has landed as the
-  RimWorld-style overlay shell, in-map panels, Civ stats readout, pawn selection
-  and inspection, local-model status/toggle, and deterministic pawn commute
-  movement. The bottom command strip's **Work** button is now live (it opens the
-  work-priority grid, build-2 step 1); the remaining buttons (Architect, Assign,
-  Research, History, Menu) stay visual placeholders until their actions exist.
+  RimWorld/Age-style observer shell, reserved HUD regions, pawn selection and
+  inspection, local-model status/toggle, and deterministic pawn commute movement.
+  The bottom command strip now opens one mutually exclusive docked panel:
+  Architect, Work, Assign, Research, History, and Menu all expose truthful current
+  state or explicit disabled reasons instead of inert placeholders. History now
+  includes a selectable Governor decision audit instead of only an event feed.
   The first Build-2 essential economy slice is also live: Water Well production,
   stockpiled water, pawn drinking, thirst mood pressure, Civ Water readout, HUD
   Water chip, and a `low_water` governor exception.
@@ -87,11 +88,14 @@ separate, danger rings outrank selection, `work.LANE_IDLE` pawns get an overhead
 idle badge, and active construction sites draw as ghosts with footprint outlines
 and progress bars. Storage-pressure badges stay deferred until stockpile capacity
 exists. The synthesis paper (`research_papers/8.little-local-world-research-synthesis.md`)
-Paper 6 governor observer UI is now also live: a compact Governor card shows
-current plan, phase, bottleneck, confidence, last policy change, and top
-exception; the right-edge exception stack sorts active governor exceptions by
-severity/actionability with likely causes. The synthesis paper now points next
-to **Paper 7 scale foundations** before deeper economy. Per user direction
+Paper 6 governor observer UI is now also live: a compact Governor summary plus
+right-edge exception stack sort active governor exceptions by severity/actionability
+with likely causes, and History can drill into Governor decision payloads
+(proposed/applied/rejected) plus after-state goods/needs. The UI
+navigation/readability baseline is also live: screen regions are exclusive,
+persistent text no longer covers the map, and every bottom button opens a real
+panel. The synthesis paper now points next to **Paper 7 scale
+foundations** before deeper economy. Per user direction
 (2026-06-29) lethal starvation (build-1 step 5.4) stays deferred behind the
 visible autonomy/readability work; Build-1 ships with hunger mood pressure as
 its stakes.
@@ -120,6 +124,16 @@ hoards coin today with nothing to buy). Trader model reuses the **local**
 `LocalLLMClient` (Gemma 4 E4B / whatever LM Studio has loaded), not a cloud API,
 behind a deterministic trade core. Every crisis run must eventually be watchable
 in the viewer at 8-20x.
+
+UI correction from owner feedback (2026-07-01): the main game body cannot be an
+info salad. The player should be able to pretend they are the agent playing the
+game: click visible controls, open a real screen or menu, and learn where every
+good, job, bottleneck, and decision came from. Treat this as part of the current
+crisis line, not a later cosmetic pass. Before more deep economy or scale work,
+land a navigation/readability slice that removes false affordances and makes the
+existing causality watchable: Architect, Assign, Research, and Menu must either
+open a real screen backed by current systems or be replaced with an honest
+disabled/state explanation until the underlying action exists.
 
 Slices:
 
@@ -181,11 +195,29 @@ Slices:
      built to let the fallback cover gaps by design). Verifying the model's real
      share of influence at normal/8-20x viewer speed - not a fast headless loop -
      is the natural next watchability check.
-3. **Slice 2 - the trader.** Deterministic trader + `buy_good`, coin -> bread,
+3. **Slice 2 - UI navigation/readability baseline (done).** The viewer now uses
+   exclusive regions: top macro strip, pawn roster, central map, right
+   inspector/exception column, docked command panel, and bottom command strip.
+   Architect shows build options and blockers; Work keeps the priority grid in
+   the command panel; Assign is a distinct direct-override browser for selecting
+   pawns, pinning open/current job slots, and inspecting occupied slots; Research
+   shows the current minimal research surface plus honest disabled entries;
+   History shows recent decisions and events, acknowledges alerts, and lets the
+   watcher click a Governor decision to inspect source/model state,
+   proposed/applied/rejected policy payloads, completed buildings, after-state
+   goods/needs, and the compact causality map; Menu shows run controls/status.
+   Menu also exposes 1x/8x/20x watch-speed controls, and the History title shows
+   the active speed so crisis proof frames are self-describing.
+   The right-side inspector tabs are live (`Log`, `Gear`, `Social`, `Bio`,
+   `Needs`, `Health`). Tests cover layout, hit targets, panel state, Work cell
+   cycling, Assign slot clicks, inspector-tab clicks, History decision selection,
+   speed changes, and render smoke. Proof frames live under
+   `docs/proof/ui_navigation/` and `docs/proof/governor_decision_audit/`.
+4. **Slice 3 - the trader.** Deterministic trader + `buy_good`, coin -> bread,
    optional local-LLM trader personality behind a hard fallback.
-4. **Slice 3 - death + fail state + post-mortem.** Deferred starvation death,
+5. **Slice 4 - death + fail state + post-mortem.** Deferred starvation death,
    run-end on collapse, and a structured "what killed this civ" report.
-5. **Slice 4 - UI proof at 8-20x.** Run the real viewer on a crisis seed; confirm
+6. **Slice 5 - UI proof at 8-20x.** Run the real viewer on a crisis seed; confirm
    re-tasking, construction ghosts, trader arrival, governor plan, death badges.
 
 ## Build arc (the long road)
@@ -229,10 +261,10 @@ from the research-backed queue below, keeping every slice small and verified.
    `FactionState` (tiles, buildings with staffing, pawns by mood, HUD) with the
    authored `assets/colony` sprites and steps `engine.step_hour`; it is now the
    default `python -m agent_town` view and its smoke test is green. Camera
-   pan/zoom, pawn selection, the inspection panel, and the LLM toggle are now in
-   place. The final cleanup pass also added in-map overlays, Civ stats, and
-   deterministic pawn commute movement; command buttons remain visual placeholders
-   until build-2 command actions exist.
+  pan/zoom, pawn selection, the inspection panel, and the LLM toggle are now in
+  place. The UI navigation baseline moved persistent text out of the map and
+  made every bottom command open a truthful docked panel; future work can deepen
+  the commands without changing the navigation shell.
 3. **(done) LLM governor I2** - `governor.LLMGovernor` is behind the fallback
    `decide` interface with JSON-schema output and a hard fallback;
    `test_llm_governor.py` is green, `scripts/llm_governor_run.py --hours 6`
@@ -312,12 +344,12 @@ from the research-backed queue below, keeping every slice small and verified.
         stub "extremely low"), richer thoughts (meal quality, ate-without-table,
         recreation variety, social, death), and inspirations (nothing to boost
         yet).
-   3. **(done) Civ stats bar.** `economy.average_need(state, need)` gives the
-      Civ-wide mean of a need (alongside `average_mood`), and the viewer renders a
-      top-left translucent Civ stats panel (originally Mood + Food/Recreation/Rest;
-      item 7 extends it with Water) reusing the need-bar colours. Build 1 only
-      adds a mood consequence for food; item 7 adds water/thirst pressure. Tests:
-      `average_need` on a known roster + a panel render smoke check.
+   3. **(done) Civ stats readout.** `economy.average_need(state, need)` gives the
+      Civ-wide mean of a need (alongside `average_mood`). The old top-left
+      translucent panel has since been folded into the reserved HUD/inspector
+      layout so the map stays readable. Build 1 only adds a mood consequence for
+      food; item 7 adds water/thirst pressure. Tests: `average_need` on a known
+      roster + a panel render smoke check.
    4. **(deferred) Starvation death.** After steps 1-3, land the
       72h-since-last-meal death from the prior plan: `Pawn.hours_since_meal`
       (contract change), the conservation fix (food only from bread; remove the
@@ -359,13 +391,18 @@ from the research-backed queue below, keeping every slice small and verified.
    Storage 80/95% badges are deliberately deferred until stockpile capacity exists.
    Paper 6 governor observer UI followed this as item 9.
 
-9. **(done) Paper 6 governor card + exception stack.** The viewer now derives a
-   read-only Governor card from current exceptions, scheduler status, and recent
-   policy actions: current plan, phase, bottleneck, confidence, last reallocation,
-   and top exception. A right-edge exception stack shows active governor
-   exceptions by severity/actionability with likely causes. It stays observer
-   UI, not a policy editor. **Next code task is Paper 7 scale foundations:
-   reachability `region_id` plus deterministic command/update phases.**
+9. **(done) Paper 6 governor observer summary + exception stack.** The viewer now
+   derives read-only Governor status from current exceptions, scheduler status,
+   and recent policy actions: current plan, phase, bottleneck, confidence, last
+   reallocation, and top exception. The current layout keeps the short summary in
+   the macro strip and the exception stack in the right column. It stays observer
+   UI, not a policy editor.
+10. **(done) UI navigation/readability baseline (pulled ahead by owner feedback).**
+   The current desktop viewer now behaves like a usable game screen instead of a
+   dense status collage: persistent HUD surfaces are short, the map is no longer
+   covered by always-on panels, and every bottom command button opens a truthful
+   screen/menu. Next: return to Paper 7 scale foundations, reachability
+   `region_id` plus deterministic command/update phases, before deeper economy.
 
 ## Research Paper Implementation Queue
 
@@ -391,8 +428,9 @@ build order. Work the queue in this order, not in paper-number order:
    Idle badge, construction progress, danger-over-selection, and hover vs
    selection are live. Storage 80/95% badges are deferred until storage capacity
    exists.
-5. **Governor card + exception stack (done).** Paper 6. Current plan, bottleneck,
-   confidence, last reallocation, top exception and its likely cause are visible.
+5. **Governor observer summary + exception stack (done).** Paper 6. Current plan,
+   bottleneck, confidence, last reallocation, top exception and its likely cause
+   are visible in reserved HUD/right-column regions.
 6. **Scale foundations (next code task).** Paper 7. Reachability `region_id` and deterministic
    command/update phases - cheap scaffolding added before population grows.
 7. **Deeper economy.** Paper 4 (remainder). District storage, market/service
@@ -489,12 +527,13 @@ material; the numbered order above is what to build.
      compact Governor card (plan, phase, bottleneck, confidence, last policy
      change, top exception) plus a right-edge exception stack sorted by severity
      and actionability. State, cause, and actionability stay separated.
-   - Next code task: none for Paper 6 until a full decision-log drill-down or
-     policy editor is explicitly pulled forward.
+   - Next code task: none for Paper 6 until a policy editor or deeper timeline
+     scrubber is explicitly pulled forward. The first decision-log drill-down is
+     now live in History.
    - Tests/manual proof: `tests.test_civilization_view.GovernorObserverModelTests`
      covers exception severity ordering, low-water bottleneck surfacing, recent
      policy action text, and render smoke with an exception.
-   - Deferred: full decision-log scrubber, policy editor, multi-civilization
+   - Deferred: full timeline scrubber, policy editor, multi-civilization
      observer dashboards.
 7. **Scale architecture intake** -
    `research_papers/7.scalable-sim-report.md`
@@ -659,5 +698,8 @@ Append a row when a task changes durable project state. Use actual results, not 
 | 2026-06-30 03:55 -06:00 | Full Mac LM acceptance gate for PR #23 `feat/production-target-honored` at `f6834eefbefcb3e0ffa148d89a60d0cf0cc25bb4` | `.venv/bin/python -m pip install -e .`; `.venv/bin/python -m agent_town --smoke-test`; `.venv/bin/python -m unittest discover -s tests` (233 tests); `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/validate-workbench.ps1`; LM Studio ping `http://192.168.1.131:1234/v1/models` found `google/gemma-4-e4b`; Pygame `CivilizationViewer` booted with blocking `LLMGovernor`; 96 simulated viewer hours; `.venv/bin/python scripts/analyze_run.py logs/run-20260630-034953.jsonl --events`; `git diff --check` | amber | Install/smoke/unit/docs/LM ping/viewer boot passed and the current game state stayed healthy: mood 85.8 -> min 72.4 -> end 82.4, idle peak 0, breaks 0, depletions 0, stalls 0. Analyzer returned AMBER because 5/96 model decision hours emitted invalid JSON and fell back; 91/96 hours used model decisions and applied 365 `set_work_priority` actions. Not ready to merge because AMBER is not GREEN; no Apple Silicon-specific failure evidence. See `docs/run_reports/2026-06-30-pr23-mac-lm-gate.md`. |
 | 2026-06-30 04:03 -06:00 | Fix attempt 5 for PR #23 AMBER Mac LM gate on `feat/production-target-honored` (clean detached worktree based on `origin/feat/production-target-honored`; model scheduled gpt-5.5 xhigh; after 04:00 budget metric/safe in-run switch not readable, kept smallest safe slice; `.agent.lock` acquired in `E:\GPTCode\local-agent-town`) | PR status read: `gh pr view 23 --json ...` -> OPEN/CLEAN with latest Mac comment `NOT READY` / AMBER at `a04be56`; `gh pr checks` signal absent. RED `$env:PYTHONPATH=(Resolve-Path src).Path; E:\GPTCode\local-agent-town\.venv\Scripts\python.exe -m unittest tests.test_llm.LocalLLMClientTests.test_complete_json_retries_once_after_malformed_json` failed because malformed model content raised immediately; GREEN `tests.test_llm` (8 tests); GREEN `tests.test_llm_governor tests.test_civilization_governor` (30 tests); `E:\GPTCode\local-agent-town\.venv\Scripts\python.exe -m unittest discover -s tests` (234 tests); `E:\GPTCode\local-agent-town\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; `git diff --check` | pass | Latest Mac gate was healthy except fallback-covered invalid JSON hours (no depletions, no stalls, no breaks, mood recovered). Fix: `LocalLLMClient.complete_json` now retries once after malformed/non-object model JSON with a strict JSON-only reminder, preserving timeout/connection failures; the governor prompt also caps replies at 6 highest-impact actions to reduce oversized/truncated action lists. Continued on PR #23 instead of switching branches because this is the active merge blocker and the next truth-loop slices depend on it. Main `E:\` checkout remains dirty/behind with separate hosted-OpenAI telemetry work and was left untouched. Next: rerun the Mac LM acceptance gate to confirm AMBER -> GREEN. |
 | 2026-06-30 04:25 -06:00 | Full Mac LM acceptance gate for PR #23 `feat/production-target-honored` at `edf828ec778d14e3e9f4b5fa1d44220910a2eadc` | `.venv/bin/python -m pip install -e .`; `.venv/bin/python -m agent_town --smoke-test`; `.venv/bin/python -m unittest discover -s tests` (234 tests); `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/validate-workbench.ps1`; LM Studio ping `http://192.168.1.131:1234/v1/models` found `google/gemma-4-e4b`; Pygame `CivilizationViewer` booted with blocking `LLMGovernor`; 96 simulated viewer hours; `.venv/bin/python scripts/analyze_run.py logs/run-20260630-041958.jsonl --events`; completed-log proof assertion; `git diff --check` | pass | Install/smoke/unit/docs/LM ping/viewer boot passed. The current game state stayed healthy for the full 4-day LM gate: analyzer `RESULT: GREEN`, 96/96 model decisions, 0 dropped/fallback hours, 0 warnings, 0 critical events, mood 85.8 -> min 72.4 -> end 82.4, idle peak 0, breaks 0, depletions 0, stalls 0, final stockpile bread 16 / water 96, and action histogram 396 `set_work_priority` + 2 `place_building`. Ready to merge; no Apple Silicon-specific failure evidence. See `docs/run_reports/2026-06-30-pr23-mac-lm-gate.md`. |
-
 | 2026-07-01 03:44 -0600 | Full Mac LM acceptance gate for PR #34 `feat/llm-governor-dig-out-verify` at `5f56638d69e292b8687d2f3da77c42cde224dc1a` | `.venv/bin/python -m pip install -e .`; `.venv/bin/python -m agent_town --smoke-test`; `.venv/bin/python -m unittest discover -s tests`; `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/validate-workbench.ps1`; LM Studio ping `http://192.168.1.131:1234/v1/models` for `google/gemma-4-e4b`; Pygame `CivilizationViewer` boot; 96 simulated viewer hours; `.venv/bin/python scripts/analyze_run.py logs/run-20260701-033736.jsonl --events`; `git diff --check` | fail | install=pass-python312, smoke=pass, unit=pass, docs=pass, lm_ping=pass, viewer_boot=pass, four_day=pass, analyzer=red, model_decisions=96/96, dropped=0, optional=skipped-not-scale-pathfinding-performance, ready_to_merge=no. Platform: likely-real-repo-game-state-or-lm-gate-failure-unless-noted; python3-default-3.9-so-venv-used-python3.12. See `docs/run_reports/2026-07-01-pr34-mac-lm-gate.md`. |
+| 2026-07-01 | Roadmap UI navigation/readability pull-forward from owner feedback | `Select-String` inspection of `src\agent_town\civilization_view.py` and `tests\test_civilization_view.py`; `.\scripts\validate-workbench.ps1`; `git diff --check` | pass | Corrected the roadmap's stale button status: Work and History are live; Architect, Assign, Research, and Menu remain open button surfaces. Added the UI navigation/readability baseline as the next current-line slice before Paper 7 scale foundations, trader/death follow-ups, or deeper economy. The slice requires readable main-body composition, truthful button panels/menus, panel-state tests, and rendered proof under `docs/proof/ui_navigation/`. |
+| 2026-07-01 | Implement RimWorld-style UI navigation/readability baseline | `.\.venv\Scripts\python.exe -m unittest tests.test_civilization_view` (40 tests); `.\.venv\Scripts\python.exe -m unittest discover -s tests` (267 tests); `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; `git diff --check`; rendered and inspected `docs\proof\ui_navigation\default.png`, `architect.png`, `work.png`, `assign.png`, `research.png`, `history.png`, `menu.png`; refreshed `docs\screenshots\current-state.png` | pass | Viewer now has exclusive reserved regions (macro strip, roster, map, right inspector/alerts, command panel, command strip), active panel state for all six bottom commands, non-overlapping docked panels, Work cycling still live, History alert acknowledgement preserved, and docs updated for the new operator workflow. Remaining gap: Architect/Assign/Research/Menu expose current truth and disabled reasons, but deeper placement, assignment, and research mechanics remain future systems. |
+| 2026-07-01 | Make inspector tabs and Assign panel actually interactive | `.\.venv\Scripts\python.exe -m unittest tests.test_civilization_view` (44 tests); `.\.venv\Scripts\python.exe -m unittest discover -s tests` (271 tests); `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; `git diff --check`; rendered and inspected `docs\proof\ui_navigation\assign.png`, `inspector_log.png`, `inspector_bio.png`, `inspector_social.png`, `inspector_gear.png`, `inspector_health.png`; refreshed `docs\screenshots\current-state.png` | pass | The right-side inspector tabs now have real hit targets and distinct content. Assign is no longer a second Work view: it has a pawn selector plus job-slot rows, can pin the selected pawn to open/current slots as a forced override, and selects the occupying worker when a slot is full. Remaining gap: Gear/social/health show honest current-state and future-system gaps until inventory, relationships, and injuries exist. |
+| 2026-07-01 | Add Governor decision audit and 20x crisis watch proof | `.\.venv\Scripts\python.exe -m unittest tests.test_civilization_view tests.test_telemetry` (62 tests); `.\.venv\Scripts\python.exe -m unittest discover -s tests` (277 tests); `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; `git diff --check`; rendered and inspected `docs\proof\governor_decision_audit\history_decision_detail.png` and `docs\proof\governor_decision_audit\crisis_20x_history.png` | pass | History is now a selectable decisions + events audit surface: Governor decisions show source/model state, proposed/applied/rejected policy payloads, completed buildings, after-state goods/needs, and a compact goods/jobs/bottleneck causality map. Menu now exposes 1x/8x/20x watch speed, and the 20x crisis proof uses the real `CivilizationViewer` stepping path. Remaining gap: full timeline scrubber and policy editor remain deferred. |
