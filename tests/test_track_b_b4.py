@@ -105,6 +105,17 @@ class ApplyActionsTests(unittest.TestCase):
 
         self.assertEqual(governor.apply_actions(state, [action]), [action])
 
+    def test_place_building_with_unknown_kind_is_rejected(self):
+        # Regression: a live LLM governor proposed place_building with
+        # building_kind="bread_storage" (plausible, not in the catalogue) and it
+        # reached the engine, which crashed on the first building_def lookup.
+        # An LLM-sourced building_kind is untrusted input and must be validated.
+        state = FactionState()
+        action = GovernorAction.place_building("bread_storage", 1, 1)
+
+        self.assertFalse(governor.validate_action(state, action))
+        self.assertEqual(governor.apply_actions(state, [action]), [])
+
     def test_assign_pawn_sets_forced_override(self):
         state = town()
         governor.apply_actions(state, [GovernorAction.assign_pawn("ace", "saw1", "woodcutting")])

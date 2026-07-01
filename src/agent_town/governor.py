@@ -20,7 +20,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any, Callable, Protocol
 
-from . import economy, pawns, schedule, work
+from . import buildings, economy, pawns, schedule, work
 from .core import (
     ACTION_ASSIGN_PAWN,
     ACTION_PLACE_BUILDING,
@@ -302,6 +302,12 @@ def validate_action(state: FactionState, action: GovernorAction) -> bool:
 
     if action.kind == ACTION_PLACE_BUILDING:
         if not action.building_kind or action.x is None or action.y is None:
+            return False
+        # An LLM-sourced building_kind is untrusted input: a live model can
+        # propose a plausible but nonexistent kind (seen in practice: "bread
+        # storage"), which would otherwise reach construction and crash on the
+        # first building_def lookup. Reject it here instead.
+        if not buildings.is_known_kind(action.building_kind):
             return False
         if state.grid is not None:
             return state.grid.in_bounds(action.x, action.y)

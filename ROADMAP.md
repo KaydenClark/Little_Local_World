@@ -144,8 +144,43 @@ Slices:
    spurious dig-out. Proof frames in `docs/proof/slice1/`: a Farm ghost placed
    during an active `low_food` crisis, and the recovered civ. A marginal 2-farm
    civ now visibly plants wheat (2 -> 8 farms) and recovers; the healthy civ never
-   over-builds. Tests in `tests/test_dig_out.py`. The LLM-governor dig-out is not
-   yet verified against a loaded model (fallback-only proof so far).
+   over-builds. Tests in `tests/test_dig_out.py`.
+
+   **LLM-governor path verified live (2026-07-01), against `google/gemma-4-e4b`
+   loaded in LM Studio:**
+   - GPU engagement confirmed directly: `nvidia-smi` sampling shows utilization
+     rising from a ~5-11% baseline to 38-47% for the duration of each real call,
+     matching each call's ~5-7s latency. Across a 30-hour blocking run every hour
+     recorded `LLMGovernor.last_outcome == "model"` (zero fallback, zero error).
+   - **Found and fixed a real crash**: the live model proposed
+     `place_building(building_kind="bread_storage", ...)` - a plausible but
+     nonexistent kind. `validate_action` never checked `building_kind` against
+     the real catalogue, so it reached `engine._realize_placements` and crashed
+     on the `building_def` lookup. Fixed with `buildings.is_known_kind` +
+     a `validate_action` check + a regression test - this is exactly the kind of
+     gap that only surfaces by running the live model, not the fallback.
+   - The model **does** engage the food chain on its own initiative - the system
+     prompt never mentions `low_food`/`food_days_of_cover` by name or "duplicate
+     capacity" - it read the full JSON context and, unprompted, raised
+     farming/milling/baking priorities for named pawns and proposed real
+     Farm/Mill/Bakery placements; one full run built a new Farm + Mill and
+     recovered bread 0 -> 8 (food_need 80%). Proof:
+     `docs/proof/llm_verify/live_model_food_decision_h21.png` (governor card
+     phase "Local model idle", 6 live `set_work_priority` actions raising
+     farming/milling/baking - honest note: the card's named top-line bottleneck
+     in that exact frame was `low_water`, not `low_food`, since the model acted
+     on the fuller context rather than only the single named top exception).
+   - **Honest limits, not spun away:** the model is less *reliably* successful
+     than the deterministic fallback - one blocking run built out and recovered
+     cleanly, another proposed many placements that had not completed by the end
+     of the window (this variance is exactly why the hard fallback exists).
+     Separately, in a headless scripted loop the sim advances far faster than the
+     model's ~6-7s real latency, so the deterministic fallback ends up covering
+     (and often resolving) most of the crisis between infrequent live decisions -
+     an artifact of headless-script pacing, not a scheduler bug (the scheduler is
+     built to let the fallback cover gaps by design). Verifying the model's real
+     share of influence at normal/8-20x viewer speed - not a fast headless loop -
+     is the natural next watchability check.
 3. **Slice 2 - the trader.** Deterministic trader + `buy_good`, coin -> bread,
    optional local-LLM trader personality behind a hard fallback.
 4. **Slice 3 - death + fail state + post-mortem.** Deferred starvation death,
