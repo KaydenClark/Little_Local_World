@@ -75,33 +75,52 @@ class LocalLLMClient:
             raise LLMClientError("LLM disabled; set AGENT_TOWN_LLM_MODEL to enable local planning")
 
         user_text = user if isinstance(user, str) else json.dumps(user, separators=(",", ":"))
-        payload: dict[str, Any] = {
-            "model": self.model,
-            "messages": [
-                {"role": "system", "content": system},
-                {"role": "user", "content": user_text},
-            ],
-            "temperature": temperature,
-            "top_p": 0.9,
-            "max_tokens": self.max_tokens,
-            "stream": False,
-        }
-        if schema is not None:
-            payload["response_format"] = {
-                "type": "json_schema",
-                "json_schema": {"name": name, "schema": schema},
+        messages: list[dict[str, str]] = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user_text},
+        ]
+        last_parse_error: LLMClientError | None = None
+        for attempt in range(2):
+            if attempt:
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": (
+                            "Previous response was invalid JSON. Return only one valid JSON object "
+                            'matching the requested schema, with no prose or markdown.'
+                        ),
+                    }
+                )
+            payload: dict[str, Any] = {
+                "model": self.model,
+                "messages": list(messages),
+                "temperature": temperature,
+                "top_p": 0.9,
+                "max_tokens": self.max_tokens,
+                "stream": False,
             }
+            if schema is not None:
+                payload["response_format"] = {
+                    "type": "json_schema",
+                    "json_schema": {"name": name, "schema": schema},
+                }
 
-        try:
-            response = self._http_post(payload, self.timeout)
-        except LLMClientError:
-            raise
-        except (TimeoutError, socket.timeout) as exc:
-            raise LLMClientError("LLM request timed out") from exc
-        except (ConnectionError, OSError, urllib.error.URLError) as exc:
-            raise LLMClientError(f"LLM connection failed: {exc}") from exc
+            try:
+                response = self._http_post(payload, self.timeout)
+            except LLMClientError:
+                raise
+            except (TimeoutError, socket.timeout) as exc:
+                raise LLMClientError("LLM request timed out") from exc
+            except (ConnectionError, OSError, urllib.error.URLError) as exc:
+                raise LLMClientError(f"LLM connection failed: {exc}") from exc
 
-        return _parse_json_object(_extract_content(response))
+            try:
+                return _parse_json_object(_extract_content(response))
+            except LLMClientError as exc:
+                last_parse_error = exc
+        if last_parse_error is not None:
+            raise last_parse_error
+        raise LLMClientError("LLM response must contain valid JSON object")
 
     def _default_http_post(self, payload: dict[str, Any], timeout: float) -> dict[str, Any]:
         data = json.dumps(payload).encode("utf-8")

@@ -46,10 +46,14 @@ LOW_WATER_COVER_DAYS = 1.0
 LOW_WATER_NEED = 0.35
 WATER_BUILDING_KIND = "Water Well"
 WATER_BUILD_LOCATION = (5, 5)
+LABORATORY_BUILDING_KIND = "Laboratory"
+LABORATORY_BUILD_LOCATION = (7, 1)
 
 BROKEN_STATES = (pawns.STATE_SLACKING, pawns.STATE_WANDERING)
 RESCHEDULE_KINDS = ("unhappy_pawn", "pawn_breaking", "pawn_break")
 RESTORATIVE_SCHEDULE = "rest"
+ESSENTIAL_WORK_TYPES = frozenset(("water", "farming", "milling", "baking"))
+LOWEST_SAFE_MODEL_ESSENTIAL_PRIORITY = 2
 BUILD_ORDER: tuple[tuple[str, int, int], ...] = (
     ("Forester", 1, 1),
     ("Sawmill", 2, 1),
@@ -87,6 +91,9 @@ def build_faction_summary(state: FactionState) -> dict[str, Any]:
         "season": state.season,
         "time_of_day": state.time_of_day,
         "tax_rate": state.tax_rate,
+        "research": list(state.research),
+        "research_target": state.research_target,
+        "research_points": state.research_points,
         "water_days_of_cover": round(economy.water_days_of_cover(state), 3),
         "stockpile": {good.value: count for good, count in state.stockpile.counts.items()},
     }
@@ -184,6 +191,18 @@ def build_exception_queue(state: FactionState) -> list[CivilizationException]:
                     detail=f"{round(water_cover, 2)} days cover, {round(water_need * 100)}% need",
                 )
             )
+        market_demand = economy.market_bread_demand(state)
+        if market_demand.unmet_buyers > 0:
+            exceptions.append(
+                CivilizationException(
+                    "market_service_pressure",
+                    building_id=market_demand.market_id,
+                    detail=(
+                        f"{market_demand.unmet_buyers} unmet bread buyers, "
+                        f"{market_demand.sellable_bread} sellable bread"
+                    ),
+                )
+            )
 
     for pawn in sorted(state.pawns.values(), key=lambda p: p.id):
         broken = pawn.state in BROKEN_STATES
@@ -273,7 +292,7 @@ def validate_action(state: FactionState, action: GovernorAction) -> bool:
         return True
 
     if action.kind == ACTION_SET_RESEARCH:
-        return bool(action.tech)
+        return bool(action.tech) and action.tech in economy.RESEARCH_COSTS and action.tech not in state.research
 
     return False
 
@@ -315,8 +334,7 @@ def apply_actions(state: FactionState, actions: list[GovernorAction]) -> list[Go
             state.buildings[action.building_id].production_target[action.good] = action.amount
             applied.append(action)
         elif action.kind == ACTION_SET_RESEARCH:
-            if action.tech not in state.research:
-                state.research = state.research + (action.tech,)
+            state.research_target = action.tech
             applied.append(action)
         elif action.kind == ACTION_PLACE_BUILDING:
             # Realized by Track A construction; returning it lets the engine do
@@ -364,6 +382,22 @@ class FallbackGovernor:
             if kind not in existing and kind not in pending:
                 actions.append(GovernorAction.place_building(kind, x, y))
                 break
+        else:
+            if LABORATORY_BUILDING_KIND not in existing and LABORATORY_BUILDING_KIND not in pending:
+                actions.append(
+                    GovernorAction.place_building(
+                        LABORATORY_BUILDING_KIND,
+                        LABORATORY_BUILD_LOCATION[0],
+                        LABORATORY_BUILD_LOCATION[1],
+                    )
+                )
+            else:
+                faction = context.get("faction", {})
+                if not faction.get("research_target"):
+                    for tech in economy.RESEARCH_COSTS:
+                        if tech not in faction.get("research", []):
+                            actions.append(GovernorAction.set_research(tech))
+                            break
 
         return actions
 
@@ -425,22 +459,26 @@ GOVERNOR_SYSTEM_PROMPT = (
     "kinds and their fields:\n"
     "Mood is on a 0-100 scale (about 50 is neutral; below 35 a pawn starts to "
     "break).\n"
-    "Pawns now choose their own jobs from their work priorities - you tune the "
-    "priorities, you do not place pawns by hand.\n"
+    "Pawns now choose their own jobs from their work priorities - you tune named "
+    "pawns when needed, you do not place pawns by hand.\n"
     "- set_work_priority {group, work_type, level}: group is a pawn_id or \"all\"; "
     "work_type is a skill (water, farming, milling, baking, forestry, "
-    "woodworking, mining); level 1 is highest, 4 lowest, 0 disables it. This is your main "
-    "lever for steering labour.\n"
+    "woodworking, mining, research); level 1 is highest, 4 lowest, 0 disables it. This is your main "
+    "lever for steering labour. For now, only tune essential food/water work "
+    "(water, farming, milling, baking), target named pawns, keep it at level 1 or "
+    "2, and never disable or demote it. Do not use group \"all\" for work "
+    "priorities because it erases specialization.\n"
     "- assign_pawn {pawn_id, building_id, role}: a rare FORCED override that pins "
     "one pawn to one building slot. Prefer set_work_priority instead.\n"
-    "- set_schedule {group, template}: group is a pawn_id or \"all\"; template is "
-    "one of default, night, rest. Put unhappy or breaking pawns on rest.\n"
+    "- set_schedule {group, template}: rest only a named unhappy or breaking pawn; "
+    "do not mass-change schedules.\n"
     "- place_building {building_kind, x, y}: queue the next missing production "
     "building.\n"
     "- set_production_target {building_id, good, amount}.\n"
-    "- set_research {tech}.\n"
+    "- set_research {tech}: select a known research target; Laboratory work completes it.\n"
     "Prefer tuning work priorities and resting unhappy pawns over forcing "
-    "assignments. Reply with valid JSON only - no prose, no markdown, no chain of thought."
+    "assignments. Return at most 6 highest-impact actions per turn. Reply with "
+    "valid JSON only - no prose, no markdown, no chain of thought."
 )
 
 
@@ -499,6 +537,44 @@ def parse_action_list(payload: dict[str, Any]) -> list[GovernorAction]:
     return actions
 
 
+def filter_model_actions(context: dict[str, Any], actions: list[GovernorAction]) -> list[GovernorAction]:
+    """Drop LLM-only policy actions that can shut down survival essentials.
+
+    Validation still answers "is this action structurally legal?". This answers
+    the narrower safety question for model-originated policy: the model may rest
+    named unhappy pawns and raise essential priorities for named pawns, but it
+    may not churn schedules, flatten the whole town's specializations, boost
+    nonessential work above survival work, or demote the food/water chain below
+    its survival floor.
+    """
+    return [action for action in actions if _model_action_safe(context, action)]
+
+
+def _model_action_safe(context: dict[str, Any], action: GovernorAction) -> bool:
+    if action.kind == ACTION_SET_SCHEDULE:
+        return action.template == RESTORATIVE_SCHEDULE and action.group != "all" and _rest_target_has_exception(
+            context, action.group
+        )
+    if action.kind == ACTION_SET_WORK_PRIORITY:
+        if action.group == "all":
+            return False
+        if action.work_type not in ESSENTIAL_WORK_TYPES:
+            return False
+        if action.level is None:
+            return True
+        return 0 < action.level <= LOWEST_SAFE_MODEL_ESSENTIAL_PRIORITY
+    return True
+
+
+def _rest_target_has_exception(context: dict[str, Any], group: str | None) -> bool:
+    if not group:
+        return False
+    for exc in context.get("exceptions", []):
+        if exc.get("pawn_id") == group and exc.get("kind") in RESCHEDULE_KINDS:
+            return True
+    return False
+
+
 def _clean_str(value: Any) -> str | None:
     if value is None:
         return None
@@ -537,7 +613,7 @@ class LLMGovernor:
     def decide(self, context: dict[str, Any]) -> list[GovernorAction]:
         try:
             payload = self._propose(context) if self._propose is not None else self._ask_model(context)
-            actions = parse_action_list(payload)
+            actions = filter_model_actions(context, parse_action_list(payload))
         except Exception as exc:
             disabled = self._propose is None and (self.client is None or not self.client.enabled)
             self.last_outcome = "disabled" if disabled else "error"
@@ -760,4 +836,5 @@ class CivilizationDecisionScheduler:
             name="civilization_actions",
         )
         actions = parse_action_list(payload)
+        actions = filter_model_actions(context, actions)
         return actions, self.clock() - start

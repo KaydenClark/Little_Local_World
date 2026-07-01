@@ -51,6 +51,25 @@ class LocalLLMClientTests(unittest.TestCase):
         with self.assertRaisesRegex(LLMClientError, "valid JSON"):
             client.complete_json("system", {})
 
+    def test_complete_json_retries_once_after_malformed_json(self):
+        responses = [
+            {"choices": [{"message": {"content": '{"actions":['}}]},
+            {"choices": [{"message": {"content": '{"actions":[]}'}}]},
+        ]
+        calls = []
+
+        def fake_post(payload, timeout):
+            calls.append(payload)
+            return responses.pop(0)
+
+        client = LocalLLMClient(model="gemma-4-e4b-it", http_post=fake_post)
+
+        result = client.complete_json("system", {"civilization": {"day": 1}})
+
+        self.assertEqual(result, {"actions": []})
+        self.assertEqual(len(calls), 2)
+        self.assertIn("Previous response was invalid JSON", calls[1]["messages"][-1]["content"])
+
     def test_from_env_discovers_local_chat_model_when_model_is_unset(self):
         with patch.dict(
             os.environ,
