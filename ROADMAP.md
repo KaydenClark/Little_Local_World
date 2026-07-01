@@ -135,9 +135,17 @@ Slices:
    death by ~day 9), a bakery-less civ still starves (fail state stays reachable),
    and total-collapse recovery is deliberately left to Slices 1-2. Tests in
    `tests/test_food.py`.
-2. **Slice 1 - the dig-out.** Fallback + LLM governor ramp the food chain on
-   `low_food` (raise farming/milling/baking, production targets, extra Farm/Mill);
-   this is where the viewer shows pawns re-tasking to wheat.
+2. **Slice 1 - the dig-out (fallback done).** On `low_food` the fallback governor
+   grows food capacity front-of-chain first (`governor.food_expansion_action`:
+   Farm -> Mill -> Bakery toward the 4:2:1 ratio that feeds the bakeries), one
+   building at a time, bounded so it never over-builds. The `low_food` trigger was
+   hardened to a *conjunction* (pawns hungry AND no bread buffer) so a healthy
+   civ's overnight saturation dip - synced pawns cannot eat asleep - never fires a
+   spurious dig-out. Proof frames in `docs/proof/slice1/`: a Farm ghost placed
+   during an active `low_food` crisis, and the recovered civ. A marginal 2-farm
+   civ now visibly plants wheat (2 -> 8 farms) and recovers; the healthy civ never
+   over-builds. Tests in `tests/test_dig_out.py`. The LLM-governor dig-out is not
+   yet verified against a loaded model (fallback-only proof so far).
 3. **Slice 2 - the trader.** Deterministic trader + `buy_good`, coin -> bread,
    optional local-LLM trader personality behind a hard fallback.
 4. **Slice 3 - death + fail state + post-mortem.** Deferred starvation death,

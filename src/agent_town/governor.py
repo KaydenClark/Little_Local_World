@@ -47,13 +47,23 @@ LOW_WATER_COVER_DAYS = 1.0
 LOW_WATER_NEED = 0.35
 WATER_BUILDING_KIND = "Water Well"
 WATER_BUILD_LOCATION = (5, 5)
-# Food shortage signal. The default economy runs a thin *finished-bread* buffer
-# (production is just-in-time), so a buffer-days trigger would cry wolf at every
-# game start; average nutrition (saturation) is the honest "pawns are actually
-# going hungry" signal. ``low_food`` fires when the civ is genuinely almost out of
-# bread OR the average pawn is under half-fed - the floor+carry runway keeps that
-# recoverable, so it is still early enough for the governor to grow more.
-LOW_FOOD_COVER_DAYS = 0.5
+# Food-chain expansion (the dig-out): during a shortage the governor grows more
+# food capacity, front of chain first, so a low-food civ visibly "plants more
+# wheat". Balanced ratio that feeds the bakeries, from the recipes (Farm -> 1
+# grain; Mill: 2 grain -> 1 flour; Bakery: 2 flour -> 4 bread): ~4 farms + 2 mills
+# per bakery. New buildings spread across a field area so ghosts do not stack.
+FOOD_CHAIN_KINDS = ("Farm", "Mill", "Bakery")
+FOOD_EXPANSION_ORIGIN = (2, 11)
+
+# Food shortage signal. Neither metric works alone: bread-days-of-cover twitches
+# on just-in-time eating bursts, and average nutrition craters every night because
+# synced pawns cannot eat while asleep - so a healthy, bread-rich civ still dips to
+# 0% saturation before breakfast. The honest signal is the *conjunction*: the pawns
+# are actually hungry AND the civ has no bread buffer to fix it. A healthy civ's
+# overnight dip has hungry pawns but a fat buffer, so it never fires; a real deficit
+# has both. (The hunger gate also samples cover during the stable overnight window,
+# dodging the daytime eating-burst noise.)
+LOW_FOOD_COVER_DAYS = 1.0
 LOW_FOOD_NEED = 0.5
 
 BROKEN_STATES = (pawns.STATE_SLACKING, pawns.STATE_WANDERING)
@@ -189,7 +199,10 @@ def build_exception_queue(state: FactionState) -> list[CivilizationException]:
     if state.pawns:
         food_cover = economy.food_days_of_cover(state)
         food_need = economy.average_need(state, NEED_FOOD)
-        if food_cover < LOW_FOOD_COVER_DAYS or food_need < LOW_FOOD_NEED:
+        # Conjunction (see LOW_FOOD_* notes): fire only when pawns are hungry AND
+        # the bread buffer is gone, so an overnight saturation dip in a bread-rich
+        # civ never trips it and the dig-out does not manically over-build.
+        if food_need < LOW_FOOD_NEED and food_cover < LOW_FOOD_COVER_DAYS:
             exceptions.append(
                 CivilizationException(
                     "low_food",
@@ -347,6 +360,43 @@ def apply_actions(state: FactionState, actions: list[GovernorAction]) -> list[Go
     return applied
 
 
+def food_expansion_action(
+    buildings: list[dict[str, Any]], construction: list[dict[str, Any]]
+) -> GovernorAction | None:
+    """The dig-out: which food building to add during a shortage, or ``None``.
+
+    One building at a time - if a food-chain building is already under
+    construction, wait for it rather than queueing a pile. Otherwise grow the
+    stage that is short of the ratio that feeds the bakeries, front of chain first
+    so a shortage reads as "plant more wheat": no bakery at all -> Bakery; too few
+    farms for the bakeries -> Farm; too few mills -> Mill; otherwise raise the
+    output ceiling with another Bakery. This is *additional* capacity (duplicates
+    allowed), which ``BUILD_ORDER`` never adds - it only fills missing kinds.
+    """
+    if any(site.get("building_kind") in FOOD_CHAIN_KINDS for site in construction):
+        return None
+    counts = {kind: 0 for kind in FOOD_CHAIN_KINDS}
+    for building in buildings:
+        if building.get("kind") in counts:
+            counts[building["kind"]] += 1
+    farms, mills, bakeries = counts["Farm"], counts["Mill"], counts["Bakery"]
+    if bakeries == 0:
+        kind = "Bakery"
+    elif farms < 4 * bakeries:
+        kind = "Farm"
+    elif mills < 2 * bakeries:
+        kind = "Mill"
+    else:
+        # Already at the balanced ratio for the bakeries on hand. Adding more would
+        # just churn, so stop growing - a lingering shortage here is a staffing or
+        # productivity problem, not a building-count one.
+        return None
+    total = farms + mills + bakeries
+    x = FOOD_EXPANSION_ORIGIN[0] + (total % 8) * 2
+    y = FOOD_EXPANSION_ORIGIN[1] + (total // 8)
+    return GovernorAction.place_building(kind, x, y)
+
+
 class FallbackGovernor:
     """Deterministic policy governor: restorative reschedule, next-building.
 
@@ -380,7 +430,17 @@ class FallbackGovernor:
                     actions.append(GovernorAction.set_schedule(pawn_id, RESTORATIVE_SCHEDULE))
                     rescheduled.add(pawn_id)
 
-        # 2) Ask the engine to place the next missing build-1 chain link. The
+        # 2) The dig-out: on a food shortage, grow more food capacity (plant more
+        # wheat) before anything else. Food is the survival staple, so it outranks
+        # water and the generic build order. The engine/Track A owns the cost check
+        # and construction realization.
+        if low_food:
+            expansion = food_expansion_action(buildings, construction)
+            if expansion is not None:
+                actions.append(expansion)
+                return actions
+
+        # 3) Ask the engine to place the next missing build-1 chain link. The
         # engine/Track A owns cost checks and construction-site realization.
         existing = {building["kind"] for building in buildings}
         pending = {site["building_kind"] for site in construction}

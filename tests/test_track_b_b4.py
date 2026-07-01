@@ -57,7 +57,9 @@ class FallbackGovernorTests(unittest.TestCase):
         # Resting has zero work hours and cannot restore the food reserve, so
         # rest-scheduling a hungry pawn only pulls a producer off the food chain.
         # With bread empty (low_food active) the fallback keeps everyone working.
-        state = town()  # no bread stocked -> low_food fires
+        state = town()  # no bread stocked
+        for pawn in state.pawns.values():
+            pawn.needs["food"] = 0.1  # and actually hungry -> low_food fires
         state.pawns["ben"].mood = 0.2  # breaking
         context = governor.build_context(state)
         self.assertTrue(any(exc["kind"] == "low_food" for exc in context["exceptions"]))

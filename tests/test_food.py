@@ -103,11 +103,13 @@ class FoodSightTests(unittest.TestCase):
         summary = governor.build_faction_summary(state)
         self.assertIn("food_days_of_cover", summary)
 
-    def test_low_food_cover_creates_governor_exception(self):
+    def test_low_food_fires_when_hungry_and_out_of_bread(self):
         state = FactionState()
-        state.pawns["a"] = _fed_pawn("a")
-        state.pawns["b"] = _fed_pawn("b")
-        state.stockpile.add(Good.BREAD, 1)  # far under two days of cover
+        for pid in ("a", "b"):
+            pawn = _fed_pawn(pid)
+            pawn.needs[NEED_FOOD] = 0.1  # actually hungry
+            state.pawns[pid] = pawn
+        state.stockpile.add(Good.BREAD, 1)  # and no buffer to fix it
 
         kinds = [exc.kind for exc in governor.build_exception_queue(state)]
         self.assertIn("low_food", kinds)
