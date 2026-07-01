@@ -77,6 +77,8 @@ WORK_TYPE_ORDER: dict[str, int] = {
     "forestry": 50,
     "woodworking": 45,
     "mining": 40,
+    "research": 35,
+    "commerce": 34,
 }
 DEFAULT_WORK_TYPE_ORDER = 30  # unknown work types sort after the known chain
 

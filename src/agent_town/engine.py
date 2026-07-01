@@ -19,14 +19,16 @@ civilization by one simulated hour:
    double-claiming a slot; each pawn gets a decision trace;
 5. each pawn takes on its activity state (working/sleeping/...) from its fresh
    assignment and steps toward its destination (its workplace on shift, else home);
-6. staffed, input-satisfied buildings produce through the ``effective_work`` seam;
-7. the clock advances one hour, and tax is collected on a day rollover.
+6. staffed, input-satisfied buildings produce through the ``effective_work`` seam,
+   and staffed Laboratories advance active research;
+7. the clock advances one hour, and wages, staffed Market sales, and tax are
+   settled on a day rollover.
 
 The governor sets policy only (priorities, schedules, placements); the arbiter
 turns that policy into per-pawn jobs, and the engine owns affordability,
-construction realization, and the per-pawn / production / tax tick. The arbiter
-is deterministic, so same seed plus same governor equals same outcome - the LLM
-governor is the only nondeterministic layer and drops in behind the same
+construction realization, and the per-pawn / production / money tick. The
+arbiter is deterministic, so same seed plus same governor equals same outcome -
+the LLM governor is the only nondeterministic layer and drops in behind the same
 ``Governor`` protocol.
 """
 
@@ -63,8 +65,14 @@ class StepResult:
 
     actions_applied: tuple[GovernorAction, ...] = ()
     buildings_completed: tuple[str, ...] = ()
+    research_completed: tuple[str, ...] = ()
     days_rolled: int = 0
     tax_collected: int = 0
+    wages_paid: int = 0
+    market_revenue: int = 0
+    household_spending: int = 0
+    sales_tax_collected: int = 0
+    unmet_market_demand: int = 0
 
 
 def step_hour(state: FactionState, gov: governor_mod.Governor | None = None) -> StepResult:
@@ -81,15 +89,35 @@ def step_hour(state: FactionState, gov: governor_mod.Governor | None = None) -> 
     work.assign_jobs(state)
     _advance_pawn_activity(state)
     economy.production_tick(state)
+    research_completed = economy.research_tick(state)
 
     days_rolled = schedule.advance_clock(state, 1)
-    tax_collected = economy.apply_daily_tax(state) if days_rolled else 0
+    wages_paid = 0
+    market_revenue = 0
+    household_spending = 0
+    sales_tax_collected = 0
+    unmet_market_demand = 0
+    tax_collected = 0
+    if days_rolled:
+        wages_paid = economy.pay_daily_wages(state)
+        spending = economy.apply_household_spending(state)
+        household_spending = spending.revenue
+        sales_tax_collected = spending.sales_tax
+        unmet_market_demand = spending.unmet_bread_buyers
+        market_revenue = economy.apply_market_sales(state)
+        tax_collected = sales_tax_collected + economy.apply_daily_tax(state)
 
     return StepResult(
         actions_applied=tuple(applied),
         buildings_completed=tuple(completed),
+        research_completed=research_completed,
         days_rolled=days_rolled,
         tax_collected=tax_collected,
+        wages_paid=wages_paid,
+        market_revenue=market_revenue,
+        household_spending=household_spending,
+        sales_tax_collected=sales_tax_collected,
+        unmet_market_demand=unmet_market_demand,
     )
 
 

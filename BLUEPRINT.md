@@ -280,7 +280,7 @@ that both tracks rebase on, never a unilateral edit.
 | `ConstructionSite` | id, building_kind, x, y, required, delivered, work_remaining |
 | `Pawn` | id, name, skills, traits, wants, needs, mood, schedule, assignment, x, y, state |
 | `ScheduleTemplate` | name, blocks (24 long); `block_at` |
-| `FactionState` | stockpile, coin, pawns, buildings, construction_sites, research, season, tax_rate, day, time_of_day, grid, resource_nodes |
+| `FactionState` | stockpile, coin, pawns, buildings, construction_sites, research, research_target, research_points, season, tax_rate, day, time_of_day, grid, resource_nodes |
 | `CivilizationException` | kind, pawn_id or None, building_id or None, detail |
 | `GovernorAction` | kind plus the fields for that action (see Governor interface) |
 
@@ -318,9 +318,15 @@ Production chains:
 | Wood | Forester, Sawmill | tree node to logs to planks |
 | Food | Farm, Mill, Bakery | grain to flour to bread |
 | Stone | Quarry | stone node to stone |
+| Research | Laboratory | staffed research work to research points |
 
 Construction consumes planks plus stone. Bread is the consumable that feeds the
 food need.
+
+The current research spine is deliberately minimal: the Governor can select the
+first tech (`efficient_baking`), staffed Laboratory work completes it, and the
+completed tech increases Bakery bread output. The full Space-Age victory spine
+remains a later build target.
 
 Pawn needs currently tracked: rest, food, water, recreation. Rest and recreation
 are 0.0-1.0 satisfaction values that decay over time and are restored by the
@@ -504,7 +510,7 @@ only exist once its supplier and its tech do.
 | 2 | Carpenter / Workshop | planks, parts | furniture | crafting | 2 |
 | 2 | Apothecary | herbs, cloth | medicine | medicine | 2 |
 | 2 | Blacksmith / Forge | metal | tools, parts | smithing | 3 |
-| 3 | Laboratory | books/components + researcher | research points | research | 3 |
+| 2 | Laboratory | researcher labour | research points | research | 2 |
 | 3 | Foundry / Machine shop | metal, parts | components | engineering | 4 |
 | 3 | Space program | components, research | launch readiness | engineering | 4 |
 
@@ -552,6 +558,12 @@ Coin is conserved internally and only enters or leaves through trade.
   Market/Tavern and via tax on wages.
 - Trade: the Market sells surplus goods to off-map caravans for net new coin, or
   buys scarce goods for coin. This is the only external source and sink.
+- Current runtime slice: daily wages move treasury coin into assigned pawn
+  wallets; a staffed Market sells bread to pawn wallets above reserve, collects
+  whole-coin sales tax, reports unmet bread buyers as the first Market service
+  pressure signal, then exports remaining bread surplus above reserve. Taverns,
+  comfort spending, reserve-aware imports/exports, and full district market
+  queues remain later Build-2 work.
 
 So "where do taxes come from if you don't pay your people" resolves cleanly: you
 tax the wages you paid, and net civilization wealth comes from selling what the pawns
@@ -568,16 +580,22 @@ nothing else, RimWorld-style.
 
 ### Research and the Space Age
 
-Research points (Laboratory output) buy techs along a spine that ends in space
-flight. Techs unlock the later building tiers and raise pawn lifespan and
-productivity. Reaching and completing the space-age milestone is the primary
-victory.
+Research points from staffed Laboratory work buy techs along a spine that ends
+in space flight. The current runtime ships only the first truthful slice:
+`efficient_baking` raises Bakery bread output, proving that `set_research`
+causes measurable simulation change. Later techs unlock building tiers, raise
+pawn lifespan/productivity, and eventually complete the space-age milestone.
+Reaching that milestone is the primary victory.
 
 ### Storage
 
 Stockpile capacity is finite and raised by the Storehouse; a "storage full %"
-readout surfaces it (see `ROADMAP.md`). Build 1 keeps the uncapped stockpile;
-caps and hauling pressure land in build 2.
+readout surfaces it (see `ROADMAP.md`). The current Build-2 slice gives the
+default civilization a conservative global stockpile cap, blocks production
+that would grow storage past the cap, and logs storage fullness. Built
+Storehouses raise the cap, and 80/95% storage pressure is shown in the HUD and
+on Storehouse buildings. Per-district storage and hauling pressure remain later
+Build-2 work.
 
 ### Disasters (operator as storyteller)
 
@@ -605,9 +623,9 @@ Pawns have RimWorld-style free will: each picks its highest-priority available
 job from its priority list. The Governor's main lever is tuning priorities and
 schedules, not hand-placing pawns in slots - `assign_pawn` is an override for
 the rare case. Watching how the agent balances priorities across the roster is
-the substance of the spectator view. (`set_work_priority` is a build-2 addition;
-build 1 still assigns slots directly. `set_research` is core to the Space-Age
-victory, not a stretch.)
+the substance of the spectator view. `set_research` now selects an active tech
+target; Laboratory work completes it, and completed techs must change simulation
+behavior. The full Space-Age victory remains a later spine, not a stretch goal.
 
 Build-2 autonomy direction from the RimWorld work-priority research:
 
@@ -712,6 +730,12 @@ Rules:
 | Build-2 water slice shipped as the first essential economy extension | `Good.WATER`, `NEED_WATER`, Water Well production, one-unit drinking, thirst thoughts, Civ Water readout, HUD stockpile chip, water work priority, days-of-cover summary, and `low_water` governor exception make the first Townsmen essential conserved and visible. District buffers, service queues, seasonal demand, markets, wages, and storage caps remain deferred | 2026-06-29 build-2 water slice |
 | Paper 5 current-systems readability shipped before the governor card | The viewer now separates hover from selection, draws danger rings above selection, shows `work.LANE_IDLE` pawns with an overhead `!`, and renders construction sites as ghosts with footprint outlines and two-stage material/work progress. Storage 80/95% badges remain deferred until stockpile capacity exists, because uncapped totals cannot produce truthful pressure | 2026-06-29 Paper 5 current-systems slice |
 | Paper 6 governor observer shell shipped | The viewer derives a read-only Governor card from current exceptions, scheduler status, and recent policy actions: plan, phase, bottleneck, confidence, last reallocation, and top exception. A right-edge exception stack sorts active governor exceptions by severity and actionability. It is diagnosis-first UI, not a micromanagement surface; decision-log drill-down and policy editors remain deferred | 2026-06-29 Paper 6 observer UI slice |
+| Household spending starts as a treasury-run Market loop | Build-2 money circulation remains inspectable and conservative: daily wages fund one bread purchase per pawn from a staffed Market above reserve, whole-coin sales tax is collected from buyer wallets, and off-map export only gets the remaining surplus. Full private firms, comfort services, and district market queues stay deferred | 2026-06-30 Paper 4 truth-loop slice |
+| Market service pressure starts as unmet bread demand | The first service-pressure signal stays narrow and truthful: a staffed Market counts pawn wallets that wanted bread but could not buy above the reserve, reports that count in telemetry, and raises `market_service_pressure` for the Governor card/exception stack. Full district hubs, queues, Tavern comfort spending, and reserve-aware trade remain deferred | 2026-06-30 Paper 4 service-pressure slice |
+| Minimal research spine shipped before scale work | `set_research` is no longer a dead lever: it selects an active tech target, staffed Laboratory work produces research points through the existing `effective_work` seam, and `efficient_baking` raises Bakery output. This proves the progression lever before the larger Space-Age spine, deeper economy, and victory condition land | 2026-06-30 truth-loop cleanup |
+| Finite storage capacity shipped before wages/markets | Storage saturation is now a real bottleneck: `Stockpile.capacity` blocks net-growing production before inputs are consumed, telemetry records storage used/capacity/fullness, and the HUD shows storage percent. Storehouse upgrades and pressure badges are now live; district storage, hauling pressure, repair, and trade stay deferred | 2026-06-30 Paper 4 storage slice |
+| First wage/market money loop shipped | Pawns now have personal coin, assigned pawns receive deterministic daily wages from the treasury, and a staffed Market can export a small bread surplus above reserve into treasury coin. This starts the money loop without replacing the legacy abstract tax floor; richer household spending, service spending, reserve-aware trade, and Storehouse capacity upgrades followed or remain future Build-2 slices | 2026-06-30 wage/market slice |
+| Storehouse capacity and pressure badges shipped | Built Storehouses add deterministic global storage capacity, while the HUD and Storehouse world badge shift from normal to amber at 80% and critical red at 95%. This keeps storage pressure truthful without faking district storage or hauling pressure before those systems exist | 2026-06-30 Storehouse slice |
 
 ## Health Criteria
 

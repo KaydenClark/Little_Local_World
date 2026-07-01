@@ -59,12 +59,18 @@ def build_snapshot(state: FactionState, step_result: Any) -> dict[str, Any]:
         "needs": {need: round(economy.average_need(state, need), 3) for need in BUILD1_NEEDS},
         "coin": state.coin,
         "stockpile": {good.value: count for good, count in sorted(state.stockpile.counts.items(), key=lambda kv: kv[0].value)},
+        "storage": _storage_record(state),
         "idle": idle,
         "broken": len(broken_ids),
         "broken_pawn_ids": broken_ids,
         "staffed": dict(sorted(staffed.items())),
         "construction": _construction_records(state),
         "tax_collected": int(getattr(step_result, "tax_collected", 0)),
+        "wages_paid": int(getattr(step_result, "wages_paid", 0)),
+        "market_revenue": int(getattr(step_result, "market_revenue", 0)),
+        "household_spending": int(getattr(step_result, "household_spending", 0)),
+        "sales_tax_collected": int(getattr(step_result, "sales_tax_collected", 0)),
+        "unmet_market_demand": int(getattr(step_result, "unmet_market_demand", 0)),
         "days_rolled": int(getattr(step_result, "days_rolled", 0)),
     }
 
@@ -85,6 +91,16 @@ def _construction_records(state: FactionState) -> list[dict[str, Any]]:
             }
         )
     return sites
+
+
+def _storage_record(state: FactionState) -> dict[str, Any]:
+    economy.refresh_storage_capacity(state)
+    fullness = state.stockpile.fullness()
+    return {
+        "used": state.stockpile.used_capacity(),
+        "capacity": state.stockpile.capacity,
+        "fullness": None if fullness is None else round(fullness, 3),
+    }
 
 
 def _multiset_diff(proposed: list[str], applied: list[str]) -> list[str]:
@@ -225,6 +241,11 @@ class _EmptyStep:
     buildings_completed: tuple = ()
     days_rolled = 0
     tax_collected = 0
+    wages_paid = 0
+    market_revenue = 0
+    household_spending = 0
+    sales_tax_collected = 0
+    unmet_market_demand = 0
 
 
 class RunLogger:

@@ -101,8 +101,8 @@ Expected result:
   assignment, needs, skills, and traits, plus a "Why this job" trace: the winning
   decision lane, the reason, and the top job the pawn passed over.
 - The HUD shows an `Idle N` count (pawns with no work the arbiter could give)
-  and stockpile chips including Bread and Water; idle pawns also get a small
-  overhead `!` badge after the arbiter marks them idle.
+  and storage fullness plus stockpile chips including Bread and Water; idle
+  pawns also get a small overhead `!` badge after the arbiter marks them idle.
 - Hovering a pawn shows a lighter world outline than selection; selected pawns
   keep a double outline, and break/stress danger rings draw above selection.
 - Active construction sites render as translucent building ghosts with a
@@ -130,6 +130,17 @@ Work-priority arbiter manual check (build-2 step 1):
   count rises if you disable a work type that leaves a pawn with nothing legal.
 - Select that pawn and read the inspector's "Why this job" trace to see the lane
   it won under and the job it rejected (e.g. `Passed over Bakery: reserved/full`).
+- `Research` appears as a work type once Laboratory work exists; the bottom-strip
+  `Research` button is still a placeholder until a research panel is built.
+
+Research spine manual check (truth-loop slice):
+
+- A `Laboratory` is buildable after the essential build order. The fallback
+  Governor then selects the first tech, `efficient_baking`.
+- A staffed Laboratory advances `research_points`; when the tech completes,
+  Bakery output rises from 4 bread per cycle to 5.
+- For a headless proof, run
+  `.\.venv\Scripts\python.exe -m unittest tests.test_research_spine`.
 
 Water essential manual check (build-2 water slice):
 
@@ -141,6 +152,31 @@ Water essential manual check (build-2 water slice):
   It covers Water Well production, drinking, days of cover, and the `low_water`
   governor exception.
 
+Storage-cap manual check (Paper 4 storage slice):
+
+- Start the viewer and confirm the HUD stat row includes `Storage N%`.
+- With a Storehouse present and storage >=80% full, confirm the HUD storage chip
+  turns amber; at >=95%, confirm it turns red and Storehouse buildings show the
+  matching world badge.
+- For a headless proof, run
+  `.\.venv\Scripts\python.exe -m unittest tests.test_storage_caps`.
+  It covers finite stockpile capacity, storage-full blocked production, net
+  shrinking transforms, Storehouse capacity upgrades, overflow invariants, and
+  telemetry fullness.
+- Per-district storage pressure and hauling pressure are still deferred; do not
+  fake those before the systems exist.
+
+Money-loop manual check (Paper 4 Market slice):
+
+- Run `.\.venv\Scripts\python.exe -m unittest tests.test_money_loop`.
+- Confirm day rollover pays assigned pawns from treasury, then a staffed Market
+  sells bread to pawn wallets above reserve, records household spending and
+  sales tax, and exports only the remaining bread surplus.
+- Confirm unmet bread buyers above the reserve show as `unmet_market_demand`
+  in telemetry and `market_service_pressure` in the governor exception queue.
+- Full district market queues, Tavern comfort spending, repair debt, and
+  reserve-aware imports/exports are intentionally not active yet.
+
 Map readability manual check (Paper 5 current-systems slice):
 
 - Move the mouse across pawns and confirm hover uses a thin amber outline while
@@ -149,8 +185,9 @@ Map readability manual check (Paper 5 current-systems slice):
   and confirm the idle pawn has an overhead `!` badge matching the HUD `Idle N`.
 - Create or observe an active construction site and confirm it shows a ghost,
   footprint outline, and progress bar before completion.
-- Storage pressure badges are intentionally deferred until stockpile capacity
-  exists; do not fake 80/95% storage warnings from uncapped stockpile totals.
+- Storage pressure badges are now valid for the finite global cap and built
+  Storehouses. District/slot behavior is still deferred; do not fake per-district
+  warnings from the single global cap alone.
 
 ## Monitoring A Run
 
