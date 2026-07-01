@@ -232,6 +232,17 @@ Expected result:
 - Workbench validation passes.
 - Asset checks prove the civilization runtime sprites and provenance notes exist.
 
+Watchable proof (required for any behavior slice with a visible consequence):
+
+- A green suite is not proof the slice is watchable. Render a real frame of the
+  new behavior and inspect it before calling it done (see AGENTS.md "Watchability
+  Is Part Of Done"). Save proof frames under `docs\proof\<slice>\`.
+- Headless render recipe: `SDL_VIDEODRIVER=dummy`, build the state, call
+  `render_civilization(...)`, `pygame.image.save(...)`, then open the PNG.
+- If the slice touches the local model, confirm the model path actually ran (model
+  loaded in LM Studio, a non-fallback outcome). A fallback-only run uses no model
+  and no GPU and proves nothing about the LLM behavior.
+
 Scaling benchmark:
 
 ```powershell
