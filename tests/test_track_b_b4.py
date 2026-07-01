@@ -47,10 +47,23 @@ class FallbackGovernorTests(unittest.TestCase):
 
     def test_reschedules_unhappy_pawn(self):
         state = town()
+        state.stockpile.add(Good.BREAD, 50)  # fed civ: no food crisis in play
         state.pawns["ben"].mood = 0.2  # breaking
         actions = governor.FallbackGovernor().decide(governor.build_context(state))
         scheds = [a for a in actions if a.kind == ACTION_SET_SCHEDULE]
         self.assertTrue(any(a.group == "ben" and a.template == "rest" for a in scheds))
+
+    def test_does_not_rest_unhappy_pawn_during_food_crisis(self):
+        # Resting has zero work hours and cannot restore the food reserve, so
+        # rest-scheduling a hungry pawn only pulls a producer off the food chain.
+        # With bread empty (low_food active) the fallback keeps everyone working.
+        state = town()  # no bread stocked -> low_food fires
+        state.pawns["ben"].mood = 0.2  # breaking
+        context = governor.build_context(state)
+        self.assertTrue(any(exc["kind"] == "low_food" for exc in context["exceptions"]))
+        actions = governor.FallbackGovernor().decide(context)
+        scheds = [a for a in actions if a.kind == ACTION_SET_SCHEDULE]
+        self.assertFalse(scheds)
 
     def test_requests_next_missing_chain_building(self):
         state = FactionState()

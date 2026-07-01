@@ -33,6 +33,7 @@ from .core import (
     Good,
     GovernorAction,
     JobRef,
+    NEED_FOOD,
     NEED_WATER,
 )
 from .llm import LLMClientError, LocalLLMClient, ModelDiscovery
@@ -46,6 +47,11 @@ LOW_WATER_COVER_DAYS = 1.0
 LOW_WATER_NEED = 0.35
 WATER_BUILDING_KIND = "Water Well"
 WATER_BUILD_LOCATION = (5, 5)
+# Food early-warning: flag the governor while there is still a buffer to react
+# with, not once the reserve is already gone. Two days of bread cover (or an
+# average nutrition reserve this low) raises ``low_food``.
+LOW_FOOD_COVER_DAYS = 2.0
+LOW_FOOD_NEED = 0.4
 
 BROKEN_STATES = (pawns.STATE_SLACKING, pawns.STATE_WANDERING)
 RESCHEDULE_KINDS = ("unhappy_pawn", "pawn_breaking", "pawn_break")
@@ -90,6 +96,7 @@ def build_faction_summary(state: FactionState) -> dict[str, Any]:
         "time_of_day": state.time_of_day,
         "tax_rate": state.tax_rate,
         "water_days_of_cover": round(economy.water_days_of_cover(state), 3),
+        "food_days_of_cover": round(economy.food_days_of_cover(state), 3),
         "stockpile": {good.value: count for good, count in state.stockpile.counts.items()},
     }
 
@@ -177,6 +184,16 @@ def build_exception_queue(state: FactionState) -> list[CivilizationException]:
                 )
 
     if state.pawns:
+        food_cover = economy.food_days_of_cover(state)
+        food_need = economy.average_need(state, NEED_FOOD)
+        if food_cover < LOW_FOOD_COVER_DAYS or food_need < LOW_FOOD_NEED:
+            exceptions.append(
+                CivilizationException(
+                    "low_food",
+                    detail=f"{round(food_cover, 2)} days cover, {round(food_need * 100)}% need",
+                )
+            )
+
         water_cover = economy.water_days_of_cover(state)
         water_need = economy.average_need(state, NEED_WATER)
         if water_cover < LOW_WATER_COVER_DAYS or water_need < LOW_WATER_NEED:
@@ -344,14 +361,21 @@ class FallbackGovernor:
         buildings = context.get("buildings", [])
         construction = context.get("construction", [])
         exceptions = context.get("exceptions", [])
+        low_food = any(exc["kind"] == "low_food" for exc in exceptions)
 
-        # 1) Move unhappy / breaking pawns onto a restorative schedule.
+        # 1) Move unhappy / breaking pawns onto a restorative schedule - unless the
+        # civ is short on food. The rest schedule has zero work hours and does not
+        # restore the food reserve, so resting a hungry pawn cannot lift the mood
+        # (the drag is hunger) and only pulls a producer off the food chain,
+        # deepening the shortage. During a food crisis, keep everyone working so
+        # the chain can recover; the food response owns that lane.
         rescheduled: set[str] = set()
-        for exc in exceptions:
-            pawn_id = exc.get("pawn_id")
-            if exc["kind"] in RESCHEDULE_KINDS and pawn_id and pawn_id not in rescheduled:
-                actions.append(GovernorAction.set_schedule(pawn_id, RESTORATIVE_SCHEDULE))
-                rescheduled.add(pawn_id)
+        if not low_food:
+            for exc in exceptions:
+                pawn_id = exc.get("pawn_id")
+                if exc["kind"] in RESCHEDULE_KINDS and pawn_id and pawn_id not in rescheduled:
+                    actions.append(GovernorAction.set_schedule(pawn_id, RESTORATIVE_SCHEDULE))
+                    rescheduled.add(pawn_id)
 
         # 2) Ask the engine to place the next missing build-1 chain link. The
         # engine/Track A owns cost checks and construction-site realization.

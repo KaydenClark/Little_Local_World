@@ -15,12 +15,18 @@ from __future__ import annotations
 
 from typing import Callable
 
-from . import mood
-from .core import BUILD1_NEEDS, FactionState, Good, Pawn, Recipe, Stockpile
+from . import mood, pawns
+from .core import BUILD1_NEEDS, FactionState, Good, NEED_FOOD, Pawn, Recipe, Stockpile
 
 # Base output rate per unit of summed effective work, per tick.
 BASE_RATE = 1.0
 WATER_UNITS_PER_PAWN_DAY = 1.0
+
+# Bread a pawn eats per day at steady state, derived from the need model so the
+# food cover metric tracks the real drain: a full day of food decay divided by
+# the nutrition one loaf restores. Powers ``food_days_of_cover`` (the food twin
+# of ``water_days_of_cover``) and the governor's ``low_food`` early warning.
+BREAD_UNITS_PER_PAWN_DAY = (pawns.NEED_DECAY_PER_HOUR[NEED_FOOD] * 24.0) / pawns.BREAD_NUTRITION
 
 WorkFn = Callable[[Pawn, Recipe, int], float]
 
@@ -51,6 +57,18 @@ def production_tick(state: FactionState, *, work_fn: WorkFn = mood.effective_wor
     the stockpile: once the civilization already holds that much, the building
     stops making it. This makes the lever real - without it the governor could
     "set a target" that changed nothing. Untargeted goods stay unbounded.
+
+    Production is **continuous, not lumpy**: each building banks its per-hour
+    ``effective_work`` into ``production_progress`` and completes a whole cycle
+    every time the bank reaches ``recipe.work_units``. This is what makes a
+    slowed pawn count - a starving pawn at the hunger floor contributes a
+    fraction of a cycle per hour and finishes one every few hours, instead of the
+    old ``int(rate // work_units)`` flooring that silently dropped any per-hour
+    work below one whole cycle to zero (which turned every food shortage into an
+    unrecoverable spiral). ``production_progress`` only ever holds a *fractional*
+    cycle: whole cycles the pawn banks are always spent from the bank, and any the
+    limits (no inputs / target met) will not let it run are simply lost work, never
+    accumulated into a burst it fires on resume.
     """
     for building_id, building in state.buildings.items():
         recipe = building.recipe
@@ -58,9 +76,14 @@ def production_tick(state: FactionState, *, work_fn: WorkFn = mood.effective_wor
             continue
         if recipe.work_units <= 0:
             raise ValueError("Recipe work_units must be positive")
-        cycles = int(building_output_rate(state, building_id, work_fn) // recipe.work_units)
-        if cycles <= 0:
+        building.production_progress += building_output_rate(state, building_id, work_fn)
+        runnable = int(building.production_progress // recipe.work_units)
+        if runnable <= 0:
             continue
+        # Spend every whole cycle out of the bank so only the sub-cycle remainder
+        # carries; cycles the limits block are lost, not banked (no resume burst).
+        building.production_progress -= runnable * recipe.work_units
+        cycles = runnable
         input_limit = _input_limited_cycles(state.stockpile, recipe.inputs)
         if input_limit is not None:
             cycles = min(cycles, input_limit)
@@ -106,6 +129,20 @@ def water_days_of_cover(state: FactionState) -> float:
     if population == 0:
         return float("inf")
     return state.stockpile.counts.get(Good.WATER, 0) / (population * WATER_UNITS_PER_PAWN_DAY)
+
+
+def food_days_of_cover(state: FactionState) -> float:
+    """How many pawn-days of eating the current bread stockpile can cover.
+
+    The food twin of :func:`water_days_of_cover`, using only finished bread (the
+    thing pawns can actually eat) - grain and flour in the pipeline are latent,
+    not edible, so they are deliberately excluded. This is the early-warning
+    number the governor acts on before the reserve reaches zero.
+    """
+    population = len(state.pawns)
+    if population == 0:
+        return float("inf")
+    return state.stockpile.counts.get(Good.BREAD, 0) / (population * BREAD_UNITS_PER_PAWN_DAY)
 
 
 def daily_tax_income(state: FactionState) -> int:

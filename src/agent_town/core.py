@@ -165,6 +165,13 @@ class Building:
     staffed_by: list[str] = field(default_factory=list)
     built: bool = True
     production_target: dict[Good, int] = field(default_factory=dict)
+    # Banked fractional work toward the next production cycle. Production is
+    # continuous, not lumpy: a building accrues ``effective_work`` each hour and
+    # completes a cycle when the bank reaches ``recipe.work_units``. This is what
+    # lets a slowed pawn (low skill, or starving at the hunger floor) still finish
+    # cycles over several hours instead of contributing literally nothing every
+    # hour its per-hour work is below one whole cycle. See economy.production_tick.
+    production_progress: float = 0.0
 
 
 @dataclass

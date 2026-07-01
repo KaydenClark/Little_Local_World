@@ -141,6 +141,20 @@ Water essential manual check (build-2 water slice):
   It covers Water Well production, drinking, days of cover, and the `low_water`
   governor exception.
 
+Starvation-escapability manual check (crisis/response Slice 0):
+
+- The default civilization must now *sustain* under the fallback governor: step it
+  many days (or run `.\.venv\Scripts\python.exe -m unittest tests.test_food`) and
+  confirm bread stays on hand and pawns stay fed - the old frozen death spiral
+  (production stuck at zero once food hit 0) is gone.
+- A fail state must stay reachable: with the bakeries removed no bread can be made
+  and the civ still starves toward empty (later slices turn this into an actual
+  death + documented run-end).
+- For a headless proof, run `.\.venv\Scripts\python.exe -m unittest tests.test_food`.
+  It covers fractional production carry-over, the hunger work floor,
+  `food_days_of_cover`, the `low_food` governor exception, and both boundary runs
+  (default civ sustains, bakery-less civ starves).
+
 Map readability manual check (Paper 5 current-systems slice):
 
 - Move the mouse across pawns and confirm hover uses a thin amber outline while

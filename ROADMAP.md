@@ -107,6 +107,44 @@ Done when:
   the product contract or operator workflow;
 - the full verification path still passes.
 
+## Active line of work: crisis, response, consequence (2026-07-01)
+
+Owner direction pulled ahead of Paper 7 scale foundations: when a civ hits a food
+crisis the **Governor** should try to fix it (visibly re-tasking pawns to grow
+more wheat -> flour -> bread, and later buying from a trader); if it cannot, the
+civ **dies**, the run **ends**, and the failure is **documented so we can learn**.
+Escape design (owner call): a starving-productivity **floor** *plus* an **early
+governor response** - death loops must be escapable with good governance, fatal
+without. The trader is a second, external escape valve (coin -> food; the civ
+hoards coin today with nothing to buy). Trader model reuses the **local**
+`LocalLLMClient` (Gemma 4 E4B / whatever LM Studio has loaded), not a cloud API,
+behind a deterministic trade core. Every crisis run must eventually be watchable
+in the viewer at 8-20x.
+
+Slices:
+
+1. **Slice 0 - escapable + food-sight (done).** The old spiral was a *sealed
+   trap*: past food 0, `hunger_productivity_factor` returned a hard 0 and
+   integer-cycle production dropped any sub-cycle work to 0, so no governor action
+   could recover. Fixed with continuous production (`Building.production_progress`
+   banks fractional work in `economy.production_tick`) and a starving-work floor
+   (`mood.HUNGER_STARVING_FLOOR`). Food-sight added: `economy.food_days_of_cover`,
+   `food_days_of_cover` in the faction summary, and a `low_food` governor
+   exception; the fallback no longer rest-schedules a hungry colony into a work
+   stoppage. Net: the default civ now *sustains* under the fallback (was a frozen
+   death by ~day 9), a bakery-less civ still starves (fail state stays reachable),
+   and total-collapse recovery is deliberately left to Slices 1-2. Tests in
+   `tests/test_food.py`.
+2. **Slice 1 - the dig-out.** Fallback + LLM governor ramp the food chain on
+   `low_food` (raise farming/milling/baking, production targets, extra Farm/Mill);
+   this is where the viewer shows pawns re-tasking to wheat.
+3. **Slice 2 - the trader.** Deterministic trader + `buy_good`, coin -> bread,
+   optional local-LLM trader personality behind a hard fallback.
+4. **Slice 3 - death + fail state + post-mortem.** Deferred starvation death,
+   run-end on collapse, and a structured "what killed this civ" report.
+5. **Slice 4 - UI proof at 8-20x.** Run the real viewer on a crisis seed; confirm
+   re-tasking, construction ghosts, trader arrival, governor plan, death badges.
+
 ## Build arc (the long road)
 
 The immediate goal above finishes build 1. The product then grows in builds,
