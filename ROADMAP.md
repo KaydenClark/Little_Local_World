@@ -323,7 +323,21 @@ Slices:
 6. **Slice 5 - UI proof at 8-20x.** Run the real viewer on a crisis seed; confirm
    re-tasking, construction ghosts, trader arrival, governor plan, death badges.
 
-## Active line of work: physical resource sourcing (2026-07-02, planned)
+## Active line of work: physical resource sourcing (2026-07-02, SHIPPED)
+
+All six slices below landed 2026-07-02 on one branch
+(`feat/physical-sourcing-ui-p2`), together with the outstanding viewer P2
+review fixes (P-5 derived decision pressures, P-8 attention label instead of
+the fake confidence %, P-9 shared idle definition, P-10 decodable mood dots)
+and a new building-inspection card (click any building for staffing, recipe
+I/O, cycle progress, targets, source state, and its active exceptions).
+Evidence: `tests/test_sourcing.py` (15 tests incl. "grain cannot outrun the
+season"), the 240h conservation oracle stays green, the marginal 2-farm civ
+digs out and recovers by day 4 with real growth in play, and proof frames
+live in `docs/proof/physical_sourcing/`. The bakery-less fail state is now
+proven under an inert governor, because the real fallback genuinely rescues
+it - exactly the crisis line's "escapable with good governance, fatal
+without".
 
 Owner critique (2026-07-02): production currently violates the spirit of the
 conservation law even though the ledger balances. Every Tier 0 faucet (Farm,
@@ -358,34 +372,34 @@ landing this line **before** Slice 3 (the trader), since the trader's
 coin -> bread economics and the crisis line's timing assumptions both change
 once grain has a lead time.
 
-Planned slices:
+Slices (all done 2026-07-02):
 
-1. **Slice 1 - wire extracted nodes (Quarry, Forester).** Call
+1. **Slice 1 (done) - wire extracted nodes (Quarry, Forester).** Call
    `world.harvest_node` from `economy.production_tick` for stone and logs -
    pure depletion, no growth state, smallest and lowest-risk starting point.
    Add `node_depleted` exception. Proves the map's `ResourceNode` data can
    actually gate production before the harder cultivated-field work starts.
-2. **Slice 2 - the field lifecycle (Farm/grain).** Add the
+2. **Slice 2 (done) - the field lifecycle (Farm/grain).** Add the
    EMPTY/PLANTED/GROWING/READY state machine from `BLUEPRINT.md`, a local
    seed reserve (bootstrap-seeded at colony creation, never purchased), and
    the `no_seed_grain` / `field_growing` exception codes. Update `work.py` so
    an idle-growing field does not chain its farmer to a pointless wait - the
    arbiter should free the pawn until the field is plant-ready or
    harvest-ready.
-3. **Slice 3 - tree regrowth (Forester/logs).** Extend the Slice 1 wiring so
+3. **Slice 3 (done) - tree regrowth (Forester/logs).** Extend the Slice 1 wiring so
    a harvested tree node regrows over time instead of staying permanently
    depleted, matching the "extracted + regrows" mechanic in `BLUEPRINT.md`.
-4. **Slice 4 - retime the crisis line.** Re-run the Slice 0/1 survival and
+4. **Slice 4 (done) - retime the crisis line.** Re-run the Slice 0/1 survival and
    dig-out regressions with real grain growth time in play; retune the
    `low_food` trigger and/or buffer targets as needed so "escapable with good
    governance, fatal without" still holds. This is the slice that resolves
    the cross-slice risk called out above - it must land before Slice 3 of the
    crisis line (the trader).
-5. **Slice 5 - visible storage.** Replace/augment `_draw_storage_badge`'s
+5. **Slice 5 (done) - visible storage.** Replace/augment `_draw_storage_badge`'s
    fullness ring with a real per-good pile or count scaled to
    `state.stockpile.counts`, so standing food/material stock is readable from
    the map itself, not only the macro strip.
-6. **Slice 6 - tests + watchable proof.** Conservation/regression tests per
+6. **Slice 6 (done) - tests + watchable proof.** Conservation/regression tests per
    new mechanic (mirroring `tests/test_conservation.py`'s tamper-test
    pattern for the new state machine), plus a rendered proof frame per the
    project's "watchable is the bar" rule: a field visibly mid-growth, a
