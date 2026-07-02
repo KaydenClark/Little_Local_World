@@ -94,11 +94,15 @@ with likely causes, and History can drill into Governor decision payloads
 (proposed/applied/rejected) plus after-state goods/needs. The UI
 navigation/readability baseline is also live: screen regions are exclusive,
 persistent text no longer covers the map, and every bottom button opens a real
-panel. The synthesis paper now points next to **Paper 7 scale
-foundations** before deeper economy. Per user direction
-(2026-06-29) lethal starvation (build-1 step 5.4) stays deferred behind the
-visible autonomy/readability work; Build-1 ships with hunger mood pressure as
-its stakes.
+panel. The Fable 5 critical review peer pass on 2026-07-01 interrupts the
+Paper 7 / trader / death queue until the confirmed P0/P1 harness failures are
+fixed or explicitly downgraded with source-backed evidence. Both **P0** blockers
+are now cleared: one-pawn-one-job labor conservation (Slice A) and default-deny
+local-model action safety (Slice B). The remaining review blockers are the two
+P1s: executable conservation checks (Slice C) and analyzer/model-proof honesty
+(Slice D). Per user direction (2026-06-29) lethal starvation (build-1 step 5.4)
+stays deferred behind the visible autonomy/readability work; Build-1 ships with
+hunger mood pressure as its stakes.
 
 Done when:
 
@@ -107,6 +111,8 @@ Done when:
 - the chosen slice is implemented through the deterministic core first, with
   viewer/status updates only where they make the new state visible;
 - tests cover the new conservation path and any changed governor/viewer surface;
+- confirmed P0/P1 review findings in the touched area are reproduced and fixed
+  before new feature work continues;
 - `BLUEPRINT.md`, `RUNBOOK.md`, and this roadmap are updated if the slice changes
   the product contract or operator workflow;
 - the full verification path still passes.
@@ -134,6 +140,51 @@ land a navigation/readability slice that removes false affordances and makes the
 existing causality watchable: Architect, Assign, Research, and Menu must either
 open a real screen backed by current systems or be replaced with an honest
 disabled/state explanation until the underlying action exists.
+
+Critical review follow-up (peer-reviewed 2026-07-01): `docs/reviews/2026-07-01-fable5-critical-review.md`
+found issues that the current 277-test suite, smoke test, and workbench
+validation do not catch. Treat this as the active blocker before Paper 7 scale,
+trader, starvation death, or deeper economy work.
+
+1. **Review Slice A - one pawn, one job (done).** Fixed forced `assign_pawn` so it
+   releases the pawn's previous `staffed_by` slot, and made the arbiter prune
+   stale duplicate staffed entries before production counts labor.
+   - Red test: forced reassignment of the same pawn to a second building failed
+     today by leaving two staffed slots.
+   - Green proof: after apply + next engine step, the pawn appears in exactly one
+     building and `health.check_invariants(state) == []`.
+   - Viewer proof: `docs/proof/review_labor/` shows the reassigned pawn in the
+     new building only.
+2. **Review Slice B - default-deny model guard (done).** Rewrote model-origin
+   action safety (`_model_action_reason`) as an explicit per-kind allowlist:
+   unlisted kinds default-deny. Grow-safe policy - the model may rest a flagged
+   pawn, raise essential priorities, place known buildings, pick research, and
+   retarget non-essential goods; it may **not** force `assign_pawn` (the E-1
+   trigger) or cap a survival good (grain/flour/bread/water). Prompt wording is
+   guidance only.
+   - Red test: model-origin `assign_pawn` and `set_production_target(bread, 0)`
+     no longer pass by fall-through (they are rejected with reasons).
+   - Green proof: accepted model actions are only those with explicit allow rules,
+     and rejected proposals surface in the decision audit with the guard's reason.
+   - Viewer proof: `docs/proof/slice_guard/01_audit_rejected_model_action.png`.
+3. **Review Slice C - executable conservation.** Turn the "nothing from nothing"
+   law into a run-level oracle instead of prose only. Start with a practical
+   ledger around stockpile deltas, recipe input/output, eating/drinking,
+   construction spend, and staffing invariants.
+   - Red test: the current double-staff path is caught during a multi-hour run.
+   - Green proof: a 10-day default-civ run checks invariants every hour and stays
+     clean.
+4. **Review Slice D - analyzer honesty and durable evidence.** Split model
+   pipeline availability from model efficacy. A run where the local model applies
+   no useful policy must not be cited as model-path success.
+   - Red test: existing zero-applied-action model log fixture or summary cannot
+     produce an unqualified model-success verdict.
+   - Green proof: analyzer output reports scheduler/model attempts separately
+     from applied non-fallback policy and records pipeline-only runs honestly.
+5. **Review Slice E - current watchability proof refresh.** After A-D, re-render
+   current crisis proof frames with the current renderer, then fix the top P1/P2
+   visibility gaps: stale/cry-wolf exceptions, bread-chain flow visibility, mood
+   or civ stats, governor attribution truncation, and truthful critical badges.
 
 Slices:
 
@@ -251,8 +302,11 @@ content design"; this is the sequencing.
 
 ## Next Tasks
 
-The bridge order I1 -> I3 -> I2 is complete. Start the next implementation work
-from the research-backed queue below, keeping every slice small and verified.
+The bridge order I1 -> I3 -> I2 is complete. The review follow-up queue above is
+the current next implementation work. Do not start Paper 7 scale, trader,
+starvation death, or deeper economy work until Review Slices A-D are fixed or
+each remaining blocker is explicitly downgraded with evidence. Keep every slice
+small and verified.
 
 1. **(done) Extract the I1 headless stepper** - `engine.py` is the reusable
    civilization engine; the three-day survival test runs through it. See the current
@@ -627,6 +681,10 @@ Project-specific release and checkpoint checks:
 - Confirm no `.venv`, logs, databases, private exports, or generated dumps are included.
 - Confirm no web server or browser runtime was introduced.
 - Confirm `ROADMAP.md` Verification Log has a current row for durable state changes.
+- Confirm all cited test counts, run logs, screenshots, and proof frames are
+  replayable from the named checkout state or explicitly marked external.
+- Confirm no unresolved peer-reviewed P0/P1 in the touched area remains without
+  a fix, a failing test, or a source-backed downgrade note.
 
 ## Verification Log
 
@@ -703,4 +761,6 @@ Append a row when a task changes durable project state. Use actual results, not 
 | 2026-07-01 | Implement RimWorld-style UI navigation/readability baseline | `.\.venv\Scripts\python.exe -m unittest tests.test_civilization_view` (40 tests); `.\.venv\Scripts\python.exe -m unittest discover -s tests` (267 tests); `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; `git diff --check`; rendered and inspected `docs\proof\ui_navigation\default.png`, `architect.png`, `work.png`, `assign.png`, `research.png`, `history.png`, `menu.png`; refreshed `docs\screenshots\current-state.png` | pass | Viewer now has exclusive reserved regions (macro strip, roster, map, right inspector/alerts, command panel, command strip), active panel state for all six bottom commands, non-overlapping docked panels, Work cycling still live, History alert acknowledgement preserved, and docs updated for the new operator workflow. Remaining gap: Architect/Assign/Research/Menu expose current truth and disabled reasons, but deeper placement, assignment, and research mechanics remain future systems. |
 | 2026-07-01 | Make inspector tabs and Assign panel actually interactive | `.\.venv\Scripts\python.exe -m unittest tests.test_civilization_view` (44 tests); `.\.venv\Scripts\python.exe -m unittest discover -s tests` (271 tests); `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; `git diff --check`; rendered and inspected `docs\proof\ui_navigation\assign.png`, `inspector_log.png`, `inspector_bio.png`, `inspector_social.png`, `inspector_gear.png`, `inspector_health.png`; refreshed `docs\screenshots\current-state.png` | pass | The right-side inspector tabs now have real hit targets and distinct content. Assign is no longer a second Work view: it has a pawn selector plus job-slot rows, can pin the selected pawn to open/current slots as a forced override, and selects the occupying worker when a slot is full. Remaining gap: Gear/social/health show honest current-state and future-system gaps until inventory, relationships, and injuries exist. |
 | 2026-07-01 | Add Governor decision audit and 20x crisis watch proof | `.\.venv\Scripts\python.exe -m unittest tests.test_civilization_view tests.test_telemetry` (62 tests); `.\.venv\Scripts\python.exe -m unittest discover -s tests` (277 tests); `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; `git diff --check`; rendered and inspected `docs\proof\governor_decision_audit\history_decision_detail.png` and `docs\proof\governor_decision_audit\crisis_20x_history.png` | pass | History is now a selectable decisions + events audit surface: Governor decisions show source/model state, proposed/applied/rejected policy payloads, completed buildings, after-state goods/needs, and a compact goods/jobs/bottleneck causality map. Menu now exposes 1x/8x/20x watch speed, and the 20x crisis proof uses the real `CivilizationViewer` stepping path. Remaining gap: full timeline scrubber and policy editor remain deferred. |
+| 2026-07-01 | Harness update from Fable 5 critical-review peer pass | `.\.venv\Scripts\python.exe -m unittest discover -s tests` (277 tests); `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; `git diff --check` | pass | Docs-only harness update. `AGENTS.md`, `RUNBOOK.md`, `BLUEPRINT.md`, and this roadmap now make confirmed P0/P1 review findings block feature work, require default-deny model-action safety, distinguish model pipeline from model efficacy, require replayable proof artifacts, and set Review Slices A-D as the active blockers. Implementation remains pending: one-pawn-one-job, default-deny model guard, executable conservation, and analyzer/evidence fixes. |
 | 2026-07-01 | Fix Fable Review Slice A one-pawn-one-job labor conservation | RED `.\.venv\Scripts\python.exe -m unittest tests.test_track_b_b4.ApplyActionsTests.test_reassign_pawn_releases_previous_staff_slot tests.test_work.ReservationTests.test_stale_duplicate_staff_entries_are_pruned_before_replan` failed on stale `staffed_by`; GREEN same focused tests; `.\.venv\Scripts\python.exe -m unittest tests.test_track_b_b4 tests.test_work tests.test_engine tests.test_health` (54 tests); `.\.venv\Scripts\python.exe -m unittest discover -s tests` (279 tests); `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; rendered and inspected `docs\proof\review_labor\01_reassigned_pawn_single_building.png`; `.\scripts\validate-workbench.ps1`; `git diff --check` | pass | Forced `assign_pawn` now releases previous staffed slots, the arbiter prunes stale duplicate staffed entries before reservation/production, and the Assign panel uses the same cleanup path. Remaining Fable blockers: default-deny model guard, executable conservation ledger, analyzer/model-proof honesty, and current watchability proof refresh. |
+| 2026-07-01 | Fix Fable Review Slice B default-deny model-safety guard | RED (pre-fix) model-origin `assign_pawn` / `set_production_target(bread, 0)` passed the old `return True` fall-through; GREEN `.\.venv\Scripts\python.exe -m unittest tests.test_llm_governor.ModelGuardTests` (4 tests) + `tests.test_llm_governor tests.test_civilization_governor tests.test_telemetry` (guard + audit paths); `.\.venv\Scripts\python.exe -m unittest discover -s tests` (283 tests); `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; rendered and inspected `docs\proof\slice_guard\01_audit_rejected_model_action.png`; `.\scripts\validate-workbench.ps1` | pass | `_model_action_safe` is now `_model_action_reason` - an explicit per-kind allowlist with default-deny. Grow-safe policy allows rest schedules, essential-priority raises, known-kind `place_building`, `set_research`, and non-essential `set_production_target`; it denies forced `assign_pawn` (the E-1 trigger), essential-good production caps (grain/flour/bread/water), and any unlisted kind. Guard-rejected model actions now surface in the decision audit with the guard's reason (`partition_model_actions` + `last_guard_rejected`). Remaining Fable blockers: executable conservation ledger (Slice C), analyzer/model-proof honesty (Slice D), and current watchability proof refresh (Slice E). |

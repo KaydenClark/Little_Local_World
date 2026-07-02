@@ -154,6 +154,14 @@ def build_decision(state: FactionState, governor: Any, step_result: Any) -> dict
     disabled run (no model loaded) is fallback-by-design and never "dropped".
     """
     proposed_actions = [_action_record(a) for a in getattr(governor, "last_actions", []) or []]
+    # Model actions the safety guard denied never reach last_actions - fold them
+    # back into the proposal (carrying the guard's reason) so the audit shows the
+    # full model proposal and why each was rejected (review E-2 / Slice B).
+    guard_rejected = [
+        {**_action_record(action), "reason": reason, "rejected_by": "guard"}
+        for action, reason in (getattr(governor, "last_guard_rejected", None) or [])
+    ]
+    proposed_actions = proposed_actions + guard_rejected
     applied_actions = [_action_record(a) for a in getattr(step_result, "actions_applied", ()) or ()]
     proposed = [a["kind"] for a in proposed_actions]
     applied = [a["kind"] for a in applied_actions]

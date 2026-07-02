@@ -71,6 +71,12 @@ RESCHEDULE_KINDS = ("unhappy_pawn", "pawn_breaking", "pawn_break")
 RESTORATIVE_SCHEDULE = "rest"
 ESSENTIAL_WORK_TYPES = frozenset(("water", "farming", "milling", "baking"))
 LOWEST_SAFE_MODEL_ESSENTIAL_PRIORITY = 2
+# The survival chain the model may not throttle via a production cap. Capping any
+# of these at/near zero idles a food/water building (set_production_target is a
+# ceiling: production halts once stock reaches the target), so the model is barred
+# from targeting them at all - it grows food via place_building / priorities, not
+# by capping essentials.
+ESSENTIAL_GOODS = frozenset((Good.GRAIN, Good.FLOUR, Good.BREAD, Good.WATER))
 BUILD_ORDER: tuple[tuple[str, int, int], ...] = (
     ("Forester", 1, 1),
     ("Sawmill", 2, 1),
@@ -599,33 +605,97 @@ def parse_action_list(payload: dict[str, Any]) -> list[GovernorAction]:
     return actions
 
 
-def filter_model_actions(context: dict[str, Any], actions: list[GovernorAction]) -> list[GovernorAction]:
-    """Drop LLM-only policy actions that can shut down survival essentials.
+def partition_model_actions(
+    context: dict[str, Any], actions: list[GovernorAction]
+) -> tuple[list[GovernorAction], list[tuple[GovernorAction, str]]]:
+    """Split model-origin actions into (allowed, [(rejected, reason), ...]).
 
-    Validation still answers "is this action structurally legal?". This answers
-    the narrower safety question for model-originated policy: the model may rest
-    named unhappy pawns and raise essential priorities for named pawns, but it
-    may not churn schedules, flatten the whole town's specializations, boost
-    nonessential work above survival work, or demote the food/water chain below
-    its survival floor.
+    The rejected list carries a short reason per action so the decision audit can
+    show *what* the model proposed and *why* the guard denied it, instead of the
+    action silently vanishing (review E-2 / Slice B).
     """
-    return [action for action in actions if _model_action_safe(context, action)]
+    allowed: list[GovernorAction] = []
+    rejected: list[tuple[GovernorAction, str]] = []
+    for action in actions:
+        reason = _model_action_reason(context, action)
+        if reason is None:
+            allowed.append(action)
+        else:
+            rejected.append((action, reason))
+    return allowed, rejected
+
+
+def filter_model_actions(context: dict[str, Any], actions: list[GovernorAction]) -> list[GovernorAction]:
+    """Drop model-origin policy actions the safety guard denies (allowed subset)."""
+    allowed, _rejected = partition_model_actions(context, actions)
+    return allowed
+
+
+def _model_action_reason(context: dict[str, Any], action: GovernorAction) -> str | None:
+    """Why a model-origin action is unsafe, or ``None`` if the guard allows it.
+
+    Default-deny allowlist (review E-2 / Slice B): every action kind needs an
+    explicit rule here. Validation answers "is this structurally legal?"; this
+    answers the narrower "may an *untrusted local model* emit this policy?". Kinds
+    without an explicit allow rule are denied so the Governor/pawn autonomy
+    boundary is enforced by policy, not by prompt etiquette. The "grow-safe"
+    policy lets the model grow the economy (place buildings, retask essential
+    priorities, pick research) but not shut down survival essentials or seize
+    per-pawn control via a forced assignment.
+    """
+    kind = action.kind
+    if kind == ACTION_SET_SCHEDULE:
+        # Only a rest schedule, only for a named pawn that is actually flagged -
+        # never a town-wide reschedule (that would idle the whole civ).
+        if action.template != RESTORATIVE_SCHEDULE:
+            return "schedule: only a rest schedule is allowed"
+        if action.group == "all" or action.group is None:
+            return "schedule: no town-wide reschedule"
+        if not _rest_target_has_exception(context, action.group):
+            return "schedule: target has no rest-worthy exception"
+        return None
+    if kind == ACTION_SET_WORK_PRIORITY:
+        if action.group == "all":
+            return "priority: no town-wide priority change"
+        if action.work_type not in ESSENTIAL_WORK_TYPES:
+            return "priority: only essential work types"
+        if action.level is None:
+            return None
+        if not 0 < action.level <= LOWEST_SAFE_MODEL_ESSENTIAL_PRIORITY:
+            return "priority: essential level out of safe range"
+        return None
+    if kind == ACTION_PLACE_BUILDING:
+        # Grow-safe: the model may expand the economy. Unknown kinds are caught by
+        # validate_action; placement only spends coin + queues a site, so it can
+        # never idle a running essential.
+        if not action.building_kind or not buildings.is_known_kind(action.building_kind):
+            return "place: unknown building kind"
+        return None
+    if kind == ACTION_SET_PRODUCTION_TARGET:
+        # Grow-safe with an essential-shutdown floor: production_target is a
+        # ceiling, so capping a survival good idles its building. The model may
+        # retarget non-essential goods, never the food/water chain.
+        if action.amount is None:
+            return "target: missing amount"
+        if action.good in ESSENTIAL_GOODS:
+            return "target: cannot cap an essential survival good"
+        return None
+    if kind == ACTION_SET_RESEARCH:
+        # Research is the victory spine; choosing a tech cannot break survival.
+        if not action.tech:
+            return "research: missing tech"
+        return None
+    if kind == ACTION_ASSIGN_PAWN:
+        # Forced override is the arbiter's top lane and the demonstrated
+        # labor-conservation trigger (review E-1); it is an operator/fallback
+        # lever, not a model action.
+        return "assign_pawn: forced override is not a model-allowed action"
+    return f"{kind}: no model-safety rule (default-deny)"
 
 
 def _model_action_safe(context: dict[str, Any], action: GovernorAction) -> bool:
-    if action.kind == ACTION_SET_SCHEDULE:
-        return action.template == RESTORATIVE_SCHEDULE and action.group != "all" and _rest_target_has_exception(
-            context, action.group
-        )
-    if action.kind == ACTION_SET_WORK_PRIORITY:
-        if action.group == "all":
-            return False
-        if action.work_type not in ESSENTIAL_WORK_TYPES:
-            return False
-        if action.level is None:
-            return True
-        return 0 < action.level <= LOWEST_SAFE_MODEL_ESSENTIAL_PRIORITY
-    return True
+    """Back-compat boolean guard: True when the action is model-safe."""
+    return _model_action_reason(context, action) is None
 
 
 def _rest_target_has_exception(context: dict[str, Any], group: str | None) -> bool:
@@ -671,15 +741,19 @@ class LLMGovernor:
         # "disabled" (no model loaded - fallback by design, not a failure).
         self.last_outcome = "idle"
         self.last_error = ""
+        # Model actions the safety guard denied this hour, with reasons - surfaced
+        # in the decision audit so a rejected proposal is visible, not silent.
+        self.last_guard_rejected: list[tuple[GovernorAction, str]] = []
 
     def decide(self, context: dict[str, Any]) -> list[GovernorAction]:
         try:
             payload = self._propose(context) if self._propose is not None else self._ask_model(context)
-            actions = filter_model_actions(context, parse_action_list(payload))
+            actions, self.last_guard_rejected = partition_model_actions(context, parse_action_list(payload))
         except Exception as exc:
             disabled = self._propose is None and (self.client is None or not self.client.enabled)
             self.last_outcome = "disabled" if disabled else "error"
             self.last_error = str(exc)
+            self.last_guard_rejected = []
             return self.fallback.decide(context)
         if actions:
             self.last_outcome = "model"
@@ -767,10 +841,13 @@ class CivilizationDecisionScheduler:
         self.interval = max(0.0, interval)
         self.clock = clock
         self._executor = self._create_executor()
-        self._future: Future[tuple[list[GovernorAction], float]] | None = None
+        self._future: Future[tuple[list[GovernorAction], list[tuple[GovernorAction, str]], float]] | None = None
         self._pending: list[GovernorAction] | None = None
         self._next_time = 0.0
         self.status = self._idle_status()
+        # Model actions the safety guard denied on the last completed call, with
+        # reasons - carried to the decision audit like ``status.last_action_kinds``.
+        self.last_guard_rejected: list[tuple[GovernorAction, str]] = []
 
     @classmethod
     def from_env(
@@ -871,7 +948,7 @@ class CivilizationDecisionScheduler:
         future, self._future = self._future, None
         self._next_time = self.clock() + self.interval
         try:
-            actions, latency = future.result()
+            actions, self.last_guard_rejected, latency = future.result()
         except LLMClientError as exc:
             self.status.state = GOV_OFFLINE if _connection_error(str(exc)) else GOV_INVALID
             self.status.last_error = str(exc)
@@ -888,7 +965,9 @@ class CivilizationDecisionScheduler:
         # LLMGovernor: "the model chose nothing, keep the civilization moving".
         self._pending = actions or None
 
-    def _decide_actions(self, context: dict[str, Any]) -> tuple[list[GovernorAction], float]:
+    def _decide_actions(
+        self, context: dict[str, Any]
+    ) -> tuple[list[GovernorAction], list[tuple[GovernorAction, str]], float]:
         """Worker-thread body: ask the model and parse its action list."""
         start = self.clock()
         payload = self.client.complete_json(
@@ -897,6 +976,5 @@ class CivilizationDecisionScheduler:
             schema=CIVILIZATION_ACTION_SCHEMA,
             name="civilization_actions",
         )
-        actions = parse_action_list(payload)
-        actions = filter_model_actions(context, actions)
-        return actions, self.clock() - start
+        actions, rejected = partition_model_actions(context, parse_action_list(payload))
+        return actions, rejected, self.clock() - start

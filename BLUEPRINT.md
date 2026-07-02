@@ -103,6 +103,13 @@ nothing; everything traces to a source.
 When a new system is proposed, the test is: where does each thing come from, and
 where does it go? If the answer is "nowhere," the design is wrong.
 
+This is also an executable contract. Each shipped economy or staffing slice must
+state the ledger it relies on and add a test or invariant that catches duplication,
+negative stock, phantom staff, or one pawn being counted in two jobs. Primary
+producer faucets such as farms, wells, and quarries are allowed only when they are
+named as external natural sources; downstream chains still need traceable inputs
+and outputs.
+
 ## Architecture
 
 Three layers, built bottom-up. The engine and pawns work and pass tests
@@ -610,8 +617,13 @@ job from its priority list. The Governor's main lever is tuning priorities and
 schedules, not hand-placing pawns in slots - `assign_pawn` is an override for
 the rare case. Watching how the agent balances priorities across the roster is
 the substance of the spectator view. (`set_work_priority` is a build-2 addition;
-build 1 still assigns slots directly. `set_research` is core to the Space-Age
-victory, not a stretch.)
+`set_research` is core to the Space-Age victory, not a stretch.)
+
+Model-originated Governor actions are narrower than the total action vocabulary.
+The local model is untrusted policy input, so every model-allowed action kind
+needs an explicit allowlist rule. Unknown or unreviewed kinds default-deny and
+fall back to the deterministic governor. Prompt instructions may guide the model,
+but only validation and the model safety filter enforce the boundary.
 
 Build-2 autonomy direction from the RimWorld work-priority research:
 
@@ -648,7 +660,8 @@ Two governors share one `decide(context) -> list of GovernorAction` interface:
   chain link. This is also the test oracle: if a town survives N days under the
   fallback, the economy is winnable.
 - `LLMGovernor`: same signature, backed by Gemma 4 E4B via `llm.py` with
-  JSON-schema output and a hard fallback to `FallbackGovernor` on any error.
+  JSON-schema output, explicit model-action allowlisting, and a hard fallback to
+  `FallbackGovernor` on any error or unsafe policy proposal.
 
 ## Two-track division of labor
 
@@ -670,7 +683,13 @@ Rules:
 
 - All economy, pawn, mood, schedule, and governor logic is testable without
   Pygame.
-- Governor actions are validated against state before they mutate it.
+- Governor actions are validated against state before they mutate it; model-origin
+  actions also pass a stricter default-deny safety filter.
+- One pawn may count for one staffed job at a time. Forced/manual assignment must
+  release the previous slot, and the arbiter must heal or reject stale staffed
+  entries before production can count them.
+- Conservation checks must cover real run paths. A healthy long-run gate checks
+  invariants during the run, not only on a fresh state or a final snapshot.
 - The viewer may read civilization state but must not duplicate engine logic or block
   on model output.
 - The deterministic core and the fallback governor must pass tests before the
@@ -716,6 +735,8 @@ Rules:
 | Build-2 water slice shipped as the first essential economy extension | `Good.WATER`, `NEED_WATER`, Water Well production, one-unit drinking, thirst thoughts, Civ Water readout, HUD stockpile chip, water work priority, days-of-cover summary, and `low_water` governor exception make the first Townsmen essential conserved and visible. District buffers, service queues, seasonal demand, markets, wages, and storage caps remain deferred | 2026-06-29 build-2 water slice |
 | Paper 5 current-systems readability shipped before the governor card | The viewer now separates hover from selection, draws danger rings above selection, shows `work.LANE_IDLE` pawns with an overhead `!`, and renders construction sites as ghosts with footprint outlines and two-stage material/work progress. Storage 80/95% badges remain deferred until stockpile capacity exists, because uncapped totals cannot produce truthful pressure | 2026-06-29 Paper 5 current-systems slice |
 | Paper 6 governor observer shell shipped, with decision audit drilldown | The viewer derives a read-only Governor card from current exceptions, scheduler status, and recent policy actions: plan, phase, bottleneck, confidence, last reallocation, and top exception. A right-edge exception stack sorts active governor exceptions by severity and actionability. History now adds a selectable decision audit showing proposed/applied/rejected policy payloads plus after-state goods/needs and the compact goods/jobs/bottleneck causality map. It is diagnosis-first UI, not a micromanagement surface; policy editors remain deferred | 2026-06-29 Paper 6 observer UI slice, updated 2026-07-01 |
+| Critical review findings become harness inputs before feature work | Confirmed P0/P1 findings from `docs/reviews/` block new roadmap features until reproduced and fixed or explicitly downgraded with source-backed evidence. The immediate contract fixes are one-pawn-one-job, default-deny model safety, executable conservation checks, and model-efficacy gates | 2026-07-01 Fable 5 peer review |
+| Model-origin actions pass an explicit default-deny allowlist (grow-safe) | Both P0s are fixed: forced `assign_pawn` releases prior staffing (Slice A) and the model-safety guard is now an explicit per-kind allowlist - unlisted kinds default-deny. The model may grow the economy (rest a flagged pawn, raise essential priorities, place known buildings, pick research, retarget non-essential goods) but may not force per-pawn assignment (the E-1 trigger) or cap a survival good (grain/flour/bread/water). Rejections carry a reason to the decision audit. Prompt wording is guidance only; the allowlist is the boundary | 2026-07-01 Fable 5 review Slices A+B |
 
 ## Health Criteria
 
@@ -725,4 +746,10 @@ The project is healthy when:
 - the frozen contract in `core.py` imports and instantiates;
 - `.\.venv\Scripts\python.exe -m agent_town --smoke-test` exits successfully;
 - `.\scripts\validate-workbench.ps1` passes;
+- `health.check_invariants` or its run-level companion catches double-staffing,
+  phantom staff, negative stock, and any executable conservation ledger breach;
+- model-originated actions are explicit-allowlist only, with unsafe proposals
+  rejected or falling back visibly;
+- local-model proof distinguishes pipeline availability from useful, applied
+  non-fallback model policy;
 - secrets and local data are not exposed in committed or built output.

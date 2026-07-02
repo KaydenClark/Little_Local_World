@@ -1,7 +1,8 @@
 import json
 import unittest
+from types import SimpleNamespace
 
-from agent_town import buildings, civilization, engine, governor
+from agent_town import buildings, civilization, engine, governor, telemetry
 from agent_town.core import (
     ACTION_SET_SCHEDULE,
     ACTION_SET_WORK_PRIORITY,
@@ -156,6 +157,82 @@ class LLMGovernorDecideTests(unittest.TestCase):
         self.assertEqual(gov.decide(context), governor.FallbackGovernor().decide(context))
 
 
+class ModelGuardTests(unittest.TestCase):
+    """Default-deny model-safety guard (review E-2 / Slice B).
+
+    Every action kind needs an explicit allow rule; kinds without one are denied
+    so the Governor/pawn boundary is enforced by policy, not prompt etiquette. The
+    "grow-safe" policy lets the model grow the economy but not idle survival
+    essentials or seize per-pawn control via a forced assignment.
+    """
+
+    def _shutdown_and_forced_assign(self):
+        return {
+            "actions": [
+                # Essential-shutdown lever: cap bread at 0 idles the bakery.
+                {"kind": "set_production_target", "building_id": "b1", "good": "bread", "amount": 0},
+                # Forced override: the demonstrated labor-conservation trigger (E-1).
+                {"kind": "assign_pawn", "pawn_id": "p1", "building_id": "b1", "role": "farming"},
+            ]
+        }
+
+    def test_model_guard_default_denies_shutdown_and_forced_assign(self):
+        _state, context = _small_context()
+        gov = governor.LLMGovernor(propose=lambda ctx: self._shutdown_and_forced_assign())
+
+        # Both denied -> no usable model action -> defer to the fallback.
+        self.assertEqual(gov.decide(context), governor.FallbackGovernor().decide(context))
+
+        rejected_kinds = sorted(action.kind for action, _reason in gov.last_guard_rejected)
+        self.assertEqual(rejected_kinds, ["assign_pawn", "set_production_target"])
+        self.assertTrue(all(reason for _action, reason in gov.last_guard_rejected))
+
+    def test_rejected_model_actions_recorded_in_decision_audit(self):
+        state, context = _small_context()
+        gov = governor.LLMGovernor(propose=lambda ctx: self._shutdown_and_forced_assign())
+        gov.decide(context)
+
+        step_result = SimpleNamespace(actions_applied=(), buildings_completed=())
+        record = telemetry.build_decision(state, gov, step_result)
+
+        rejected = record["rejected_actions"]
+        self.assertEqual(sorted(a["kind"] for a in rejected), ["assign_pawn", "set_production_target"])
+        self.assertTrue(all(a.get("reason") for a in rejected))
+        self.assertTrue(all(a.get("rejected_by") == "guard" for a in rejected))
+        # The model proposal is also visible (not silently dropped before the audit).
+        self.assertIn("assign_pawn", record["proposed"])
+        self.assertIn("set_production_target", record["proposed"])
+
+    def test_model_guard_allows_grow_safe_actions(self):
+        _state, context = _small_context()
+        grow_safe = {
+            "actions": [
+                {"kind": "place_building", "building_kind": "Farm", "x": 1, "y": 3},
+                {"kind": "set_research", "tech": "irrigation"},
+                {"kind": "set_production_target", "building_id": "b1", "good": "planks", "amount": 20},
+                {"kind": "set_work_priority", "group": "p1", "work_type": "farming", "level": 1},
+            ]
+        }
+        gov = governor.LLMGovernor(propose=lambda ctx: grow_safe)
+
+        actions = gov.decide(context)
+
+        self.assertEqual(
+            sorted(a.kind for a in actions),
+            ["place_building", "set_production_target", "set_research", "set_work_priority"],
+        )
+        self.assertEqual(gov.last_guard_rejected, [])
+
+    def test_model_guard_denies_unknown_place_building_kind(self):
+        _state, context = _small_context()
+        gov = governor.LLMGovernor(
+            propose=lambda ctx: {"actions": [{"kind": "place_building", "building_kind": "bread_storage", "x": 1, "y": 1}]}
+        )
+
+        self.assertEqual(gov.decide(context), governor.FallbackGovernor().decide(context))
+        self.assertEqual([a.kind for a, _r in gov.last_guard_rejected], ["place_building"])
+
+
 class LLMGovernorClientTests(unittest.TestCase):
     def test_decide_through_injected_http_client(self):
         _state, context = _small_context()
@@ -163,8 +240,11 @@ class LLMGovernorClientTests(unittest.TestCase):
 
         def fake_http_post(payload, timeout):
             captured["payload"] = payload
+            # A guard-allowed action (raising a named pawn's essential priority):
+            # forced assign_pawn is model-denied by the default-deny guard, so it
+            # would be filtered out and this test would prove nothing about wiring.
             return _chat_response(
-                {"actions": [{"kind": "assign_pawn", "pawn_id": "p1", "building_id": "b1", "role": "farming"}]}
+                {"actions": [{"kind": "set_work_priority", "group": "p1", "work_type": "farming", "level": 1}]}
             )
 
         client = LocalLLMClient(model="test-model", http_post=fake_http_post)
@@ -172,7 +252,7 @@ class LLMGovernorClientTests(unittest.TestCase):
 
         actions = gov.decide(context)
 
-        self.assertEqual(actions, [GovernorAction.assign_pawn("p1", "b1", "farming")])
+        self.assertEqual(actions, [GovernorAction.set_work_priority("p1", "farming", 1)])
         # The request used the JSON-schema response format.
         self.assertEqual(captured["payload"]["response_format"]["type"], "json_schema")
 

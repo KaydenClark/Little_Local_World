@@ -1843,7 +1843,12 @@ def _draw_history_detail(surface: pygame.Surface, font: pygame.font.Font, record
     if rejected:
         line("Rejected", SELECTION)
         for action in rejected[:3]:
-            line(_format_action(action), NEED_WARN)
+            text = _format_action(action)
+            reason = action.get("reason")
+            if reason:
+                tag = "guard" if action.get("rejected_by") == "guard" else "rejected"
+                text = f"{text}  [{tag}: {reason}]"
+            line(text, NEED_WARN)
         if len(rejected) > 3:
             line(f"+{len(rejected) - 3} more", INSPECTOR_MUTED)
     else:
