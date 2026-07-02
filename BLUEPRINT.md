@@ -110,6 +110,18 @@ producer faucets such as farms, wells, and quarries are allowed only when they a
 named as external natural sources; downstream chains still need traceable inputs
 and outputs.
 
+Since review Slice C the goods half of this law is *literally* executable, not
+prose: `Stockpile` journals every inflow/outflow (`flow_in`/`flow_out`, seed
+stock included), `health.check_invariants` asserts `stock == inflow - outflow`
+for every good on every telemetry hour, and any code path that mints or vanishes
+goods around `Stockpile.add`/`remove` surfaces as a CRITICAL
+`invariant_violation` event in the viewer feed and the analyzer.
+`tests/test_conservation.py` pins the law across a 10-day engine run at every
+hour and proves the oracle can fail (tamper tests). Primary-producer faucets
+(empty-input recipes) journal their output as inflow - they are the named
+external sources, and the ledger guarantees everything downstream of them is
+conserved.
+
 ## Architecture
 
 Three layers, built bottom-up. The engine and pawns work and pass tests

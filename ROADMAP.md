@@ -177,13 +177,24 @@ trader, starvation death, or deeper economy work.
    - Green proof: accepted model actions are only those with explicit allow rules,
      and rejected proposals surface in the decision audit with the guard's reason.
    - Viewer proof: `docs/proof/slice_guard/01_audit_rejected_model_action.png`.
-3. **Review Slice C - executable conservation.** Turn the "nothing from nothing"
-   law into a run-level oracle instead of prose only. Start with a practical
-   ledger around stockpile deltas, recipe input/output, eating/drinking,
-   construction spend, and staffing invariants.
-   - Red test: the current double-staff path is caught during a multi-hour run.
-   - Green proof: a 10-day default-civ run checks invariants every hour and stays
-     clean.
+3. **Review Slice C - executable conservation (done).** The "nothing from
+   nothing" law is now a run-level oracle instead of prose. `Stockpile` journals
+   every inflow/outflow (`flow_in`/`flow_out`; seed stock, recipe input/output,
+   eating/drinking, construction hauling, and market sales all pass through
+   `add`/`remove`), and `health.check_invariants` asserts
+   `stock == inflow - outflow` per good - alongside the existing staffing
+   invariants - every telemetry hour. A break surfaces as a CRITICAL
+   `invariant_violation` event in the viewer feed and fails the analyzer.
+   - Red test: goods minted or vanished behind the journal's back (direct
+     `counts` mutation - the same bypass class as the E-1 double-staff) are
+     caught mid-run (`tests/test_conservation.py` tamper tests).
+   - Green proof: `test_conservation_ledger_holds_10_days` steps the default civ
+     240 hours and asserts `check_invariants(state) == []` at *every* hour, plus
+     nonvacuous production (total inflow 1596 > seed 72).
+   - Viewer proof: `docs/proof/slice_ledger/01_health_zero_violations_day10.png`
+     (Day 10, "Ledger 240h: 0 violations", goods flowing) and
+     `02_tamper_invariant_critical.png` (minted bread -> red CRITICAL
+     `invariant_violation` event selected in the History feed, 1-alert chip).
 4. **Review Slice D - analyzer honesty and durable evidence.** Split model
    pipeline availability from model efficacy. A run where the local model applies
    no useful policy must not be cited as model-path success.
@@ -877,3 +888,4 @@ Append a row when a task changes durable project state. Use actual results, not 
 | 2026-07-01 | Harness update from Fable 5 critical-review peer pass | `.\.venv\Scripts\python.exe -m unittest discover -s tests` (277 tests); `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; `git diff --check` | pass | Docs-only harness update. `AGENTS.md`, `RUNBOOK.md`, `BLUEPRINT.md`, and this roadmap now make confirmed P0/P1 review findings block feature work, require default-deny model-action safety, distinguish model pipeline from model efficacy, require replayable proof artifacts, and set Review Slices A-D as the active blockers. Implementation remains pending: one-pawn-one-job, default-deny model guard, executable conservation, and analyzer/evidence fixes. |
 | 2026-07-01 | Fix Fable Review Slice A one-pawn-one-job labor conservation | RED `.\.venv\Scripts\python.exe -m unittest tests.test_track_b_b4.ApplyActionsTests.test_reassign_pawn_releases_previous_staff_slot tests.test_work.ReservationTests.test_stale_duplicate_staff_entries_are_pruned_before_replan` failed on stale `staffed_by`; GREEN same focused tests; `.\.venv\Scripts\python.exe -m unittest tests.test_track_b_b4 tests.test_work tests.test_engine tests.test_health` (54 tests); `.\.venv\Scripts\python.exe -m unittest discover -s tests` (279 tests); `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; rendered and inspected `docs\proof\review_labor\01_reassigned_pawn_single_building.png`; `.\scripts\validate-workbench.ps1`; `git diff --check` | pass | Forced `assign_pawn` now releases previous staffed slots, the arbiter prunes stale duplicate staffed entries before reservation/production, and the Assign panel uses the same cleanup path. Remaining Fable blockers: default-deny model guard, executable conservation ledger, analyzer/model-proof honesty, and current watchability proof refresh. |
 | 2026-07-01 | Fix Fable Review Slice B default-deny model-safety guard | RED (pre-fix) model-origin `assign_pawn` / `set_production_target(bread, 0)` passed the old `return True` fall-through; GREEN `.\.venv\Scripts\python.exe -m unittest tests.test_llm_governor.ModelGuardTests` (4 tests) + `tests.test_llm_governor tests.test_civilization_governor tests.test_telemetry` (guard + audit paths); `.\.venv\Scripts\python.exe -m unittest discover -s tests` (283 tests); `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; rendered and inspected `docs\proof\slice_guard\01_audit_rejected_model_action.png`; `.\scripts\validate-workbench.ps1` | pass | `_model_action_safe` is now `_model_action_reason` - an explicit per-kind allowlist with default-deny. Grow-safe policy allows rest schedules, essential-priority raises, known-kind `place_building`, `set_research`, and non-essential `set_production_target`; it denies forced `assign_pawn` (the E-1 trigger), essential-good production caps (grain/flour/bread/water), and any unlisted kind. Guard-rejected model actions now surface in the decision audit with the guard's reason (`partition_model_actions` + `last_guard_rejected`). Remaining Fable blockers: executable conservation ledger (Slice C), analyzer/model-proof honesty (Slice D), and current watchability proof refresh (Slice E). |
+| 2026-07-02 | Fix Fable Review Slice C executable conservation ledger | RED (pre-fix) goods minted/vanished by direct `counts` mutation passed `check_invariants` silently (only negative stock was checked); GREEN `.\.venv\Scripts\python.exe -m unittest tests.test_conservation` (6 tests: seed journal, hand-built stockpile identity, 240h/10-day every-hour invariants sweep with nonvacuous production, minted-goods + vanished-goods tamper catches, tamper surfaces as CRITICAL event); `.\.venv\Scripts\python.exe -m unittest discover -s tests` (315 tests, was 309); `.\.venv\Scripts\python.exe -m agent_town --smoke-test` (exit 0); rendered and inspected `docs\proof\slice_ledger\01_health_zero_violations_day10.png` + `02_tamper_invariant_critical.png`; `.\scripts\validate-workbench.ps1`; `git diff --check` | pass | `Stockpile` now journals every inflow/outflow (`flow_in`/`flow_out`, seed stock included) and `health.check_invariants` asserts `stock == inflow - outflow` per good every telemetry hour, so the "nothing from nothing" law is executable, not prose; a break surfaces as a CRITICAL `invariant_violation` event in the viewer feed and fails the analyzer. Remaining Fable blockers: analyzer/model-proof honesty (Slice D) and current watchability proof refresh (Slice E). |

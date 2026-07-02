@@ -86,6 +86,13 @@ def check_invariants(state: FactionState) -> list[str]:
     Guards the "nothing from nothing" law (``BLUEPRINT.md``) and the arbiter's
     one-job-per-pawn / capacity rules: no double-staffing, no phantom staff, no
     over-staffing, no negative stock, mood/needs in range, no stale work trace.
+
+    The conservation law is executable, not prose (Fable review E-3): the
+    stockpile journals every inflow/outflow (seed stock included), so for every
+    good ``stock == flow_in - flow_out`` must hold. Goods minted or vanished by
+    any path that bypasses ``Stockpile.add``/``remove`` break the identity and
+    are reported here - and surface as a CRITICAL invariant event each telemetry
+    hour.
     """
     violations: list[str] = []
     staffed_in: dict[str, int] = {}
@@ -105,6 +112,19 @@ def check_invariants(state: FactionState) -> list[str]:
     for good, count in state.stockpile.counts.items():
         if count < 0:
             violations.append(f"stockpile {good.value} is negative ({count})")
+    ledger_goods = set(state.stockpile.counts) | set(state.stockpile.flow_in) | set(state.stockpile.flow_out)
+    for good in sorted(ledger_goods, key=lambda g: g.value):
+        stock = state.stockpile.counts.get(good, 0)
+        inflow = state.stockpile.flow_in.get(good, 0)
+        outflow = state.stockpile.flow_out.get(good, 0)
+        if inflow < 0 or outflow < 0:
+            violations.append(f"conservation: {good.value} has a negative flow journal (in {inflow}, out {outflow})")
+        elif stock != inflow - outflow:
+            delta = stock - (inflow - outflow)
+            verb = "minted from nothing" if delta > 0 else "vanished without a flow"
+            violations.append(
+                f"conservation: {abs(delta)} {good.value} {verb} (stock {stock} != inflow {inflow} - outflow {outflow})"
+            )
     if state.stockpile.capacity is not None:
         used = state.stockpile.used_capacity()
         if used > state.stockpile.capacity:
