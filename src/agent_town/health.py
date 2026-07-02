@@ -86,6 +86,13 @@ def check_invariants(state: FactionState) -> list[str]:
     Guards the "nothing from nothing" law (``BLUEPRINT.md``) and the arbiter's
     one-job-per-pawn / capacity rules: no double-staffing, no phantom staff, no
     over-staffing, no negative stock, mood/needs in range, no stale work trace.
+
+    The conservation law is executable, not prose (Fable review E-3): the
+    stockpile journals every inflow/outflow (seed stock included), so for every
+    good ``stock == flow_in - flow_out`` must hold. Goods minted or vanished by
+    any path that bypasses ``Stockpile.add``/``remove`` break the identity and
+    are reported here - and surface as a CRITICAL invariant event each telemetry
+    hour.
     """
     violations: list[str] = []
     staffed_in: dict[str, int] = {}
@@ -105,6 +112,19 @@ def check_invariants(state: FactionState) -> list[str]:
     for good, count in state.stockpile.counts.items():
         if count < 0:
             violations.append(f"stockpile {good.value} is negative ({count})")
+    ledger_goods = set(state.stockpile.counts) | set(state.stockpile.flow_in) | set(state.stockpile.flow_out)
+    for good in sorted(ledger_goods, key=lambda g: g.value):
+        stock = state.stockpile.counts.get(good, 0)
+        inflow = state.stockpile.flow_in.get(good, 0)
+        outflow = state.stockpile.flow_out.get(good, 0)
+        if inflow < 0 or outflow < 0:
+            violations.append(f"conservation: {good.value} has a negative flow journal (in {inflow}, out {outflow})")
+        elif stock != inflow - outflow:
+            delta = stock - (inflow - outflow)
+            verb = "minted from nothing" if delta > 0 else "vanished without a flow"
+            violations.append(
+                f"conservation: {abs(delta)} {good.value} {verb} (stock {stock} != inflow {inflow} - outflow {outflow})"
+            )
     if state.stockpile.capacity is not None:
         used = state.stockpile.used_capacity()
         if used > state.stockpile.capacity:
@@ -313,6 +333,8 @@ def health_summary(
         for kind in d.get("applied", []):
             action_hist[kind] = action_hist.get(kind, 0) + 1
 
+    efficacy = model_efficacy(decisions)
+
     event_counts: dict[str, int] = {}
     for e in events:
         event_counts[e.get("kind", "?")] = event_counts.get(e.get("kind", "?"), 0) + 1
@@ -340,7 +362,47 @@ def health_summary(
         "event_counts": dict(sorted(event_counts.items())),
         "critical_events": critical,
         "warn_events": warn,
+        **efficacy,
     }
+
+
+def model_efficacy(decisions: list[dict[str, Any]]) -> dict[str, Any]:
+    """Model *efficacy* fields, split from pipeline health (review E-4 / Slice D).
+
+    ``llm_decisions``/``llm_uptime`` measure the pipeline (a model was loaded and
+    answering); they say nothing about whether the model ever drove policy. These
+    fields do: ``model_decisions`` counts hours whose actions actually came from
+    the model (the decision record's per-hour ``origin``), ``model_actions`` is
+    the applied-action histogram on those hours only, and ``model_pipeline_only``
+    marks a run where a model was in play yet zero model-origin actions were
+    applied - the exact run shape whose GREEN stamp the review found meaningless.
+    Kept as its own helper so the analyzer can recompute honest verdicts for old
+    logs whose embedded summaries predate the split.
+    """
+    llm_hours = sum(1 for d in decisions if _llm_attempted(d))
+    model_hours = [d for d in decisions if _decision_origin(d) == "model"]
+    model_actions: dict[str, int] = {}
+    for d in model_hours:
+        for kind in d.get("applied", []):
+            model_actions[kind] = model_actions.get(kind, 0) + 1
+    applied = sum(model_actions.values())
+    return {
+        "model_decisions": len(model_hours),
+        "model_actions": dict(sorted(model_actions.items())),
+        "model_actions_applied": applied,
+        "model_pipeline_only": bool(llm_hours) and applied == 0,
+    }
+
+
+def _decision_origin(decision: dict[str, Any]) -> str:
+    """Which policy drove this hour. Schema v3 records carry ``origin``; older
+    blocking-path records are recovered from ``outcome == "model"``. Older
+    scheduler records carry nothing per-hour - they honestly read as fallback,
+    which is why their runs can no longer claim model efficacy."""
+    origin = decision.get("origin")
+    if origin:
+        return origin
+    return "model" if decision.get("outcome") == "model" else "fallback"
 
 
 def _llm_attempted(decision: dict[str, Any]) -> bool:
@@ -367,13 +429,28 @@ def run_problems(summary: dict[str, Any]) -> list[str]:
     return problems
 
 
+def run_cautions(summary: dict[str, Any]) -> list[str]:
+    """Amber conditions: not failures, but a GREEN stamp is not earned either."""
+    cautions: list[str] = []
+    if summary.get("warn_events"):
+        cautions.append(f"{summary['warn_events']} warn event(s)")
+    if summary.get("model_pipeline_only"):
+        cautions.append(
+            "pipeline-only: a model was in play but zero model-origin actions were applied"
+            f" ({summary.get('model_decisions', 0)} model emission(s))"
+        )
+    return cautions
+
+
 def run_color(summary: dict[str, Any]) -> str:
     """Run-level health light: ``red`` (any red condition), ``amber`` (warn-level
-    activity), or ``green`` (clean). A first-class field an autopilot or notifier
-    can poll without re-deriving the rules."""
+    activity, or a model run with zero applied model actions - pipeline health
+    must never impersonate model efficacy, review E-4), or ``green`` (clean).
+    A first-class field an autopilot or notifier can poll without re-deriving
+    the rules."""
     if run_problems(summary):
         return "red"
-    if summary.get("warn_events"):
+    if run_cautions(summary):
         return "amber"
     return "green"
 

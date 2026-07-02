@@ -59,6 +59,10 @@ def main(argv: list[str] | None = None) -> int:
     summary = end.get("summary") if end else None
     if summary is None:
         summary = health.health_summary(snapshots, decisions, events)
+    # Always recompute model-efficacy from the raw decisions (review E-4 / Slice
+    # D): embedded summaries from older schemas predate the pipeline-vs-efficacy
+    # split, and a stale summary must not hand out a GREEN the records don't earn.
+    summary = {**summary, **health.model_efficacy(decisions)}
     flagged = [e for e in events if e.get("severity") in (health.WARN, health.CRITICAL)]
 
     print(f"Run log: {path}")
@@ -76,9 +80,12 @@ def main(argv: list[str] | None = None) -> int:
     print(f"  idle peak      : {summary['idle_peak']}")
     print(f"  breaks         : {summary['breaks']} (peak concurrent {summary['break_peak']})")
     print(f"  food depletions: {summary['depletions']}   supply stalls: {summary['stalls']}")
-    print(f"  LLM decisions  : {summary['llm_decisions']} (uptime {summary['llm_uptime']:.0%}, "
+    print(f"  LLM hours      : {summary['llm_decisions']} with a model in play "
+          f"(pipeline uptime {summary['llm_uptime']:.0%}, "
           f"dropped {summary['llm_dropped']} = {summary['llm_dropped_rate']:.0%})")
-    print(f"  applied actions: {summary['actions'] or '(none)'}")
+    print(f"  model emissions: {summary['model_decisions']} hour(s) actually driven by the model")
+    print(f"  model applied  : {summary['model_actions'] or '(none)'}")
+    print(f"  applied actions: {summary['actions'] or '(none)'} (all sources incl. fallback)")
     print(f"  events         : {summary['event_counts'] or '(none)'}")
 
     if args.events and flagged:
@@ -88,14 +95,15 @@ def main(argv: list[str] | None = None) -> int:
                   f"{event['kind']}: {event.get('text', '')}")
 
     problems = health.run_problems(summary)
+    cautions = health.run_cautions(summary)
     color = health.run_color(summary).upper()
-    if problems:
-        print(f"\nRESULT: {color}")
-        for problem in problems:
-            print(f"  - {problem}")
-        return 1
     print(f"\nRESULT: {color}")
-    return 0
+    for problem in problems:
+        print(f"  - {problem}")
+    if not problems:
+        for caution in cautions:
+            print(f"  - {caution}")
+    return 1 if problems else 0
 
 
 if __name__ == "__main__":

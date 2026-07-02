@@ -778,6 +778,12 @@ class LLMGovernor:
         # in the decision audit so a rejected proposal is visible, not silent.
         self.last_guard_rejected: list[tuple[GovernorAction, str]] = []
 
+    @property
+    def last_source(self) -> str:
+        """Which policy drove the last decide() - the blocking-path twin of the
+        scheduler's per-hour origin (review E-4 / Slice D)."""
+        return SOURCE_MODEL if self.last_outcome == "model" else SOURCE_FALLBACK
+
     def decide(self, context: dict[str, Any]) -> list[GovernorAction]:
         try:
             payload = self._propose(context) if self._propose is not None else self._ask_model(context)
@@ -827,6 +833,14 @@ GOV_IDLE = "idle"
 GOV_THINKING = "thinking"
 GOV_OFFLINE = "offline"
 GOV_INVALID = "invalid"
+
+# Per-hour decision origin (review E-4 / Slice D): which policy actually drove
+# THIS hour's actions. Distinct from GovernorStatus.state, which is pipeline
+# health - a scheduler can be "idle"-healthy for 96 hours while every single
+# hour's actions came from the fallback. The telemetry decision record carries
+# this so the analyzer can count model *emissions* instead of scheduler hours.
+SOURCE_MODEL = "model"
+SOURCE_FALLBACK = "fallback"
 
 # Default real-time cooldown (seconds) between completing one model call and
 # starting the next, so the viewer does not hammer the model continuously.
@@ -881,6 +895,9 @@ class CivilizationDecisionScheduler:
         # Model actions the safety guard denied on the last completed call, with
         # reasons - carried to the decision audit like ``status.last_action_kinds``.
         self.last_guard_rejected: list[tuple[GovernorAction, str]] = []
+        # Which policy drove the last decide(): SOURCE_MODEL only on the hour a
+        # finished model decision was actually returned (review E-4 / Slice D).
+        self.last_source = SOURCE_FALLBACK
 
     @classmethod
     def from_env(
@@ -907,7 +924,9 @@ class CivilizationDecisionScheduler:
         self._maybe_submit(context)
         if self._pending is not None:
             actions, self._pending = self._pending, None
+            self.last_source = SOURCE_MODEL
             return actions
+        self.last_source = SOURCE_FALLBACK
         return self.fallback.decide(context)
 
     def connect_from_env(self, *, model_discovery: ModelDiscovery | None = None) -> bool:
@@ -960,6 +979,7 @@ class CivilizationDecisionScheduler:
         self._executor = self._create_executor()
         self._pending = None
         self._next_time = 0.0
+        self.last_source = SOURCE_FALLBACK
         self.status = self._idle_status(last_error=last_error)
 
     def _maybe_submit(self, context: dict[str, Any]) -> None:

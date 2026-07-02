@@ -100,7 +100,16 @@ class ResourceNode:
 
 @dataclass
 class Stockpile:
-    """Faction-wide good counts. Behaviour implemented by Track A (A1)."""
+    """Faction-wide good counts. Behaviour implemented by Track A (A1).
+
+    Every unit that enters or leaves is journaled in ``flow_in``/``flow_out``
+    (initial stock counts as inflow), so ``counts[good] == flow_in - flow_out``
+    at all times. That identity is the executable form of the "nothing from
+    nothing" conservation law: goods exist only through a recorded ``add`` and
+    vanish only through a recorded ``remove``. ``health.check_invariants``
+    asserts it every telemetry hour; code that mutates ``counts`` directly
+    breaks the identity and shows up as a CRITICAL invariant violation.
+    """
 
     counts: dict[Good, int] = field(default_factory=dict)
     # None means uncapped legacy storage. Build-2 scenarios can set a finite
@@ -109,6 +118,9 @@ class Stockpile:
     # The non-building capacity floor. Storehouse bonuses are recalculated from
     # this so each economy tick can refresh capacity without double-counting.
     base_capacity: int | None = None
+    # Cumulative conservation journal (units ever added / ever removed per good).
+    flow_in: dict[Good, int] = field(default_factory=dict)
+    flow_out: dict[Good, int] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if self.capacity is not None:
@@ -122,6 +134,10 @@ class Stockpile:
             used = self.used_capacity()
             if used > self.capacity:
                 raise ValueError(f"Stockpile capacity exceeded: used {used}, capacity {self.capacity}")
+        # Seed stock passed via ``counts=`` is journaled as inflow so the
+        # conservation identity holds from birth for hand-built stockpiles too.
+        if not self.flow_in and not self.flow_out:
+            self.flow_in = {good: count for good, count in self.counts.items() if count > 0}
 
     def add(self, good: Good, amount: int) -> None:
         _validate_good_amount(good, amount)
@@ -131,6 +147,7 @@ class Stockpile:
                 f"Stockpile capacity exceeded: used {used}, adding {amount}, capacity {self.capacity}"
             )
         self.counts[good] = self.counts.get(good, 0) + amount
+        self.flow_in[good] = self.flow_in.get(good, 0) + amount
 
     def remove(self, good: Good, amount: int) -> None:
         _validate_good_amount(good, amount)
@@ -142,6 +159,7 @@ class Stockpile:
             self.counts[good] = remaining
         else:
             self.counts.pop(good, None)
+        self.flow_out[good] = self.flow_out.get(good, 0) + amount
 
     def has(self, good: Good, amount: int) -> bool:
         if not isinstance(good, Good):
