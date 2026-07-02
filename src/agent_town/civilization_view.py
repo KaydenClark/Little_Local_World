@@ -89,6 +89,8 @@ SELECTION = (245, 220, 92)
 SELECTION_OUTER = (245, 248, 238)
 HOVER = (255, 212, 92)
 DANGER = (235, 80, 70)
+STORAGE_WARN = (232, 150, 79)
+STORAGE_CRITICAL = (214, 84, 73)
 IDLE_BADGE_BG = (24, 24, 24)
 IDLE_BADGE_ICON = (255, 196, 0)
 NEED_GOOD = (69, 205, 214)
@@ -118,6 +120,7 @@ BUILDING_SPRITE = {
     "Mill": "house",
     "Bakery": "house",
     "Water Well": "house3",
+    "Storehouse": "house",
 }
 DEFAULT_BUILDING_SPRITE = "house"
 
@@ -156,6 +159,7 @@ WORK_TYPE_LABEL = {
     "forestry": "Frst",
     "woodworking": "Wood",
     "mining": "Mine",
+    "research": "Rsrch",
 }
 # Priority -> cell colour (1 highest/brightest .. 4 lowest; 0/disabled is blank).
 WORK_PRIORITY_COLOR = {
@@ -637,6 +641,17 @@ def _need_bar_color(value: float) -> tuple[int, int, int]:
     return NEED_GOOD
 
 
+def _storage_pressure_level(fullness: float | None) -> str | None:
+    """Thresholded storage pressure for HUD and world badges."""
+    if fullness is None:
+        return None
+    if fullness >= 0.95:
+        return "critical"
+    if fullness >= 0.80:
+        return "warn"
+    return None
+
+
 def _top_skills(pawn, limit: int = 10) -> list[tuple[str, int]]:
     """Highest skills first, with stable alphabetical ordering for ties."""
     return sorted(pawn.skills.items(), key=lambda item: (-item[1], item[0]))[:limit]
@@ -718,8 +733,9 @@ def render_civilization(
     for site in sorted(state.construction_sites.values(), key=lambda s: (s.y, s.x, s.id)):
         _draw_construction_site(surface, site, assets, font, camera, ox, oy, base_ts)
 
+    storage_pressure = _storage_pressure_level(economy.storage_fullness(state))
     for building in sorted(state.buildings.values(), key=lambda b: (b.y, b.x, b.id)):
-        _draw_building(surface, building, assets, font, camera, ox, oy, base_ts)
+        _draw_building(surface, building, assets, font, camera, ox, oy, base_ts, storage_pressure)
 
     pawn_keys = sorted(assets.pawns_scaled)
     for pawn in state.pawns.values():
@@ -852,7 +868,17 @@ def _draw_construction_site(
         _draw_label(surface, font, f"{site.building_kind} {round(progress * 100)}%", cx, bar.y - 2)
 
 
-def _draw_building(surface, building, assets: CivilizationAssets, font, camera: Camera, ox: int, oy: int, base_ts: int) -> None:
+def _draw_building(
+    surface,
+    building,
+    assets: CivilizationAssets,
+    font,
+    camera: Camera,
+    ox: int,
+    oy: int,
+    base_ts: int,
+    storage_pressure: str | None = None,
+) -> None:
     sprite = _scale_for_camera(
         assets.buildings_scaled[BUILDING_SPRITE.get(building.kind, DEFAULT_BUILDING_SPRITE)],
         camera,
@@ -860,11 +886,27 @@ def _draw_building(surface, building, assets: CivilizationAssets, font, camera: 
     cx, _cy = camera.tile_center_to_screen(building.x, building.y, (ox, oy), base_ts)
     _left, bottom = camera.tile_top_left_to_screen(building.x, building.y + 1, (ox, oy), base_ts)
     surface.blit(sprite, (cx - sprite.get_width() // 2, bottom - sprite.get_height()))
+    if building.kind == "Storehouse" and storage_pressure is not None:
+        _draw_storage_badge(surface, cx + sprite.get_width() // 2 - 12, bottom - sprite.get_height() + 10, storage_pressure, camera)
 
     if camera.zoom >= 0.85:
         staffed = len(building.staffed_by)
         label = f"{building.kind} {staffed}/{building.job_slots}"
         _draw_label(surface, font, label, cx, bottom - sprite.get_height() - 2)
+
+
+def _draw_storage_badge(surface: pygame.Surface, x: int, y: int, pressure: str, camera: Camera) -> None:
+    color = STORAGE_CRITICAL if pressure == "critical" else STORAGE_WARN
+    size = max(14, round(18 * camera.zoom))
+    rect = pygame.Rect(x - size // 2, y - size // 2, size, size)
+    pygame.draw.rect(surface, (16, 18, 18), rect, border_radius=2)
+    pygame.draw.rect(surface, color, rect, 2, border_radius=2)
+    crate = rect.inflate(-6, -7)
+    pygame.draw.rect(surface, color, crate, 1)
+    pygame.draw.line(surface, color, (crate.left, crate.centery), (crate.right, crate.centery), 1)
+    pygame.draw.line(surface, color, (crate.centerx, crate.top), (crate.centerx, crate.bottom), 1)
+    if pressure == "critical":
+        pygame.draw.line(surface, color, rect.bottomleft, rect.topright, 2)
 
 
 def _pawn_sprite_key(pawn, keys: list[str]) -> str:
@@ -1156,6 +1198,12 @@ def _draw_macro_strip(
         f"Idle {idle_pawn_count(state)}",
         f"Coin {state.coin}",
     ]
+    # Storage fullness readout (integration truth-loop): only when storage is
+    # capped. Pressure colour is carried by the storehouse building badges on the
+    # map; the strip keeps the plain number.
+    storage = economy.storage_fullness(state)
+    if storage is not None:
+        chips.append(f"Storage {round(storage * 100)}%")
     chips.extend(f"{label} {state.stockpile.counts.get(good, 0)}" for label, good in HUD_GOODS)
     alert_severity, alert_count = alert if alert else (None, 0)
     if alert_count:

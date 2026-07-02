@@ -28,6 +28,7 @@ from agent_town.civilization_view import (
     _mood_color,
     _pawn_readability_markers,
     _pawn_status_label,
+    _storage_pressure_level,
     _top_skills,
     cycle_work_priority,
     exception_stack_items,
@@ -402,6 +403,29 @@ class GovernorObserverModelTests(unittest.TestCase):
 
         surface = pygame.Surface((state.grid.width * 25 + 24 + INSPECTOR_WIDTH, state.grid.height * 25 + 220))
         render_civilization(surface, state, assets, font, (12, 12), show_inspector=True)
+
+
+class StoragePressureViewTests(unittest.TestCase):
+    def setUp(self):
+        pygame.display.init()
+        pygame.font.init()
+        pygame.display.set_mode((64, 64))
+
+    def test_storage_pressure_thresholds_are_warning_then_critical(self):
+        self.assertIsNone(_storage_pressure_level(None))
+        self.assertIsNone(_storage_pressure_level(0.79))
+        self.assertEqual(_storage_pressure_level(0.80), "warn")
+        self.assertEqual(_storage_pressure_level(0.949), "warn")
+        self.assertEqual(_storage_pressure_level(0.95), "critical")
+
+    def test_render_near_full_storage_pressure_does_not_crash(self):
+        assets = load_civilization_assets()
+        font = pygame.font.Font(None, 16)
+        state = civilization.create_default_civilization()
+        state.stockpile.capacity = state.stockpile.used_capacity() + 1
+
+        surface = pygame.Surface((state.grid.width * 25 + 24, state.grid.height * 25 + 220))
+        render_civilization(surface, state, assets, font, (12, 12))
 
 
 class CameraTests(unittest.TestCase):

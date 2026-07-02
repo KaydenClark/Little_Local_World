@@ -146,8 +146,17 @@ Ollama can use the same adapter with
 
 - Keep lethal starvation deferred until the malnutrition/death timing slice can
   add status, exceptions, viewer surfacing, and food-chain urgency together.
-- Add the first Paper 7 scale foundations before larger populations:
-  reachability-region rejection and deterministic update phases.
+- The 12-pawn truth loop is now closed (PRs #23-#29; see `ROADMAP.md` "Truth-loop
+  gaps"): the dead governor levers (`set_production_target`, `set_research`) drive
+  real effects, a minimal research/Space-Age spine gives the autopilot a goal, and
+  the economy couples through wages, a Market, storage caps, and service pressure.
+- Next: repair debt as the first maintenance sink, then the full Space-Age victory
+  condition and population growth. The colony can still starve under the live
+  money loop (see `docs/run_reports/`), so governor/balance tuning comes before
+  more surface area.
+- Then the Paper 7 scale foundations (reachability-region rejection, deterministic
+  update phases) - only after the truth loop, and the real need appears once
+  population growth exists.
 - Add district storage/market pressure before comfort chains.
 - Add save state once the civilization persistence model is designed.
 - Add pathfinding benchmarks before larger maps or blocked terrain.

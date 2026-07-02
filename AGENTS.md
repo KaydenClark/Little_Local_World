@@ -82,6 +82,24 @@ Default responsibilities:
 - update `BLUEPRINT.md` and `RUNBOOK.md` when the task directly touches their content;
 - leave the project easier for the next agent to verify.
 
+## Branching And Merge Flow
+
+This repo uses a three-tier branch model. Full rules live in `BRANCHING.md`; the
+load-bearing ones:
+
+- Branch **from `integration`**, and open pull requests **into `integration`**.
+  Never branch from or target `main` directly.
+- Name feature branches by owner and task: `codex/<task>`, `claude/<task>`,
+  `feat/<slice>`, `fix/<thing>`, `docs/<thing>` — short, kebab-case, specific.
+- `integration` is the shared root every agent forks from and merges back into.
+  `main` is human-owned; only Kayden promotes `integration → main`, and only for
+  states that have been watched running.
+- Merge feature branches into `integration` with a merge commit (do not squash);
+  the merge history is the record of who did what. Delete a feature branch after it
+  merges — its commits are preserved in `integration`.
+- Deleting branches already merged into `integration` or `main` is safe and expected
+  cleanup. Never delete or force-push `main` or `integration`.
+
 ## Asset Workflow
 
 When visual work needs a new asset, search for a license-safe free asset before drawing or kitbashing one locally.

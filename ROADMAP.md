@@ -86,21 +86,31 @@ pressure -> Civ Water readout/HUD chip -> `low_water` governor exception.
 Paper 5 current-systems readability is now also live: hover and selection are
 separate, danger rings outrank selection, `work.LANE_IDLE` pawns get an overhead
 idle badge, and active construction sites draw as ghosts with footprint outlines
-and progress bars. Storage-pressure badges stay deferred until stockpile capacity
+and progress bars. Storage-pressure badges now light at 80/95% once finite storage
 exists. The synthesis paper (`research_papers/8.little-local-world-research-synthesis.md`)
-Paper 6 governor observer UI is now also live: a compact Governor summary plus
+Paper 6 governor observer UI is now also live: a compact Governor card (plan,
+phase, bottleneck, confidence, last policy change, top exception) plus a
 right-edge exception stack sort active governor exceptions by severity/actionability
 with likely causes, and History can drill into Governor decision payloads
 (proposed/applied/rejected) plus after-state goods/needs. The UI
 navigation/readability baseline is also live: screen regions are exclusive,
 persistent text no longer covers the map, and every bottom button opens a real
-panel. The Fable 5 critical review peer pass on 2026-07-01 interrupts the
-Paper 7 / trader / death queue until the confirmed P0/P1 harness failures are
+panel. The truth-loop cleanup is also live: `set_production_target` now changes
+production, `set_research` selects an active tech that staffed Laboratory work
+completes, finite stockpile capacity blocks net-new output before inputs are
+consumed (telemetry + HUD show storage percent, Storehouses raise the cap and
+carry pressure badges), and the first wage/market money loop pays wages, sells
+bread from a staffed Market above reserve, records sales tax, and exports the
+remaining surplus. The Fable 5 critical review peer pass on 2026-07-01 interrupts
+the Paper 7 / trader / death queue until the confirmed P0/P1 harness failures are
 fixed or explicitly downgraded with source-backed evidence. Both **P0** blockers
 are now cleared: one-pawn-one-job labor conservation (Slice A) and default-deny
 local-model action safety (Slice B). The remaining review blockers are the two
 P1s: executable conservation checks (Slice C) and analyzer/model-proof honesty
-(Slice D). Per user direction (2026-06-29) lethal starvation (build-1 step 5.4)
+(Slice D). Merging the crisis line onto the truth-loop economy exposed and fixed
+a latent starvation (uncapped surplus producers flooding the finite storage cap);
+the default civ now seeds surplus-producer ceilings and pauses research during a
+food crisis. Per user direction (2026-06-29) lethal starvation (build-1 step 5.4)
 stays deferred behind the visible autonomy/readability work; Build-1 ships with
 hunger mood pressure as its stakes.
 
@@ -270,6 +280,70 @@ Slices:
    run-end on collapse, and a structured "what killed this civ" report.
 6. **Slice 5 - UI proof at 8-20x.** Run the real viewer on a crisis seed; confirm
    re-tasking, construction ghosts, trader arrival, governor plan, death badges.
+
+## Truth-loop gaps (audited 2026-06-30; closed by PRs #23-#29)
+
+Paper 8 is explicit that population must not scale "before the 12-pawn truth
+loop is satisfying"
+(`research_papers/8.little-local-world-research-synthesis.md`, the scale topic
+and roadmap-implication sections). A 2026-06-30 audit against the merged code
+found the 12-pawn loop was not yet truthful: governor actions that validated and
+"applied" but changed no simulation state, an autopilot with no goal beyond a
+fixed build order, and an economy that could only fail one way. The truth-loop
+chain (PRs #23-#29) closed gaps 1, 2, and 4 and partially addressed gap 3; Paper
+7 scale work (PR #21) was re-sequenced behind it as scaffolding. This section is
+kept as the record of what was fixed and why. The remaining balance problem -
+the sim can still starve even with the money loop live - is tracked in the
+`docs/run_reports/` observation notes, not here.
+
+Each gap was a small, verifiable slice:
+
+1. **[CLOSED - PR #23] Dead lever: `set_production_target` changes nothing.** The governor
+   validates and stores it onto `building.production_target`
+   (`governor.py` `apply_actions`), but `economy.production_tick` never reads it -
+   production always runs the maximum input-limited cycles. Either honor the
+   target (cap cycles to it) or reject the action. A validated-and-applied action
+   that mutates no sim state makes the Governor card report a change that did not
+   happen, which violates the Paper 5/6 contract that the UI must let the player
+   verify the simulation is telling the truth.
+   - Tests: a target below the input-limited rate caps output; setting/clearing a
+     target is reflected in the next tick's stockpile delta.
+
+2. **[CLOSED - PR #24, victory still partial] Dead lever: `set_research` has no effect and there is no victory.**
+   `apply_actions` appends the tech string to `state.research`; nothing reads it,
+   there is no cost, no tech effect, and the `FallbackGovernor` never emits it.
+   `BLUEPRINT.md` names the Space Age (research spine) as the *primary* victory,
+   so the stated win condition does not exist in code. Minimum slice: a Laboratory
+   that turns labour into research points, a short linear tech spine, at least one
+   tech with a measurable effect (e.g. +output or +lifespan), and the fallback
+   pursuing it once essentials are stable. This is the autopilot's first real goal
+   function.
+   - Tests: research points accrue from staffed Laboratory work; a completed tech
+     changes a measurable sim value; the fallback queues research after the build
+     order, deterministically.
+
+3. **[PARTIAL - PR #24] The autopilot halts.** `FallbackGovernor.decide` walks a hardcoded 7-item
+   `BUILD_ORDER`; once those buildings exist it only reschedules unhappy pawns, so
+   the town reaches a fixed end state with nothing left to spectate -
+   contradicting "watch a town grow over time". The research spine (gap 2) is the
+   minimum end-game; population growth (build 3) is the longer continuation.
+
+4. **[CLOSED - PRs #25-#29] The economy is a one-way faucet, not a loop.** Paper 4's core lesson is that
+   coupled loops - wages -> spending -> taxes -> treasury, plus storage pressure,
+   service queues, repair debt - are what turn chains into a town. Today coin
+   enters only via tax (`economy.daily_tax_income`) and leaves only via a finite
+   ~46-coin build order (`construction.BUILDING_COIN_COSTS`); pawns are never
+   paid. Of Paper 4's six bottleneck classes only "upstream shortage"
+   (`missing_inputs`) can occur, so the Governor card's bottleneck field can only
+   ever show one value. The wage loop and storage caps (already in the build-2
+   backlog) are the first coupling and belong with the truth-loop work, not after
+   scale.
+
+Only after these close does Paper 7 scale work pay off - and the game still has
+no in-play way to reach 1000 pawns (no birth or immigration exists; the
+benchmark uses synthetic agents), so scale currently solves a pressure the game
+cannot yet create. Population growth is a build-3 lifecycle item and is what
+makes the real scale need appear.
 
 ## Build arc (the long road)
 
@@ -442,8 +516,8 @@ small and verified.
    outlines, selected/stressed pawns keep danger rings above selection, idle pawns
    from the work arbiter get an overhead `!` badge, and construction sites render
    as translucent ghosts with footprint outlines and material/work progress bars.
-   Storage 80/95% badges are deliberately deferred until stockpile capacity exists.
-   Paper 6 governor observer UI followed this as item 9.
+   Storage 80/95% badges now surface finite storage pressure. Paper 6 governor
+   observer UI followed this as item 9.
 
 9. **(done) Paper 6 governor observer summary + exception stack.** The viewer now
    derives read-only Governor status from current exceptions, scheduler status,
@@ -455,8 +529,17 @@ small and verified.
    The current desktop viewer now behaves like a usable game screen instead of a
    dense status collage: persistent HUD surfaces are short, the map is no longer
    covered by always-on panels, and every bottom command button opens a truthful
-   screen/menu. Next: return to Paper 7 scale foundations, reachability
-   `region_id` plus deterministic command/update phases, before deeper economy.
+   screen/menu.
+11. **(done) Truth-loop cleanup (PRs #23-#29).** `set_production_target` caps
+   output, `set_research` selects an active tech completed by staffed Laboratory
+   work, finite stockpile capacity makes storage saturation truthful (telemetry +
+   HUD + Storehouse pressure badges), and the first wage/market loop pays wages,
+   sells Market bread above reserve to pawn wallets, records sales tax, and
+   exports the surplus, with unmet buyers surfaced as `market_service_pressure`.
+   Remaining truth-loop slices: repair debt, then reserve-aware trade. **Next:
+   the open Fable review P1s (Slice C executable conservation, Slice D analyzer
+   honesty), then Paper 7 scale foundations (reachability `region_id` +
+   deterministic command/update phases) before deeper economy.**
 
 ## Research Paper Implementation Queue
 
@@ -480,14 +563,22 @@ build order. Work the queue in this order, not in paper-number order:
    readout -> governor exception shipped before storage / markets / wages.
 4. **Map readability for current systems (done for existing systems).** Paper 5.
    Idle badge, construction progress, danger-over-selection, and hover vs
-   selection are live. Storage 80/95% badges are deferred until storage capacity
-   exists.
+   selection are live. Storage 80/95% badges now surface finite storage pressure.
 5. **Governor observer summary + exception stack (done).** Paper 6. Current plan,
    bottleneck, confidence, last reallocation, top exception and its likely cause
    are visible in reserved HUD/right-column regions.
-6. **Scale foundations (next code task).** Paper 7. Reachability `region_id` and deterministic
-   command/update phases - cheap scaffolding added before population grows.
-7. **Deeper economy.** Paper 4 (remainder). District storage, market/service
+6. **Truth-loop cleanup (shipped; repair debt + reserve-aware trade remain).**
+   Paper 8's "make causality visible" rule gates scale behind truthful 12-pawn
+   levers: `set_production_target` caps output, `set_research` selects an active
+   tech completed by staffed Laboratory work, finite stockpile capacity blocks
+   net-growing production at capacity (telemetry/HUD + Storehouse 80/95% pressure
+   badges), daily wages and staffed-Market surplus sales run the first money loop,
+   household spending buys Market bread above reserve with sales tax reported, and
+   unmet buyers surface as `market_service_pressure`.
+7. **Scale foundations.** Paper 7. Reachability `region_id` and deterministic
+   command/update phases - cheap scaffolding, behind the truth-loop work and the
+   open Fable review P1s.
+8. **Deeper economy.** Paper 4 (remainder). District storage, market/service
    delivery, repair debt, wages -> spending -> taxes, reserve-aware trade.
 
 Explicit deferrals from Paper 8 (do not start until the autonomy loop is visible
@@ -551,13 +642,20 @@ material; the numbered order above is what to build.
    `research_papers/4.townsmen_economy-loop-report.md`
    - Current status: the first essential economy slice is implemented: Water
      Well production, water reserve/need, thirst mood pressure, Civ readout/HUD
-     chip, water days-of-cover, and a `low_water` governor exception.
-   - Next code task: keep deeper economy paused until Paper 7's first scale
-     foundations are in. Then add district storage/market pressure before comfort
-     chains.
+     chip, water days-of-cover, and a `low_water` governor exception. The first
+     storage slice is also implemented: finite stockpile capacity, storage-full
+     blocked production, telemetry fullness, and a HUD storage percent. The
+     first money-loop slice pays daily wages to assigned pawns and lets staffed
+     Markets sell surplus bread above reserve. The next slice now lets pawn
+     wallets buy Market bread above reserve before export and records sales-tax
+     collection.
+   - Next code task: repair debt as the first material/coin maintenance sink.
+     Reserve-aware trade and comfort chains follow after that.
    - Tests: water days-of-cover is covered; summer/seasonal demand hook,
-     storage-full blocked production, repair input reservation, and wage ->
-     spending -> tax accounting remain future tests once those loops start.
+     Storehouse capacity upgrades, and storage pressure badges are covered;
+     household spending -> tax accounting and unmet Market bread demand are
+     covered; repair input reservation and full district service queues remain
+     future tests once those loops start.
    - Deferred: full household economy, private firms, premium/mobile timers,
      large multi-district optimization.
 5. **Age of Empires readability pass** -
@@ -566,8 +664,8 @@ material; the numbered order above is what to build.
       Pygame map, roster, inspector, overlays, Civ stats, separate hover and
       selection outlines, danger-over-selection rings, idle overhead badges from
       `work.LANE_IDLE`, and construction ghosts with footprint/progress.
-   - Next code task: none for Paper 5 until storage capacity or larger-map/LOD
-      work lands; Paper 6 observer UI is now complete.
+   - Next code task: none for Paper 5 until larger-map/LOD work lands; Paper 6
+     observer UI is now complete.
    - Tests/manual proof: `tests.test_civilization_view` covers construction
       progress math, marker priority, and hovered-pawn render smoke; refreshed
       `docs/screenshots/current-state.png`; inspected a temporary proof frame
@@ -593,10 +691,11 @@ material; the numbered order above is what to build.
    `research_papers/7.scalable-sim-report.md`
    - Current status: the benchmark exists and the product target is ~1000 pawns
      per civilization, but current gameplay remains exact and small-population.
-   - Next code task: add the cheap scale foundations before raising population:
+   - Next code task: deferred behind truth-loop cleanup. When it resumes, add
      reachability `region_id`/dirty topology tracking and deterministic
      command/update phases for reservations, job claims, path requests, movement,
-     interactions, production, needs, and tax.
+     interactions, production, needs, and tax. Population growth (build 3) is what
+     makes the scale need real.
    - Tests: unreachable jobs are rejected before pathfinding; region IDs update
      deterministically after a topology change; identical command batches produce
      identical state; benchmark still reports core/context/draw timings.
@@ -634,7 +733,9 @@ Build 2 (depth and the spectator):
   labour (the missing material/coin sink).
 - Wage money loop: pay pawns (treasury -> purse), pawns spend at Market/Tavern,
   tax the wages back; Market trades surplus with off-map caravans.
-- Storage caps + "storage full %" readout; Storehouse raises capacity.
+- Storage caps + "storage full %" readout are started; daily wages and staffed
+  Market surplus sales are started; Storehouse raises capacity and storage
+  pressure badges remain next.
 - `set_work_priority` action + RimWorld per-pawn work-priority model.
 - Per-civilization spectator view: open a civilization and see assignments, priorities,
   stockpile, mood, construction live.
@@ -756,6 +857,18 @@ Append a row when a task changes durable project state. Use actual results, not 
 | 2026-06-30 03:55 -06:00 | Full Mac LM acceptance gate for PR #23 `feat/production-target-honored` at `f6834eefbefcb3e0ffa148d89a60d0cf0cc25bb4` | `.venv/bin/python -m pip install -e .`; `.venv/bin/python -m agent_town --smoke-test`; `.venv/bin/python -m unittest discover -s tests` (233 tests); `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/validate-workbench.ps1`; LM Studio ping `http://192.168.1.131:1234/v1/models` found `google/gemma-4-e4b`; Pygame `CivilizationViewer` booted with blocking `LLMGovernor`; 96 simulated viewer hours; `.venv/bin/python scripts/analyze_run.py logs/run-20260630-034953.jsonl --events`; `git diff --check` | amber | Install/smoke/unit/docs/LM ping/viewer boot passed and the current game state stayed healthy: mood 85.8 -> min 72.4 -> end 82.4, idle peak 0, breaks 0, depletions 0, stalls 0. Analyzer returned AMBER because 5/96 model decision hours emitted invalid JSON and fell back; 91/96 hours used model decisions and applied 365 `set_work_priority` actions. Not ready to merge because AMBER is not GREEN; no Apple Silicon-specific failure evidence. See `docs/run_reports/2026-06-30-pr23-mac-lm-gate.md`. |
 | 2026-06-30 04:03 -06:00 | Fix attempt 5 for PR #23 AMBER Mac LM gate on `feat/production-target-honored` (clean detached worktree based on `origin/feat/production-target-honored`; model scheduled gpt-5.5 xhigh; after 04:00 budget metric/safe in-run switch not readable, kept smallest safe slice; `.agent.lock` acquired in `E:\GPTCode\local-agent-town`) | PR status read: `gh pr view 23 --json ...` -> OPEN/CLEAN with latest Mac comment `NOT READY` / AMBER at `a04be56`; `gh pr checks` signal absent. RED `$env:PYTHONPATH=(Resolve-Path src).Path; E:\GPTCode\local-agent-town\.venv\Scripts\python.exe -m unittest tests.test_llm.LocalLLMClientTests.test_complete_json_retries_once_after_malformed_json` failed because malformed model content raised immediately; GREEN `tests.test_llm` (8 tests); GREEN `tests.test_llm_governor tests.test_civilization_governor` (30 tests); `E:\GPTCode\local-agent-town\.venv\Scripts\python.exe -m unittest discover -s tests` (234 tests); `E:\GPTCode\local-agent-town\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; `git diff --check` | pass | Latest Mac gate was healthy except fallback-covered invalid JSON hours (no depletions, no stalls, no breaks, mood recovered). Fix: `LocalLLMClient.complete_json` now retries once after malformed/non-object model JSON with a strict JSON-only reminder, preserving timeout/connection failures; the governor prompt also caps replies at 6 highest-impact actions to reduce oversized/truncated action lists. Continued on PR #23 instead of switching branches because this is the active merge blocker and the next truth-loop slices depend on it. Main `E:\` checkout remains dirty/behind with separate hosted-OpenAI telemetry work and was left untouched. Next: rerun the Mac LM acceptance gate to confirm AMBER -> GREEN. |
 | 2026-06-30 04:25 -06:00 | Full Mac LM acceptance gate for PR #23 `feat/production-target-honored` at `edf828ec778d14e3e9f4b5fa1d44220910a2eadc` | `.venv/bin/python -m pip install -e .`; `.venv/bin/python -m agent_town --smoke-test`; `.venv/bin/python -m unittest discover -s tests` (234 tests); `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/validate-workbench.ps1`; LM Studio ping `http://192.168.1.131:1234/v1/models` found `google/gemma-4-e4b`; Pygame `CivilizationViewer` booted with blocking `LLMGovernor`; 96 simulated viewer hours; `.venv/bin/python scripts/analyze_run.py logs/run-20260630-041958.jsonl --events`; completed-log proof assertion; `git diff --check` | pass | Install/smoke/unit/docs/LM ping/viewer boot passed. The current game state stayed healthy for the full 4-day LM gate: analyzer `RESULT: GREEN`, 96/96 model decisions, 0 dropped/fallback hours, 0 warnings, 0 critical events, mood 85.8 -> min 72.4 -> end 82.4, idle peak 0, breaks 0, depletions 0, stalls 0, final stockpile bread 16 / water 96, and action histogram 396 `set_work_priority` + 2 `place_building`. Ready to merge; no Apple Silicon-specific failure evidence. See `docs/run_reports/2026-06-30-pr23-mac-lm-gate.md`. |
+| 2026-06-30 04:39 -06:00 | Truth-loop slice 2: minimal research spine on `codex/research-spine` (branched from green `origin/feat/production-target-honored`; model scheduled gpt-5.5 xhigh; after 04:00 budget metric/safe in-run switch not readable; `.agent.lock` acquired in `E:\GPTCode\local-agent-town`) | PR status read: #23 OPEN/CLEAN with latest Mac comment `READY TO MERGE`; #22/#21 still open with older red gates. RED `E:\GPTCode\local-agent-town\.venv\Scripts\python.exe -m unittest tests.test_research_spine` failed on missing `TECH_EFFICIENT_BAKING`, missing Laboratory, unknown-tech acceptance, and fallback halting. GREEN `tests.test_research_spine` (6 tests); focused affected set (78 tests); `E:\GPTCode\local-agent-town\.venv\Scripts\python.exe -m unittest discover -s tests` (240 tests); `E:\GPTCode\local-agent-town\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; `git diff --check` | pass | Decision source: Paper 8 "do not scale before the 12-pawn truth loop is satisfying" plus PR #22 truth-loop audit. `set_research` now selects an active tech target instead of instantly appending a dead string; staffed Laboratory work advances research points through the existing `effective_work` seam; completing `efficient_baking` increases Bakery output from 4 to 5 bread per cycle; fallback places a Laboratory after the essentials build order and queues the first incomplete tech. Full Space-Age victory, wages, storage caps, and Paper 7 scale remain deferred. |
+| 2026-06-30 04:48 -06:00 | Full Mac LM acceptance gate for PR #24 `codex/research-spine` at `36505a03ec3063b556cc91b7ce71d87e08026657` | `.venv/bin/python -m pip install -e .`; `.venv/bin/python -m agent_town --smoke-test`; `.venv/bin/python -m unittest discover -s tests` (240 tests); `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/validate-workbench.ps1`; LM Studio ping `http://192.168.1.131:1234/v1/models` found `google/gemma-4-e4b`; Pygame `CivilizationViewer` booted with blocking `LLMGovernor`; 96 simulated viewer hours; `.venv/bin/python scripts/analyze_run.py logs/run-20260630-044810.jsonl --events`; `git diff --check` | pass | Install/smoke/unit/docs/LM ping/viewer boot passed. Analyzer returned `RESULT: GREEN`: 96/96 model decisions, 0 dropped/fallback hours, 0 warnings, 0 critical events, mood 85.8 -> min 72.4 -> end 82.4, idle peak 0, breaks 0, depletions 0, stalls 0, final stockpile bread 16 / water 96, and action histogram 391 `set_work_priority`. Ready to merge; no Apple Silicon-specific failure evidence. See `docs/run_reports/2026-06-30-pr24-mac-lm-gate.md`. |
+| 2026-06-30 05:07 -06:00 | Paper 4 storage-cap slice on new `codex/storage-caps` branch stacked from green `origin/codex/research-spine` (model scheduled gpt-5.5 xhigh; after 04:00 budget metric/safe in-run switch not readable; `.agent.lock` acquired in `E:\GPTCode\local-agent-town`) | PR status read: #24 OPEN/CLEAN with latest Mac comment `READY TO MERGE`, no GitHub checks; #23 also OPEN/CLEAN with latest Mac comment `READY TO MERGE`. RED `E:\GPTCode\local-agent-town\.venv\Scripts\python.exe -m unittest tests.test_storage_caps` failed on missing `Stockpile.capacity`; GREEN `tests.test_storage_caps` (6 tests); focused affected set (81 tests); `E:\GPTCode\local-agent-town\.venv\Scripts\python.exe -m unittest discover -s tests` (246 tests); `E:\GPTCode\local-agent-town\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; `git diff --check` (CRLF warnings only); refreshed and inspected `docs\screenshots\current-state.png` | pass | Decision source: Paper 4 "Storage and logistics rules" plus ROADMAP truth-loop queue. `Stockpile.capacity` is optional for legacy states; the default viewer civ now has a 240-unit cap and HUD `Storage N%`; `production_tick` blocks net-growing output at capacity before consuming inputs while allowing net-shrinking transforms; telemetry records storage used/capacity/fullness; health invariants flag over-capacity. Storehouse upgrades, district storage, 80/95% map badges, wages, markets, and trade remain deferred. |
+| 2026-06-30 05:18 -06:00 | Full Mac LM acceptance gate for PR #25 `codex/storage-caps` at `911e5fd1e1ff9f5a7195c46266e7036b430228c0` | Fresh-worktree `/usr/bin/python3` bootstrap first failed because macOS selected Python 3.9; reran with supported `python3.12`: `.venv/bin/python -m pip install -e .`; `.venv/bin/python -m agent_town --smoke-test`; `.venv/bin/python -m unittest discover -s tests` (246 tests); `pwsh -NoLogo -NoProfile -File scripts/validate-workbench.ps1`; LM Studio ping `http://192.168.1.131:1234/v1/models` found `google/gemma-4-e4b`; Pygame `CivilizationViewer` booted with blocking `LLMGovernor`; 96 simulated viewer hours; `.venv/bin/python scripts/analyze_run.py logs/run-20260630-052021.jsonl --events`; rendered and inspected `/tmp/pr25-current-state-proof.png`; `git diff --check` | pass | Install/smoke/unit/docs/LM ping/viewer boot passed. Analyzer returned `RESULT: GREEN`: 96/96 model decisions, 0 dropped/fallback hours, 0 warnings, 0 critical events, mood 85.8 -> min 72.4 -> end 82.4, idle peak 0, breaks 0, depletions 0, stalls 0, final stockpile bread 16 / water 96, final storage 172/240 used, and action histogram 391 `set_work_priority`. Ready to merge; no Apple Silicon-specific failure evidence. See `docs/run_reports/2026-06-30-pr25-mac-lm-gate.md`. |
+| 2026-06-30 05:38 -06:00 | First wage/market money-loop slice on new `codex/wage-market-money-loop` branch stacked from green `origin/codex/storage-caps` (model scheduled gpt-5.5 xhigh; after 04:00 budget metric/safe in-run switch not readable; `.agent.lock` acquired in `E:\GPTCode\local-agent-town`) | PR status read: #25 OPEN/CLEAN with latest Mac comment `READY TO MERGE`, no GitHub checks; #24 and #23 also OPEN/CLEAN with latest Mac comments `READY TO MERGE`. RED `$env:PYTHONPATH='src'; E:\GPTCode\local-agent-town\.venv\Scripts\python.exe -m unittest tests.test_money_loop` failed on missing Market/wage/wallet/result fields; GREEN `tests.test_money_loop` (5 tests); focused affected set (58 tests); `$env:PYTHONPATH='src'; E:\GPTCode\local-agent-town\.venv\Scripts\python.exe -m unittest discover -s tests` (251 tests); `$env:PYTHONPATH='src'; E:\GPTCode\local-agent-town\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; `git diff --check` (CRLF warnings only) | pass | Decision source: Paper 4 "The minimum metric set" / storage and market bottleneck guidance plus Paper 8 "economy is loops, not chains." Added `Pawn.coin`, staffable Market/commerce work, daily treasury-to-pawn wages for assigned pawns, staffed Market bread-surplus sales above reserve, engine result fields, telemetry fields, and docs. The legacy abstract tax floor remains to avoid destabilizing existing survival proofs; richer household spending/tax pressure, Storehouse capacity upgrades, storage-pressure badges, reserve-aware trade, and full market services remain deferred. |
+| 2026-06-30 05:47 -06:00 | Full Mac LM acceptance gate for PR #26 `codex/wage-market-money-loop` at `bb2f17ad3f1a5594d8ceea11d2b00c23d86c2fa1` | Fresh-worktree `/usr/bin/python3` bootstrap first failed because macOS selected unsupported Python 3.9; reran with supported `/opt/homebrew/bin/python3.12`: `.venv/bin/python -m pip install -e .`; `.venv/bin/python -m agent_town --smoke-test`; `.venv/bin/python -m unittest discover -s tests` (251 tests); `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/validate-workbench.ps1`; LM Studio ping `http://192.168.1.131:1234/v1/models` found `google/gemma-4-e4b`; Pygame `CivilizationViewer` booted with blocking `LLMGovernor`; 96 simulated viewer hours; `.venv/bin/python scripts/analyze_run.py logs/run-20260630-054944-viewer96.jsonl --events`; refreshed `docs/screenshots/current-state.png`; `git diff --check` | pass | Install/smoke/unit/docs/LM ping/viewer boot passed. Analyzer returned `RESULT: GREEN`: 96/96 model decisions, 0 dropped/fallback hours, 0 warnings, 0 critical events, mood 85.8 -> min 72.4 -> end 82.4, idle peak 0, breaks 0, depletions 0, stalls 0, final stockpile bread 16 / water 96, final storage 172/240 used, and action histogram 386 `set_work_priority`. Ready to merge; no Apple Silicon-specific failure evidence. See `docs/run_reports/2026-06-30-pr26-mac-lm-gate.md`. |
+| 2026-06-30 06:08 -06:00 | Storehouse capacity + storage-pressure badges on new `codex/storehouse-capacity-badges` branch stacked from green `origin/codex/wage-market-money-loop` (model scheduled gpt-5.5 xhigh; after 04:00 budget metric/safe in-run switch not readable; `.agent.lock` acquired in `E:\GPTCode\local-agent-town`) | PR status read: #26 OPEN/CLEAN with latest Mac comment `READY TO MERGE`, no GitHub checks; #25/#24/#23 also OPEN/CLEAN with latest `READY TO MERGE` comments. RED `tests.test_storage_caps` failed on unknown Storehouse and missing refresh, RED `tests.test_civilization_view.StoragePressureViewTests` failed on missing `_storage_pressure_level`; GREEN affected set (58 tests); rendered and inspected `%TEMP%\local-agent-town-storehouse-pressure-proof.png`; `E:\GPTCode\local-agent-town\.venv\Scripts\python.exe -m agent_town --smoke-test`; `E:\GPTCode\local-agent-town\.venv\Scripts\python.exe -m unittest discover -s tests` (255 tests); `.\scripts\validate-workbench.ps1`; `git diff --check` (CRLF warnings only) | pass | Decision source: Paper 4 storage/logistics bottleneck guidance plus Paper 5 storage-pressure badge thresholds. Built Storehouses add deterministic storage capacity from `Stockpile.base_capacity`, production/telemetry/HUD refresh capacity before reads, and the HUD/Storehouse badge shifts amber at 80% and red at 95%. District storage, hauling pressure, richer household spending/tax pressure, repair, and trade remain future Build-2 slices. |
+| 2026-06-30 06:18 -06:00 | Full Mac LM acceptance gate for PR #27 `codex/storehouse-capacity-badges` at `889d1a5ba3447df96da12bd37e58dea6da0b8947` | `.venv/bin/python -m pip install -e .`; `.venv/bin/python -m agent_town --smoke-test`; `.venv/bin/python -m unittest discover -s tests` (255 tests); `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/validate-workbench.ps1`; LM Studio ping `http://192.168.1.131:1234/v1/models` found `google/gemma-4-e4b`; Pygame `CivilizationViewer` booted with blocking `LLMGovernor`; 96 simulated viewer hours; `.venv/bin/python scripts/analyze_run.py logs/run-20260630-061901.jsonl --events`; `.venv/bin/python scripts/benchmark_scaling.py --pawns 100 500 1000 --steps 24 --context-repeats 8 --draw-frames 3`; refreshed `docs/screenshots/current-state.png`; `git diff --check` | pass | Install/smoke/unit/docs/LM ping/viewer boot/scaling/screenshot passed. Analyzer returned `RESULT: GREEN`: 96/96 model decisions, 0 dropped/fallback hours, 0 warnings, 0 critical events, mood 85.8 -> min 72.4 -> end 82.4, idle peak 0, breaks 0, depletions 0, stalls 0, final stockpile bread 16 / water 96, final storage 172/240 used, and action histogram 385 `set_work_priority`. Ready to merge; no Apple Silicon-specific failure evidence. See `docs/run_reports/2026-06-30-pr27-mac-lm-gate.md`. |
+| 2026-06-30 06:37 -06:00 | Household spending + sales-tax money-loop slice on new `codex/household-spending-tax-pressure` branch stacked from green `origin/codex/storehouse-capacity-badges` (model scheduled gpt-5.5 xhigh; after 04:00 budget metric/safe in-run switch not readable; `.agent.lock` acquired in `E:\GPTCode\local-agent-town`) | PR status read: #27 OPEN/CLEAN with latest Mac comment `READY TO MERGE`, no GitHub checks; #26/#25/#24/#23 also OPEN/CLEAN. RED `$env:PYTHONPATH='src'; E:\GPTCode\local-agent-town\.venv\Scripts\python.exe -m unittest tests.test_money_loop` failed on missing `apply_household_spending` and missing `StepResult` fields; GREEN `tests.test_money_loop` (7 tests); affected set `tests.test_money_loop tests.test_telemetry tests.test_engine tests.test_storage_caps` (33 tests); `$env:PYTHONPATH='src'; E:\GPTCode\local-agent-town\.venv\Scripts\python.exe -m unittest discover -s tests` (257 tests); `$env:PYTHONPATH='src'; E:\GPTCode\local-agent-town\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; `git diff --check` | pass | Decision source: Paper 4 "Wage, spending, and tax flows" plus truth-loop queue. Added deterministic daily household Market spending: after wages, pawn wallets buy one bread each from a staffed Market above reserve, whole-coin sales tax is collected from buyer wallets, telemetry/engine result fields report household spending and sales tax, and only the remaining surplus is exported. District market/service pressure, Tavern comfort spending, repair debt, reserve-aware trade, and full private economy remain deferred. |
+| 2026-06-30 06:48 -06:00 | Full Mac LM acceptance gate for PR #28 `codex/household-spending-tax-pressure` at `6db779ff317336ec044c82ad5ecc7f29be250d65` | `.venv/bin/python -m pip install -e .`; `.venv/bin/python -m agent_town --smoke-test`; `.venv/bin/python -m unittest discover -s tests` (257 tests); `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/validate-workbench.ps1`; LM Studio ping `http://192.168.1.131:1234/v1/models` found `google/gemma-4-e4b`; Pygame `CivilizationViewer` booted with blocking `LLMGovernor`; 96 simulated viewer hours; `.venv/bin/python scripts/analyze_run.py logs/run-20260630-064817.jsonl --events`; `git diff --check` | pass | Install/smoke/unit/docs/LM ping/viewer boot passed. Analyzer returned `RESULT: GREEN`: 96/96 model decisions, 0 dropped/fallback hours, 0 warnings, 0 critical events, mood 85.8 -> min 72.4 -> end 82.4, idle peak 0, breaks 0, depletions 0, stalls 0, final stockpile bread 16 / water 96, final storage 172/240 used, and action histogram 390 `set_work_priority`. Ready to merge; no Apple Silicon-specific failure evidence. See `docs/run_reports/2026-06-30-pr28-mac-lm-gate.md`. |
+| 2026-06-30 07:06 -06:00 | Market service-pressure signal on new `codex/district-service-pressure` branch stacked from green `origin/codex/household-spending-tax-pressure` (model scheduled gpt-5.5 xhigh; after 04:00 budget metric/safe in-run switch not readable; `.agent.lock` acquired in `E:\GPTCode\local-agent-town`) | PR status read: #28 OPEN/CLEAN with latest Mac comment `READY TO MERGE`, no GitHub checks; #27/#26/#25/#24/#23 also OPEN/CLEAN. RED `$env:PYTHONPATH=(Resolve-Path src).Path; E:\GPTCode\local-agent-town\.venv\Scripts\python.exe -m unittest tests.test_money_loop tests.test_civilization_governor tests.test_telemetry` failed on missing `unmet_bread_buyers`, missing `unmet_market_demand`, missing `market_service_pressure`, and missing telemetry field; GREEN affected set `tests.test_money_loop tests.test_civilization_governor tests.test_telemetry tests.test_engine tests.test_storage_caps` (45 tests); full unit discovery (260 tests); smoke; `.\scripts\validate-workbench.ps1`; `git diff --check` (CRLF warnings only) | pass | Decision source: Paper 4 "Surfacing bottlenecks to players" / "The minimum metric set" plus ROADMAP truth-loop queue. Added a narrow, truthful Market service-pressure signal: staffed Markets count pawn wallets that wanted bread but could not buy above reserve, day rollover reports `unmet_market_demand`, telemetry snapshots include the count, and the governor exception queue raises `market_service_pressure` for observer UI. Full district hubs/queues, Tavern comfort spending, repair debt, and reserve-aware trade remain deferred; next code task is repair debt. |
+| 2026-06-30 07:19 -06:00 | Full Mac LM acceptance gate for PR #29 `codex/district-service-pressure` at `5da495fc73e5eac7e097e3baaa6524bd4382ee3a` | `.venv/bin/python -m pip install -e .`; `.venv/bin/python -m agent_town --smoke-test`; `.venv/bin/python -m unittest discover -s tests` (260 tests); `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/validate-workbench.ps1`; LM Studio ping `http://192.168.1.131:1234/v1/models` found `google/gemma-4-e4b`; Pygame `CivilizationViewer` booted with blocking `LLMGovernor`; 96 simulated viewer hours; `.venv/bin/python scripts/analyze_run.py logs/run-20260630-071922.jsonl --events`; `git diff --check` | pass | Install/smoke/unit/docs/LM ping/viewer boot passed. Analyzer returned `RESULT: GREEN`: 96/96 model decisions, 0 dropped/fallback hours, 0 warnings, 0 critical events, mood 85.8 -> min 72.4 -> end 82.4, idle peak 0, breaks 0, depletions 0, stalls 0, final stockpile bread 16 / water 96, final storage 172/240 used, and action histogram 388 `set_work_priority`. Ready to merge; no Apple Silicon-specific failure evidence. The wrapper's post-run summary helper hit a `Stockpile.amounts` AttributeError after the completed 96-hour run, but the completed viewer JSONL and analyzer are the gate source. See `docs/run_reports/2026-06-30-pr29-mac-lm-gate.md`. |
 | 2026-07-01 03:44 -0600 | Full Mac LM acceptance gate for PR #34 `feat/llm-governor-dig-out-verify` at `5f56638d69e292b8687d2f3da77c42cde224dc1a` | `.venv/bin/python -m pip install -e .`; `.venv/bin/python -m agent_town --smoke-test`; `.venv/bin/python -m unittest discover -s tests`; `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/validate-workbench.ps1`; LM Studio ping `http://192.168.1.131:1234/v1/models` for `google/gemma-4-e4b`; Pygame `CivilizationViewer` boot; 96 simulated viewer hours; `.venv/bin/python scripts/analyze_run.py logs/run-20260701-033736.jsonl --events`; `git diff --check` | fail | install=pass-python312, smoke=pass, unit=pass, docs=pass, lm_ping=pass, viewer_boot=pass, four_day=pass, analyzer=red, model_decisions=96/96, dropped=0, optional=skipped-not-scale-pathfinding-performance, ready_to_merge=no. Platform: likely-real-repo-game-state-or-lm-gate-failure-unless-noted; python3-default-3.9-so-venv-used-python3.12. See `docs/run_reports/2026-07-01-pr34-mac-lm-gate.md`. |
 | 2026-07-01 | Roadmap UI navigation/readability pull-forward from owner feedback | `Select-String` inspection of `src\agent_town\civilization_view.py` and `tests\test_civilization_view.py`; `.\scripts\validate-workbench.ps1`; `git diff --check` | pass | Corrected the roadmap's stale button status: Work and History are live; Architect, Assign, Research, and Menu remain open button surfaces. Added the UI navigation/readability baseline as the next current-line slice before Paper 7 scale foundations, trader/death follow-ups, or deeper economy. The slice requires readable main-body composition, truthful button panels/menus, panel-state tests, and rendered proof under `docs/proof/ui_navigation/`. |
 | 2026-07-01 | Implement RimWorld-style UI navigation/readability baseline | `.\.venv\Scripts\python.exe -m unittest tests.test_civilization_view` (40 tests); `.\.venv\Scripts\python.exe -m unittest discover -s tests` (267 tests); `.\.venv\Scripts\python.exe -m agent_town --smoke-test`; `.\scripts\validate-workbench.ps1`; `git diff --check`; rendered and inspected `docs\proof\ui_navigation\default.png`, `architect.png`, `work.png`, `assign.png`, `research.png`, `history.png`, `menu.png`; refreshed `docs\screenshots\current-state.png` | pass | Viewer now has exclusive reserved regions (macro strip, roster, map, right inspector/alerts, command panel, command strip), active panel state for all six bottom commands, non-overlapping docked panels, Work cycling still live, History alert acknowledgement preserved, and docs updated for the new operator workflow. Remaining gap: Architect/Assign/Research/Menu expose current truth and disabled reasons, but deeper placement, assignment, and research mechanics remain future systems. |
