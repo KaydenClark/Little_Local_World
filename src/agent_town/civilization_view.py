@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 
 import pygame
 
-from . import buildings, economy, engine, health, mood, telemetry, work
+from . import buildings, economy, engine, health, mood, telemetry, work, world
 from .assets import CivilizationAssetManifest, load_civilization_manifest
 from .core import (
     ACTION_ASSIGN_PAWN,
@@ -128,6 +128,14 @@ DEFAULT_BUILDING_SPRITE = "house"
 # Resource-node Good -> prop sprite name (None draws a coloured marker).
 NODE_PROP = {Good.LOGS: "tree"}
 NODE_MARKER_COLOR = {Good.GRAIN: (214, 188, 84), Good.STONE: (150, 150, 158)}
+# Field lifecycle colours (physical sourcing): bare tilled soil, young growth,
+# ripe wheat. Depleted extraction nodes grey out instead of vanishing.
+FIELD_SOIL = (94, 66, 42)
+FIELD_SOIL_DARK = (72, 50, 32)
+FIELD_SPROUT = (96, 168, 74)
+FIELD_RIPE = (222, 186, 70)
+FIELD_RIPE_DARK = (176, 140, 44)
+NODE_DEPLETED = (98, 100, 96)
 
 HUD_GOODS = (
     ("Bread", Good.BREAD),
@@ -320,7 +328,9 @@ class GovernorCardSummary:
     plan: str
     phase: str
     bottleneck: str
-    confidence: int
+    # Derived situation label ("stable" / "strained (2 warn)" / "crisis (...)"),
+    # replacing the old fake-precision confidence % (review P-8).
+    attention: str
     last_reallocation: str
     exception_count: int
     top_exception: ExceptionStackItem | None = None
@@ -541,21 +551,30 @@ def _plan_for_exception(item: ExceptionStackItem) -> str:
     return f"Handle {item.title.lower()}"
 
 
-def _confidence_for(gov: Governor | None, items: list[ExceptionStackItem]) -> int:
-    if not items:
-        confidence = 88
-    elif items[0].severity == health.CRITICAL:
-        confidence = 54
-    else:
-        confidence = 72
+def _attention_for(items: list[ExceptionStackItem]) -> str:
+    """Truthful situation word from the live exception mix (review P-8).
 
-    status = getattr(gov, "status", None)
-    if status is not None:
-        if status.state == GOV_THINKING:
-            confidence -= 4
-        elif status.state in (GOV_OFFLINE, GOV_INVALID):
-            confidence -= 10
-    return max(10, min(99, confidence))
+    The old card showed an invented "confidence %" that never moved through a
+    five-day crisis - a number in a live HUD implies a live quantity, and a
+    decorative one teaches the viewer to ignore the whole card. This label is
+    pure derivation: it says exactly how many real problems exist and how bad
+    the worst one is, so it changes precisely when the situation does.
+    """
+    criticals = sum(1 for item in items if item.severity == health.CRITICAL)
+    warns = sum(1 for item in items if item.severity == health.WARN)
+    if criticals:
+        return f"crisis ({criticals} critical)"
+    if warns:
+        return f"strained ({warns} warn)"
+    return "stable"
+
+
+def _attention_color(attention: str) -> tuple[int, int, int]:
+    if attention.startswith("crisis"):
+        return NEED_BAD
+    if attention.startswith("strained"):
+        return NEED_WARN
+    return NEED_GOOD
 
 
 def governor_card_summary(
@@ -585,7 +604,7 @@ def governor_card_summary(
         plan=plan,
         phase=_governor_phase(gov),
         bottleneck=bottleneck,
-        confidence=_confidence_for(gov, items),
+        attention=_attention_for(items),
         last_reallocation=_last_reallocation_text(gov, last_actions),
         exception_count=len(items),
         top_exception=top,
@@ -732,6 +751,20 @@ def _pawn_status_label(pawn) -> str:
     return "Healthy"
 
 
+def pawn_state_label(pawn) -> str:
+    """The pawn sheet's state text, matching the macro strip's Idle definition.
+
+    Review P-9: the "Idle N" chip counts pawns with *no job* (arbiter-idle),
+    but ``pawn.state`` also reads "idle" for an employed pawn merely between
+    schedule blocks - so the sheet said "State idle" while the chip said
+    "Idle 0" in the same frame. One shared definition: an employed pawn out of
+    shift reads "off shift"; only a truly jobless pawn reads "idle (no job)".
+    """
+    if pawn.state == "idle":
+        return "off shift" if pawn.assignment is not None else "idle (no job)"
+    return pawn.state
+
+
 def render_civilization(
     surface: pygame.Surface,
     state: FactionState,
@@ -792,7 +825,7 @@ def render_civilization(
                     surface.blit(tint, (sx, sy))
 
     for node in state.resource_nodes:
-        _draw_node(surface, node, assets, camera, ox, oy, base_ts)
+        _draw_node(surface, node, assets, font, camera, ox, oy, base_ts)
 
     for site in sorted(state.construction_sites.values(), key=lambda s: (s.y, s.x, s.id)):
         _draw_construction_site(surface, site, assets, font, camera, ox, oy, base_ts)
@@ -803,6 +836,7 @@ def render_civilization(
         _draw_building(
             surface, building, assets, font, camera, ox, oy, base_ts, storage_pressure,
             exception_badge=exception_badges.get(building.id),
+            state=state,
         )
 
     pawn_keys = sorted(assets.pawns_scaled)
@@ -812,6 +846,7 @@ def render_civilization(
             pawn,
             assets,
             pawn_keys,
+            font,
             camera,
             ox,
             oy,
@@ -869,17 +904,84 @@ def _scale_for_camera(sprite: pygame.Surface, camera: Camera) -> pygame.Surface:
     )
 
 
-def _draw_node(surface, node, assets: CivilizationAssets, camera: Camera, ox: int, oy: int, base_ts: int) -> None:
+def node_visual(node) -> tuple[str, float]:
+    """Pure descriptor of how a node should read on the map (unit-testable).
+
+    Returns ``(visual, fraction)``: ``field_bare`` / ``field_growing`` /
+    ``field_ripe`` for cultivated grain (fraction = growth or ripeness),
+    ``stand`` / ``depleted`` for extracted nodes (fraction = remaining share).
+    The player must be able to see the source states the engine now enforces -
+    a bare field explains a quiet mill better than any exception row.
+    """
+    if node.kind == Good.GRAIN:
+        if node.state == world.NODE_GROWING:
+            return ("field_growing", max(0.0, min(1.0, node.growth_progress / world.FIELD_GROWTH_HOURS)))
+        if node.state == world.NODE_READY and node.amount > 0:
+            return ("field_ripe", 1.0)
+        return ("field_bare", 0.0)
+    capacity = node.max_amount or node.amount
+    fraction = (node.amount / capacity) if capacity else 0.0
+    return ("stand", fraction) if node.amount > 0 else ("depleted", 0.0)
+
+
+def _draw_node(surface, node, assets: CivilizationAssets, font, camera: Camera, ox: int, oy: int, base_ts: int) -> None:
     ts = camera.scaled_tile_size(base_ts)
     cx, cy = camera.tile_center_to_screen(node.x, node.y, (ox, oy), base_ts)
+    tile_left, tile_top = camera.tile_top_left_to_screen(node.x, node.y, (ox, oy), base_ts)
     _left, bottom = camera.tile_top_left_to_screen(node.x, node.y + 1, (ox, oy), base_ts)
+    visual, fraction = node_visual(node)
+
+    if visual.startswith("field_"):
+        _draw_field_node(surface, font, visual, fraction, tile_left, tile_top, ts, camera)
+        return
+
     prop = NODE_PROP.get(node.kind)
     if prop is not None:
-        sprite = _scale_for_camera(assets.surfaces[prop], camera)
+        sprite = _scale_for_camera(assets.surfaces[prop], camera).copy()
+        if visual == "depleted":
+            # A felled stand: a stump-grey ghost of the tree, visibly not lumber.
+            sprite.set_alpha(60)
+        elif fraction < 1.0:
+            sprite.set_alpha(110 + round(145 * fraction))
         surface.blit(sprite, (cx - sprite.get_width() // 2, bottom - sprite.get_height()))
+        return
+    if visual == "depleted":
+        # A mined-out face: hollow grey ring with a strike, not free stone.
+        radius = max(4, ts // 3)
+        pygame.draw.circle(surface, NODE_DEPLETED, (cx, cy), radius, 2)
+        pygame.draw.line(surface, NODE_DEPLETED, (cx - radius, cy + radius), (cx + radius, cy - radius), 2)
         return
     color = NODE_MARKER_COLOR.get(node.kind, (180, 180, 180))
     pygame.draw.circle(surface, color, (cx, cy), max(4, ts // 3))
+
+
+def _draw_field_node(
+    surface, font, visual: str, fraction: float, left: int, top: int, ts: int, camera: Camera
+) -> None:
+    """One field tile: tilled soil, sprouting rows, or ripe wheat."""
+    patch = pygame.Rect(left + 1, top + 1, ts - 2, ts - 2)
+    pygame.draw.rect(surface, FIELD_SOIL, patch)
+    pygame.draw.rect(surface, FIELD_SOIL_DARK, patch, 1)
+    rows = 3
+    row_gap = max(3, patch.height // (rows + 1))
+    if visual == "field_bare":
+        for i in range(1, rows + 1):
+            y = patch.y + i * row_gap
+            pygame.draw.line(surface, FIELD_SOIL_DARK, (patch.x + 2, y), (patch.right - 2, y), 1)
+    else:
+        ripe = visual == "field_ripe"
+        stalk = FIELD_RIPE if ripe else FIELD_SPROUT
+        height = max(2, round((0.25 + 0.75 * fraction) * row_gap)) if not ripe else row_gap
+        step = max(4, patch.width // 5)
+        for i in range(1, rows + 1):
+            base_y = patch.y + i * row_gap + 1
+            for x in range(patch.x + 3, patch.right - 2, step):
+                pygame.draw.line(surface, stalk, (x, base_y), (x, base_y - height), 1)
+                if ripe:
+                    pygame.draw.circle(surface, FIELD_RIPE_DARK, (x, base_y - height), 1)
+    if camera.zoom >= 0.85:
+        label = {"field_bare": "bare", "field_ripe": "ripe"}.get(visual, f"{round(fraction * 100)}%")
+        _draw_label(surface, font, label, patch.centerx, patch.y - 1)
 
 
 def _construction_progress(site: ConstructionSite) -> float:
@@ -939,6 +1041,43 @@ def _draw_construction_site(
         _draw_label(surface, font, f"{site.building_kind} {round(progress * 100)}%", cx, bar.y - 2)
 
 
+def building_sublabel(state: FactionState, building) -> str:
+    """Source-state suffix for a building's map label (pure - unit-testable).
+
+    A Farm reads as "ripe" / "growing 40%" / "bare" / "no seed"; an extractor
+    whose nodes are mined out reads "depleted". Empty for everything else - the
+    label explains why a building is or is not producing at a glance.
+    """
+    source_good = economy.SOURCED_BUILDING_GOODS.get(building.kind)
+    if source_good is None:
+        return ""
+    if source_good is Good.GRAIN:
+        status = economy.field_status(state, building)
+        if status == economy.FIELD_GROWING:
+            fraction = economy.field_growth_fraction(state, building) or 0.0
+            return f"growing {round(fraction * 100)}%"
+        return {
+            economy.FIELD_READY: "ripe",
+            economy.FIELD_NO_SEED: "no seed",
+            economy.FIELD_PLANTABLE: "bare",
+            economy.FIELD_UNCLAIMED: "bare",
+        }.get(status, "")
+    if economy.source_depleted(state, building):
+        return "depleted"
+    return ""
+
+
+def storehouse_stock_lines(state: FactionState, limit: int = 3) -> list[str]:
+    """What is actually held, largest stacks first (pure - unit-testable).
+
+    Physical-sourcing slice 5 ("visible storage"): the Storehouse renders real
+    per-good counts, so "how much bread exists" is answerable by looking at the
+    map instead of only the macro strip's numeric chips.
+    """
+    stacks = sorted(state.stockpile.counts.items(), key=lambda kv: (-kv[1], kv[0].value))
+    return [f"{good.value.title()} {count}" for good, count in stacks[:limit] if count > 0]
+
+
 def _draw_building(
     surface,
     building,
@@ -950,6 +1089,7 @@ def _draw_building(
     base_ts: int,
     storage_pressure: str | None = None,
     exception_badge: str | None = None,
+    state: FactionState | None = None,
 ) -> None:
     sprite = _scale_for_camera(
         assets.buildings_scaled[BUILDING_SPRITE.get(building.kind, DEFAULT_BUILDING_SPRITE)],
@@ -960,6 +1100,8 @@ def _draw_building(
     surface.blit(sprite, (cx - sprite.get_width() // 2, bottom - sprite.get_height()))
     if building.kind == "Storehouse" and storage_pressure is not None:
         _draw_storage_badge(surface, cx + sprite.get_width() // 2 - 12, bottom - sprite.get_height() + 10, storage_pressure, camera)
+    if building.kind == "Storehouse" and state is not None:
+        _draw_storehouse_stock(surface, state, assets, font, cx, bottom, camera)
     if exception_badge is not None:
         _draw_exception_badge(
             surface, font, cx - sprite.get_width() // 2 + 2,
@@ -969,7 +1111,31 @@ def _draw_building(
     if camera.zoom >= 0.85:
         staffed = len(building.staffed_by)
         label = f"{building.kind} {staffed}/{building.job_slots}"
+        sublabel = building_sublabel(state, building) if state is not None else ""
+        if sublabel:
+            label = f"{label} · {sublabel}"
         _draw_label(surface, font, label, cx, bottom - sprite.get_height() - 2)
+
+
+def _draw_storehouse_stock(
+    surface, state: FactionState, assets: CivilizationAssets, font, cx: int, bottom: int, camera: Camera
+) -> None:
+    """Real held stock beside the Storehouse: crates scale with fullness,
+    and the largest stacks are named at readable zoom (visible storage)."""
+    fullness = state.stockpile.fullness()
+    crates = 1 + round(2 * fullness) if fullness is not None else (1 if state.stockpile.used_capacity() else 0)
+    crate = _scale_for_camera(assets.surfaces["crate"], camera)
+    crate_w = crate.get_width()
+    for index in range(crates):
+        dx = cx + 4 + (index % 2) * (crate_w - 2)
+        dy = bottom - crate.get_height() - (index // 2) * (crate.get_height() - 3)
+        surface.blit(crate, (dx, dy))
+    if camera.zoom >= 0.85:
+        y = bottom + 2
+        for line in storehouse_stock_lines(state):
+            glyph_y = y + font.get_height()
+            _draw_label(surface, font, line, cx, glyph_y)
+            y = glyph_y + 1
 
 
 def _draw_exception_badge(surface: pygame.Surface, font, x: int, y: int, severity: str, camera: Camera) -> None:
@@ -1029,6 +1195,7 @@ def _draw_pawn(
     pawn,
     assets: CivilizationAssets,
     pawn_keys: list[str],
+    font,
     camera: Camera,
     ox: int,
     oy: int,
@@ -1052,10 +1219,15 @@ def _draw_pawn(
     surface.blit(sprite, (cx - sprite.get_width() // 2, top))
     if idle_badge:
         _draw_idle_badge(surface, cx, top, camera)
-    # Mood dot above the head keeps mood readable at a glance.
+    # Mood dot above the head keeps mood readable at a glance; hovering or
+    # selecting decodes it into a name + number (review P-10: an unlabeled
+    # 3px dot must not be the only mood carrier on the map).
     dot_y = top - 3
     pygame.draw.circle(surface, (20, 24, 20), (cx, dot_y), 4)
     pygame.draw.circle(surface, _mood_color(pawn.mood / 100), (cx, dot_y), 3)
+    if hovered or selected:
+        first_name = pawn.name.split()[0] if pawn.name else pawn.id
+        _draw_label(surface, font, f"{first_name} · mood {round(pawn.mood)}", cx, dot_y - 4)
 
 
 def _draw_idle_badge(surface: pygame.Surface, center_x: int, pawn_top: int, camera: Camera) -> None:
@@ -1309,6 +1481,9 @@ def macro_strip_chips(
     storage = economy.storage_fullness(state)
     if storage is not None:
         chips.append(f"Storage {round(storage * 100)}%")
+    # Seed grain is the planting reserve, not stockpile grain - without this
+    # chip a "no seed" field would be unexplainable from the HUD.
+    chips.append(f"Seed {state.seed_grain}")
     for label, good in HUD_GOODS:
         chip = f"{label} {state.stockpile.counts.get(good, 0)}"
         produced = (flows_today or {}).get(good, 0)
@@ -1331,7 +1506,7 @@ def governor_macro_text(
     truncates the plan text, never the attribution (review P-6: the shipped
     proofs' own widths cut exactly the model-vs-fallback field).
     """
-    text = f"Governor: {summary.phase} | {summary.plan} | {summary.confidence}%"
+    text = f"Governor: {summary.phase} | {summary.plan} | {summary.attention}"
     status_text = (status_line or ("", None))[0]
     detail = status_text.replace("Governor: ", "")
     if detail:
@@ -1559,7 +1734,7 @@ def _draw_inspector(
     _draw_chip(surface, font, pawn.schedule, (x + 94, y), color=PANEL_BG_3)
     y += 32
 
-    line(f"State  {pawn.state}", INSPECTOR_MUTED)
+    line(f"State  {pawn_state_label(pawn)}", INSPECTOR_MUTED)
     if pawn.assignment is None:
         line("Job    none", INSPECTOR_MUTED)
     else:
@@ -1648,7 +1823,7 @@ def _draw_inspector(
     elif active_tab == "health":
         line("Health", SELECTION, gap=24)
         line(f"Status  {status}", NEED_GOOD if status == "Healthy" else NEED_WARN)
-        line(f"State   {pawn.state}", INSPECTOR_TEXT)
+        line(f"State   {pawn_state_label(pawn)}", INSPECTOR_TEXT)
         line(f"Mood    {round(pawn.mood)}%", _mood_color(pawn.mood / 100))
         lowest_need = min(pawn.needs.items(), key=lambda item: item[1]) if pawn.needs else ("none", 1.0)
         line(f"Lowest need  {lowest_need[0].title()} {round(lowest_need[1] * 100)}%", _need_bar_color(lowest_need[1]))
@@ -1876,7 +2051,7 @@ def _draw_governor_card(
     summary: GovernorCardSummary,
     map_rect: pygame.Rect,
 ) -> pygame.Rect | None:
-    """Bottom-left situation card: plan, bottleneck, confidence, recent policy."""
+    """Bottom-left situation card: plan, bottleneck, attention, recent policy."""
     width = min(GOVERNOR_CARD_WIDTH, map_rect.width - MARGIN * 2)
     if width < 240:
         return None
@@ -1888,9 +2063,8 @@ def _draw_governor_card(
     _draw_translucent_panel(surface, rect)
     x = rect.x + 10
     y = rect.y + 8
-    confidence_color = NEED_GOOD if summary.confidence >= 80 else NEED_WARN if summary.confidence >= 65 else NEED_BAD
     _draw_text(surface, font, "Governor", SELECTION, (x, y), width - 88)
-    _draw_text(surface, font, f"{summary.confidence}%", confidence_color, (rect.right - 52, y), 44)
+    _draw_text(surface, font, summary.attention, _attention_color(summary.attention), (rect.right - 132, y), 124)
     y += 22
 
     rows = (
@@ -2092,10 +2266,20 @@ def _draw_history_detail(surface: pygame.Surface, font: pygame.font.Font, record
         line("After needs", SELECTION)
         line(_needs_line(needs), INSPECTOR_TEXT)
 
-    line("Causality map", SELECTION)
-    line("Bread: Farm grain -> Mill flour -> Bakery", INSPECTOR_MUTED)
-    line("Jobs: priority -> legal slot -> reservation", INSPECTOR_MUTED)
-    line("Bottlenecks: goods/needs/inputs -> exceptions", INSPECTOR_MUTED)
+    # Derived per-decision context (review P-5): the old "Causality map" here
+    # was static boilerplate posing as an explanation of THIS decision. This
+    # section only ever shows what the record actually carries.
+    line("Pressures at this hour", SELECTION)
+    pressures = record.get("pressures")
+    if pressures:
+        for pressure in pressures[:4]:
+            line(str(pressure).replace("_", " "), NEED_WARN)
+        if len(pressures) > 4:
+            line(f"+{len(pressures) - 4} more", INSPECTOR_MUTED)
+    elif pressures is not None:
+        line("none - no active exceptions", NEED_GOOD)
+    else:
+        line("not recorded (older run-log schema)", INSPECTOR_MUTED)
 
 
 def _draw_history_panel(
@@ -2388,13 +2572,15 @@ def _draw_menu_panel(
     status_text, status_color = status_line or ("Governor: fallback autopilot", HUD_MUTED)
     rows = [
         ("Governor", status_text, status_color),
-        ("Plan", f"{summary.plan} ({summary.confidence}% confidence)", INSPECTOR_TEXT),
+        ("Plan", f"{summary.plan} ({summary.attention})", INSPECTOR_TEXT),
         ("Speed", "", INSPECTOR_TEXT),  # value slot + spacer row below hold the buttons
         ("", "", None),
         ("Keyboard", "Esc closes panels, Q quits, Tab selects next pawn, L toggles model", INSPECTOR_TEXT),
         ("Camera", "WASD/arrows pan, mouse wheel or +/- zoom", INSPECTOR_TEXT),
         ("Proof", "UI screenshots are saved under docs/proof/ui_navigation/", HUD_MUTED),
         ("Overlays", "Map badges: '!' blocked/unstaffed buildings, idle tags, danger rings, storage pressure", HUD_MUTED),
+        ("Mood dot", "Above each pawn: green content, amber strained, red near breaking - hover a pawn to read the number", HUD_MUTED),
+        ("Fields", "Farm fields on the map: brown bare, green sprouts growing (%), gold ripe; faded trees/crossed stone are depleted", HUD_MUTED),
     ]
     _draw_panel_lines(surface, font, rect, "Menu - run controls and viewer status", rows)
     for speed, button in menu_speed_button_rects(rect).items():

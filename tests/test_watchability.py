@@ -16,13 +16,14 @@ os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 
 import pygame
 
-from agent_town import civilization, engine
-from agent_town.core import Good
+from agent_town import civilization, engine, telemetry, world
+from agent_town.core import Good, ResourceNode
 from agent_town.civilization_view import (
     ExceptionAgeTracker,
     GoodsFlowTracker,
     MARGIN,
     building_exception_badges,
+    building_sublabel,
     exception_age_text,
     exception_stack_items,
     exception_signature,
@@ -31,9 +32,12 @@ from agent_town.civilization_view import (
     load_civilization_assets,
     macro_strip_chips,
     menu_speed_button_rects,
+    node_visual,
+    pawn_state_label,
     render_civilization,
+    storehouse_stock_lines,
 )
-from agent_town.governor import build_exception_queue
+from agent_town.governor import FallbackGovernor, build_exception_queue
 
 
 class MacroStripChipTests(unittest.TestCase):
@@ -193,6 +197,92 @@ class RenderSmokeTests(unittest.TestCase):
             flows_today={Good.BREAD: 9, Good.GRAIN: 20},
             exception_ages=tracker.ages,
         )
+
+
+class AttentionLabelTests(unittest.TestCase):
+    """Review P-8: the card shows a derived situation label, never a fake %."""
+
+    def test_crisis_when_a_critical_exception_exists(self):
+        state = civilization.create_default_civilization()
+        state.pawns["pawn00"].state = "wandering"
+        summary = governor_card_summary(state)
+        self.assertTrue(summary.attention.startswith("crisis"), summary.attention)
+
+    def test_attention_appears_in_macro_text_instead_of_a_percentage(self):
+        state = civilization.create_default_civilization()
+        summary = governor_card_summary(state)
+        text = governor_macro_text(summary, None)
+        self.assertIn(summary.attention, text)
+        self.assertNotRegex(text, r"\d+%")
+
+
+class PawnStateLabelTests(unittest.TestCase):
+    """Review P-9: the sheet's state and the Idle chip share one definition."""
+
+    def test_employed_pawn_between_blocks_reads_off_shift(self):
+        state = civilization.create_default_civilization()
+        engine.step_hour(state)
+        employed = next(p for p in state.pawns.values() if p.assignment is not None)
+        employed.state = "idle"
+        self.assertEqual(pawn_state_label(employed), "off shift")
+
+    def test_jobless_pawn_reads_idle_no_job(self):
+        state = civilization.create_default_civilization()
+        pawn = next(iter(state.pawns.values()))
+        pawn.assignment = None
+        pawn.state = "idle"
+        self.assertEqual(pawn_state_label(pawn), "idle (no job)")
+
+
+class DecisionPressureTests(unittest.TestCase):
+    """Review P-5: the audit's context section is derived from the record."""
+
+    def test_decision_records_carry_active_pressures(self):
+        state = civilization.create_default_civilization()
+        gov = FallbackGovernor()
+        result = engine.step_hour(state, gov)
+        record = telemetry.build_decision(state, gov, result)
+        self.assertIn("pressures", record)
+        live_kinds = {exc.kind for exc in build_exception_queue(state)}
+        for pressure in record["pressures"]:
+            self.assertIn(pressure.split(" x")[0], live_kinds)
+
+
+class SourcingVisibilityTests(unittest.TestCase):
+    """Physical sourcing must be readable from the map itself."""
+
+    def test_node_visuals_cover_the_field_lifecycle(self):
+        state = civilization.create_default_civilization()
+        farms = sorted(
+            (b for b in state.buildings.values() if b.kind == "Farm"), key=lambda b: b.id
+        )
+        visuals = {node_visual(world.farm_field(state, farm))[0] for farm in farms}
+        self.assertIn("field_ripe", visuals)
+        self.assertIn("field_growing", visuals)
+
+    def test_depleted_stand_reads_depleted(self):
+        node = ResourceNode(Good.LOGS, 0, 1, 1, max_amount=10, state="empty")
+        self.assertEqual(node_visual(node), ("depleted", 0.0))
+
+    def test_farm_sublabel_explains_the_field(self):
+        state = civilization.create_default_civilization()
+        farms = sorted(
+            (b for b in state.buildings.values() if b.kind == "Farm"), key=lambda b: b.id
+        )
+        labels = [building_sublabel(state, farm) for farm in farms]
+        self.assertIn("ripe", labels)
+        self.assertTrue(any(label.startswith("growing") for label in labels), labels)
+
+    def test_storehouse_lines_show_real_held_stock(self):
+        state = civilization.create_default_civilization()
+        lines = storehouse_stock_lines(state)
+        self.assertTrue(lines)
+        self.assertTrue(lines[0].startswith("Bread"), lines)
+
+    def test_seed_chip_present_in_macro_strip(self):
+        state = civilization.create_default_civilization()
+        chips = macro_strip_chips(state)
+        self.assertIn(f"Seed {state.seed_grain}", chips)
 
 
 if __name__ == "__main__":

@@ -385,7 +385,9 @@ class GovernorObserverModelTests(unittest.TestCase):
         self.assertIn("water", summary.plan.lower())
         self.assertIn("water", summary.bottleneck.lower())
         self.assertEqual(summary.top_exception.kind, "low_water")
-        self.assertLess(summary.confidence, 80)
+        # The attention label is derived from live exceptions (review P-8), so
+        # a water crisis must not read as "stable".
+        self.assertNotEqual(summary.attention, "stable")
 
     def test_governor_card_describes_last_reallocation_actions(self):
         state = civilization.create_default_civilization()
