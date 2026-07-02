@@ -320,6 +320,42 @@ def _release(state: FactionState, pawn: Pawn) -> None:
     pawn.assignment = None
 
 
+def release_staff_references(
+    state: FactionState, pawn_id: str, *, keep_building_id: str | None = None
+) -> None:
+    """Remove ``pawn_id`` from every staffed slot except an optional keeper."""
+    for building in state.buildings.values():
+        if building.id == keep_building_id:
+            continue
+        if pawn_id in building.staffed_by:
+            building.staffed_by = [pid for pid in building.staffed_by if pid != pawn_id]
+
+
+def _normalize_staffing(state: FactionState) -> None:
+    """Heal stale staff lists before reservations or production can count them."""
+    for building in sorted(state.buildings.values(), key=lambda b: b.id):
+        kept: list[str] = []
+        for pawn_id in building.staffed_by:
+            pawn = state.pawns.get(pawn_id)
+            if pawn is None or pawn_id in kept:
+                continue
+            if pawn.assignment is None or pawn.assignment.building_id != building.id:
+                continue
+            kept.append(pawn_id)
+
+        overflow = kept[building.job_slots :]
+        if overflow:
+            for pawn_id in overflow:
+                pawn = state.pawns.get(pawn_id)
+                if pawn is not None:
+                    pawn.assignment = None
+                    if pawn.forced_assignment is not None and pawn.forced_assignment.building_id == building.id:
+                        pawn.forced_assignment = None
+            kept = kept[: building.job_slots]
+
+        building.staffed_by = kept
+
+
 def _seat(state: FactionState, pawn: Pawn, building: Building, work_type: str, reserved: dict[str, int]) -> None:
     """Staff a pawn into a building and book the reservation for this cycle."""
     if pawn.id not in building.staffed_by:
@@ -363,6 +399,8 @@ def assign_jobs(state: FactionState) -> dict[str, WorkDecision]:
     the same state always produces the same assignments - the integration
     survival oracle and the LLM-vs-fallback equality proof both depend on it.
     """
+    _normalize_staffing(state)
+
     # Phase A: release assignments that are illegal now or held by broken pawns.
     for pawn in state.pawns.values():
         if pawn.assignment is None:

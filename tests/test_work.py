@@ -2,7 +2,7 @@
 
 import unittest
 
-from agent_town import buildings, pawns, work
+from agent_town import buildings, health, pawns, work
 from agent_town.core import FactionState, JobRef, Pawn
 
 
@@ -115,6 +115,21 @@ class ReservationTests(unittest.TestCase):
 
         self.assertEqual(state.pawns["p0"].assignment, JobRef("farm1", "farming"))
         self.assertIsNone(state.pawns["p1"].assignment)
+
+    def test_stale_duplicate_staff_entries_are_pruned_before_replan(self):
+        p = _pawn("p", {"farming": 20, "baking": 20}, assignment=JobRef("bake1", "baking"))
+        state = _state(
+            buildings_spec=(("farm1", "Farm", 0, 0), ("bake1", "Bakery", 2, 0)), pawn_list=[p]
+        )
+        state.buildings["farm1"].staffed_by.append("p")
+        state.buildings["bake1"].staffed_by.append("p")
+
+        work.assign_jobs(state)
+
+        self.assertEqual(state.pawns["p"].assignment, JobRef("bake1", "baking"))
+        self.assertEqual(state.buildings["farm1"].staffed_by, [])
+        self.assertEqual(state.buildings["bake1"].staffed_by, ["p"])
+        self.assertEqual(health.check_invariants(state), [])
 
 
 class LaneTests(unittest.TestCase):

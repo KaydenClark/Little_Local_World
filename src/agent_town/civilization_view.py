@@ -2011,11 +2011,7 @@ def force_assign_pawn_to_building(state: FactionState, pawn_id: str, building_id
     if pawn_id not in building.staffed_by and len(building.staffed_by) >= building.job_slots:
         return False
 
-    if pawn.assignment is not None:
-        old = state.buildings.get(pawn.assignment.building_id)
-        if old is not None and pawn_id in old.staffed_by:
-            old.staffed_by = [pid for pid in old.staffed_by if pid != pawn_id]
-
+    work.release_staff_references(state, pawn_id, keep_building_id=building.id)
     if pawn_id not in building.staffed_by:
         building.staffed_by.append(pawn_id)
     ref = JobRef(building.id, building.recipe.skill)

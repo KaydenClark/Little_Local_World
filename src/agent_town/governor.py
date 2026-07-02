@@ -327,10 +327,11 @@ def apply_actions(state: FactionState, actions: list[GovernorAction]) -> list[Go
             continue
         if action.kind == ACTION_ASSIGN_PAWN:
             building = state.buildings[action.building_id]
-            building.staffed_by.append(action.pawn_id)
             # assign_pawn is now the forced override (the arbiter's top lane): pin
             # the pawn here so the work arbiter keeps it instead of reassigning.
             pawn = state.pawns[action.pawn_id]
+            work.release_staff_references(state, pawn.id, keep_building_id=building.id)
+            building.staffed_by.append(action.pawn_id)
             pawn.assignment = JobRef(action.building_id, action.role)
             pawn.forced_assignment = JobRef(action.building_id, action.role)
             applied.append(action)

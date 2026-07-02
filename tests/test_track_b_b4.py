@@ -1,6 +1,6 @@
 import unittest
 
-from agent_town import governor, work
+from agent_town import governor, health, work
 from agent_town.core import (
     ACTION_PLACE_BUILDING,
     ACTION_SET_SCHEDULE,
@@ -121,6 +121,22 @@ class ApplyActionsTests(unittest.TestCase):
         governor.apply_actions(state, [GovernorAction.assign_pawn("ace", "saw1", "woodcutting")])
         # The override pins the pawn so the arbiter keeps it (the forced lane).
         self.assertEqual(state.pawns["ace"].forced_assignment, JobRef("saw1", "woodcutting"))
+
+    def test_reassign_pawn_releases_previous_staff_slot(self):
+        state = town()
+        state.buildings["saw2"] = Building(
+            id="saw2", kind="Sawmill", x=2, y=0, recipe=wood_recipe(), job_slots=1
+        )
+
+        first = GovernorAction.assign_pawn("ace", "saw1", "woodcutting")
+        second = GovernorAction.assign_pawn("ace", "saw2", "woodcutting")
+        self.assertEqual(governor.apply_actions(state, [first]), [first])
+        self.assertEqual(governor.apply_actions(state, [second]), [second])
+
+        self.assertEqual(state.buildings["saw1"].staffed_by, [])
+        self.assertEqual(state.buildings["saw2"].staffed_by, ["ace"])
+        self.assertEqual(state.pawns["ace"].assignment, JobRef("saw2", "woodcutting"))
+        self.assertEqual(health.check_invariants(state), [])
 
     def test_set_work_priority_applies_to_group(self):
         state = town()
