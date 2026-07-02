@@ -775,6 +775,7 @@ def render_civilization(
     status_line: tuple[str, tuple[int, int, int]] | None = None,
     camera: Camera | None = None,
     selected_pawn_id: str | None = None,
+    selected_building_id: str | None = None,
     hovered_pawn_id: str | None = None,
     show_inspector: bool = False,
     show_work_grid: bool = False,
@@ -837,6 +838,7 @@ def render_civilization(
             surface, building, assets, font, camera, ox, oy, base_ts, storage_pressure,
             exception_badge=exception_badges.get(building.id),
             state=state,
+            selected=building.id == selected_building_id,
         )
 
     pawn_keys = sorted(assets.pawns_scaled)
@@ -868,6 +870,7 @@ def render_civilization(
     _draw_right_column(
         surface, state, font, selected_pawn_id, layout.right,
         active_tab=inspector_tab, exception_ages=exception_ages,
+        selected_building_id=selected_building_id,
     )
     if active_panel and layout.command_panel is not None:
         _draw_command_panel(
@@ -1090,6 +1093,7 @@ def _draw_building(
     storage_pressure: str | None = None,
     exception_badge: str | None = None,
     state: FactionState | None = None,
+    selected: bool = False,
 ) -> None:
     sprite = _scale_for_camera(
         assets.buildings_scaled[BUILDING_SPRITE.get(building.kind, DEFAULT_BUILDING_SPRITE)],
@@ -1098,6 +1102,15 @@ def _draw_building(
     cx, _cy = camera.tile_center_to_screen(building.x, building.y, (ox, oy), base_ts)
     _left, bottom = camera.tile_top_left_to_screen(building.x, building.y + 1, (ox, oy), base_ts)
     surface.blit(sprite, (cx - sprite.get_width() // 2, bottom - sprite.get_height()))
+    if selected:
+        outline = pygame.Rect(
+            cx - sprite.get_width() // 2 - 2,
+            bottom - sprite.get_height() - 2,
+            sprite.get_width() + 4,
+            sprite.get_height() + 4,
+        )
+        pygame.draw.rect(surface, SELECTION_OUTER, outline, 2)
+        pygame.draw.rect(surface, SELECTION, outline.inflate(-4, -4), 1)
     if building.kind == "Storehouse" and storage_pressure is not None:
         _draw_storage_badge(surface, cx + sprite.get_width() // 2 - 12, bottom - sprite.get_height() + 10, storage_pressure, camera)
     if building.kind == "Storehouse" and state is not None:
@@ -1240,6 +1253,31 @@ def _draw_idle_badge(surface: pygame.Surface, center_x: int, pawn_top: int, came
     bottom = cy + max(1, round(2 * camera.zoom))
     pygame.draw.line(surface, IDLE_BADGE_ICON, (cx, top), (cx, bottom), max(1, round(2 * camera.zoom)))
     pygame.draw.circle(surface, IDLE_BADGE_ICON, (cx, cy + radius - 4), max(1, round(2 * camera.zoom)))
+
+
+def find_building_at_screen(
+    state: FactionState,
+    pos: tuple[int, int],
+    origin: tuple[int, int],
+    base_tile: int,
+    camera: Camera,
+) -> str | None:
+    """The nearest building under ``pos`` in screen space (pawns win first).
+
+    Buildings anchor on their tile centre and render about two tiles wide, so
+    the hit radius is a tile - generous enough to click a sprite, small enough
+    that neighbouring buildings stay distinct.
+    """
+    hit_radius = max(16, round(base_tile * camera.zoom))
+    best_id: str | None = None
+    best_distance = hit_radius * hit_radius
+    for building_id, building in sorted(state.buildings.items()):
+        cx, cy = camera.tile_center_to_screen(building.x, building.y, origin, base_tile)
+        distance = (pos[0] - cx) ** 2 + (pos[1] - cy) ** 2
+        if distance <= best_distance:
+            best_id = building_id
+            best_distance = distance
+    return best_id
 
 
 def find_pawn_at_screen(
@@ -1690,6 +1728,7 @@ def _draw_right_column(
     *,
     active_tab: str = "needs",
     exception_ages: dict[str, int] | None = None,
+    selected_building_id: str | None = None,
 ) -> None:
     """Docked right column: urgent exceptions above selected-object detail."""
     pygame.draw.rect(surface, INSPECTOR_BG, rect)
@@ -1697,7 +1736,116 @@ def _draw_right_column(
 
     exception_rect, inspector_rect = right_column_regions(rect)
     _draw_exception_stack(surface, font, exception_stack_items(state, exception_ages), exception_rect)
+    building = state.buildings.get(selected_building_id or "")
+    if selected_pawn_id is None and building is not None:
+        _draw_building_inspector(surface, state, font, building, inspector_rect)
+        return
     _draw_inspector(surface, state, font, selected_pawn_id, inspector_rect, active_tab=active_tab)
+
+
+def building_card_lines(state: FactionState, building) -> list[tuple[str, str]]:
+    """The building inspector's content as (text, tone) rows (pure, testable).
+
+    Tones: "title" / "ok" / "warn" / "muted" / "text". This is the beta-tester
+    surface for "why is this building (not) producing": staffing, recipe I/O,
+    banked cycle progress, targets, and - physical sourcing - exactly what the
+    building's located source is doing right now.
+    """
+    rows: list[tuple[str, str]] = []
+    rows.append((f"{building.kind}  ({building.id})", "title"))
+    if not building.built:
+        rows.append(("Under construction", "warn"))
+
+    if building.job_slots > 0:
+        names = [_pawn_name(state, pid) for pid in building.staffed_by]
+        staffed = ", ".join(names) if names else "nobody"
+        tone = "text" if names else "warn"
+        rows.append((f"Staff {len(building.staffed_by)}/{building.job_slots}: {staffed}", tone))
+    else:
+        rows.append(("No work slots", "muted"))
+
+    recipe = building.recipe
+    if recipe is not None and (recipe.inputs or recipe.outputs):
+        inputs = " + ".join(f"{amt} {good.value}" for good, amt in recipe.inputs.items()) or "labour"
+        outputs = " + ".join(f"{amt} {good.value}" for good, amt in recipe.outputs.items()) or "-"
+        rows.append((f"Makes {inputs} -> {outputs} ({recipe.skill})", "text"))
+        rows.append((f"Cycle progress {round(building.production_progress * 100)}%", "muted"))
+        missing = sorted(
+            good.value
+            for good, qty in recipe.inputs.items()
+            if state.stockpile.counts.get(good, 0) < qty
+        )
+        if missing and building.staffed_by:
+            rows.append((f"Blocked on {', '.join(missing)}", "warn"))
+    for good, amount in sorted(building.production_target.items(), key=lambda kv: kv[0].value):
+        held = state.stockpile.counts.get(good, 0)
+        rows.append((f"Target {good.value} {held}/{amount}" + (" (met - idling)" if held >= amount else ""), "muted"))
+
+    source_good = economy.SOURCED_BUILDING_GOODS.get(building.kind)
+    if source_good is Good.GRAIN:
+        node = world.farm_field(state, building)
+        status = economy.field_status(state, building)
+        if status == economy.FIELD_GROWING:
+            fraction = economy.field_growth_fraction(state, building) or 0.0
+            hours_left = max(0, world.FIELD_GROWTH_HOURS - round(fraction * world.FIELD_GROWTH_HOURS))
+            rows.append((f"Field growing {round(fraction * 100)}% (~{hours_left}h to ripe)", "ok"))
+            rows.append(("Farmer freed until harvest (by design)", "muted"))
+        elif status == economy.FIELD_READY:
+            rows.append((f"Field ripe: {node.amount if node else 0} grain standing", "ok"))
+        elif status == economy.FIELD_NO_SEED:
+            rows.append((f"Field bare - no seed (reserve {state.seed_grain}, need {economy.PLANT_SEED_COST})", "warn"))
+        else:
+            rows.append((f"Field bare - ready to plant (seed {state.seed_grain})", "text"))
+    elif source_good is not None:
+        standing = world.harvestable_amount(state, source_good)
+        if standing > 0:
+            regrows = " (regrows)" if source_good in world.REGROWING_GOODS else " (never regrows)"
+            rows.append((f"Source: {standing} {source_good.value} standing nearby{regrows}", "text"))
+        else:
+            rows.append((f"Source depleted - no {source_good.value} left to harvest", "warn"))
+    elif building.kind == "Water Well":
+        rows.append(("Source: aquifer (replenished, never depletes)", "muted"))
+    elif building.kind == "Storehouse":
+        rows.append((f"Adds {economy.STOREHOUSE_CAPACITY_BONUS} storage capacity", "text"))
+        for line in storehouse_stock_lines(state, limit=4):
+            rows.append((line, "muted"))
+
+    for exc in build_exception_queue(state):
+        if exc.building_id != building.id:
+            continue
+        title, cause = _exception_title_and_cause(state, exc)
+        severity = _exception_severity(exc)
+        rows.append((f"{title}: {cause}", "warn" if severity != health.INFO else "muted"))
+    return rows
+
+
+_CARD_TONE_COLOR = {
+    "title": SELECTION,
+    "ok": NEED_GOOD,
+    "warn": NEED_WARN,
+    "muted": INSPECTOR_MUTED,
+    "text": INSPECTOR_TEXT,
+}
+
+
+def _draw_building_inspector(
+    surface: pygame.Surface,
+    state: FactionState,
+    font: pygame.font.Font,
+    building,
+    rect: pygame.Rect,
+) -> None:
+    """Selected-building card: click a Farm and learn why it is (not) producing."""
+    pygame.draw.rect(surface, INSPECTOR_BG, rect)
+    pygame.draw.line(surface, INSPECTOR_BORDER, rect.topleft, rect.bottomleft, 1)
+    x = rect.x + 14
+    y = rect.y + 14
+    for text, tone in building_card_lines(state, building):
+        gap = 25 if tone == "title" else 20
+        _draw_text(surface, font, text, _CARD_TONE_COLOR.get(tone, INSPECTOR_TEXT), (x, y), rect.width - 28)
+        y += gap
+        if y > rect.bottom - 20:
+            break
 
 
 def _draw_inspector(
@@ -2683,6 +2831,7 @@ class CivilizationViewer:
         self.governor = governor
         self.camera = Camera()
         self.selected_pawn_id = next(iter(self.state.pawns), None)
+        self.selected_building_id: str | None = None
         self.hovered_pawn_id: str | None = None
         self.active_panel: str | None = None
         self.inspector_tab = "needs"
@@ -2849,6 +2998,7 @@ class CivilizationViewer:
             if target is not None:
                 if target.kind == "pawn" and target.pawn_id is not None:
                     self.selected_pawn_id = target.pawn_id
+                    self.selected_building_id = None
                 elif target.kind == "job" and target.building_id is not None:
                     building = self.state.buildings.get(target.building_id)
                     if building is not None and self.selected_pawn_id is not None:
@@ -2886,13 +3036,29 @@ class CivilizationViewer:
         )
 
     def _select_pawn_at(self, pos: tuple[int, int]) -> None:
+        """Select the pawn under the cursor, else the building under it.
+
+        Pawn and building selection are mutually exclusive so the inspector
+        always shows exactly the clicked thing: clicking a Farm answers "why
+        is this not producing" (staffing, recipe, field state) the same way
+        clicking a pawn answers "why is it doing that job".
+        """
         if not self._map_rect().collidepoint(pos) or self.assets is None:
             return
         pawn_id = find_pawn_at_screen(self.state, pos, self._map_origin(), self.assets.tile_size, self.camera)
         if pawn_id is not None:
             self.selected_pawn_id = pawn_id
+            self.selected_building_id = None
+            return
+        building_id = find_building_at_screen(
+            self.state, pos, self._map_origin(), self.assets.tile_size, self.camera
+        )
+        if building_id is not None:
+            self.selected_building_id = building_id
+            self.selected_pawn_id = None
 
     def _select_next_pawn(self) -> None:
+        self.selected_building_id = None
         pawn_ids = sorted(self.state.pawns)
         if not pawn_ids:
             self.selected_pawn_id = None
@@ -2953,6 +3119,7 @@ class CivilizationViewer:
             status_line=governor_status_line(self.governor),
             camera=self.camera,
             selected_pawn_id=self.selected_pawn_id,
+            selected_building_id=self.selected_building_id,
             hovered_pawn_id=self.hovered_pawn_id,
             show_inspector=True,
             active_panel=self.active_panel,

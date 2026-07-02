@@ -23,6 +23,8 @@ from agent_town.civilization_view import (
     assign_panel_target_at,
     assign_panel_targets,
     active_panel_from_button,
+    building_card_lines,
+    find_building_at_screen,
     _construction_progress,
     _need_bar_color,
     _mood_color,
@@ -694,6 +696,64 @@ class HistoryFeedTests(unittest.TestCase):
             self.assertEqual(after - before, 20)
         finally:
             viewer._shutdown_governor()
+
+
+class BuildingInspectionTests(unittest.TestCase):
+    """Clicking a building must answer "why is this (not) producing"."""
+
+    def setUp(self):
+        pygame.display.init()
+        pygame.font.init()
+        pygame.display.set_mode((64, 64))
+
+    def test_farm_card_explains_the_field(self):
+        state = civilization.create_default_civilization()
+        farms = sorted((b for b in state.buildings.values() if b.kind == "Farm"), key=lambda b: b.id)
+        all_text = "\n".join(
+            text for farm in farms for text, _tone in building_card_lines(state, farm)
+        )
+        self.assertIn("Field growing", all_text)
+        self.assertIn("Field ripe", all_text)
+
+    def test_quarry_card_names_its_source(self):
+        state = civilization.create_default_civilization()
+        quarry = next(b for b in state.buildings.values() if b.kind == "Quarry")
+        lines = [text for text, _tone in building_card_lines(state, quarry)]
+        self.assertTrue(any("Source" in text for text in lines), lines)
+
+    def test_click_on_building_selects_it_and_clears_pawn(self):
+        viewer = CivilizationViewer(smoke_test=True)
+        building = next(iter(viewer.state.buildings.values()))
+        # Park every pawn far from the building so the pawn hit-test misses.
+        for pawn in viewer.state.pawns.values():
+            pawn.x, pawn.y = 0, 15
+        building.x, building.y = 20, 2
+        origin = viewer._map_origin()
+        cx, cy = viewer.camera.tile_center_to_screen(
+            building.x, building.y, origin, viewer.assets.tile_size
+        )
+
+        viewer._handle_click((cx, cy))
+
+        self.assertEqual(viewer.selected_building_id, building.id)
+        self.assertIsNone(viewer.selected_pawn_id)
+
+    def test_render_with_selected_building_smokes(self):
+        assets = load_civilization_assets()
+        font = pygame.font.Font(None, 16)
+        state = civilization.create_default_civilization()
+        surface = pygame.Surface((1280, 900))
+        farm_id = next(b.id for b in state.buildings.values() if b.kind == "Farm")
+        render_civilization(
+            surface, state, assets, font, (12, 12), selected_building_id=farm_id
+        )
+
+    def test_find_building_at_screen_hits_center(self):
+        state = civilization.create_default_civilization()
+        camera = Camera()
+        building = next(iter(state.buildings.values()))
+        cx, cy = camera.tile_center_to_screen(building.x, building.y, (0, 0), 25)
+        self.assertEqual(find_building_at_screen(state, (cx, cy), (0, 0), 25, camera), building.id)
 
 
 if __name__ == "__main__":
