@@ -122,6 +122,102 @@ hour and proves the oracle can fail (tamper tests). Primary-producer faucets
 external sources, and the ledger guarantees everything downstream of them is
 conserved.
 
+### Physical sourcing (2026-07-02 refinement, SHIPPED 2026-07-02)
+
+The Slice C ledger proves goods balance in *count*; this refinement makes them
+exist in *place* and *time* as well. Before it, every Tier 0 faucet (Farm,
+Forester, Quarry, Water Well) had an empty-input recipe: a staffed pawn's
+`effective_work` minted the output the instant `Building.production_progress`
+crossed `recipe.work_units`, with no reference to the `ResourceNode` map data -
+the field/tree/outcrop sprite the player saw was decorative. "Labour in,
+resource out" with no located source violated the "nothing from nothing" law's
+spirit even while the ledger's numbers balanced (review finding E-9).
+
+The refined law, now enforced by `economy.production_tick`: **a faucet's
+output must be tied to a located, finite- or time-gated source**, not a
+labor-only spigot. Three mechanics cover every Tier 0 producer:
+
+- **Cultivated** (Farm -> grain): the source is empty until planted, then
+  needs elapsed growth time before it can be harvested. Grain cannot appear
+  faster than a growing season, regardless of headcount.
+- **Extracted** (Forester -> logs, Quarry -> stone): the source is a
+  `ResourceNode` with a finite `amount`; harvesting depletes it.
+  Logs additionally regrow over time (a tree is a renewable but
+  slow-growing extracted resource); stone does not regrow (a quarry face is
+  mined out - the building eventually relocates or goes idle).
+- **Replenished** (Water Well): the source is effectively inexhaustible at
+  colony scale (an aquifer/water table) - modeled as an always-available
+  extracted node with no depletion, so the well keeps the "physical location,
+  not a spigot" property without inventing an artificial water shortage.
+
+#### The field/node lifecycle
+
+```
+work "farming" at Farm, targeting the Farm's owned field (a ResourceNode on TILE_FIELD):
+
+  state == EMPTY:
+      if seed_reserve >= PLANT_COST:
+          plant(field)                # consumes from a *local* seed store, not bread stock
+          state -> PLANTED
+      else:
+          idle; raise exception "no_seed_grain"
+
+  state in (PLANTED, GROWING):
+      field.growth_progress += 1 per elapsed hour   # ticks even if the farmer is reassigned
+      if field.growth_progress >= GROWTH_TARGET:
+          state -> READY
+
+  state == READY:
+      harvested = harvest(field)      # yields grain; node.amount -> 0 for this cycle
+      seed_reserve += harvested * SEED_RESERVE_FRACTION   # next planting's seed, not purchased
+      stockpile.add(GRAIN, harvested - seed_taken)
+      state -> EMPTY
+```
+
+Growth does not require the pawn's continuous attention - only planting and
+harvesting are labor. A farmer can be reassigned mid-growth and reassigned
+back for harvest; the work arbiter (`work.py`) needs a "field ready to
+plant/harvest" signal distinct from "field growing, nothing to do here" so it
+does not chain a farmer to an empty wait.
+
+Forester/logs follow the same shape without an explicit plant step (a felled
+stand regrows on its own at `world.TREE_REGROW_PER_HOUR`). Quarry/stone uses
+extracted-node depletion only; extractors harvest shared nodes nearest-first
+via `world.harvest_from_nodes`. Implementation notes as shipped: fields ripen
+to `world.FIELD_YIELD` (24 grain) after `world.FIELD_GROWTH_HOURS` (24h);
+planting costs `economy.PLANT_SEED_COST` (2) from `FactionState.seed_grain`;
+each harvest tops the reserve back up to `economy.SEED_RESERVE_TARGET` (8)
+before grain reaches the stockpile; and the work arbiter's strict-priority
+upgrade release walks a farmer back from stop-gap work when the field ripens.
+
+Bootstrap: a fresh colony starts with a small seed grain reserve (brought from
+the old country, not purchased) so the first Farm is never seed-locked. This
+mirrors how the default civ's bread reserve is already hand-seeded at
+colony creation.
+
+Exception codes (shipped): `no_seed_grain` (field empty, nothing to plant),
+`field_growing` (informational, not a warning - genuinely waiting on time; it
+also suppresses the unstaffed alarm on that farm, since the arbiter frees the
+farmer by design), and `node_depleted` (Quarry/Forester's nodes are exhausted;
+the building needs relocation or is dead weight). These feed the existing
+`!`-badge system (`building_exception_badges`, Slice E) so a field waiting to
+grow does not misread as broken the way an unstaffed building does.
+
+#### Visible storage (SHIPPED 2026-07-02)
+
+`Stockpile` stays faction-wide for now - per-building storage (pawns walking
+to a specific granary to eat) is a materially bigger change touching engine,
+economy, governor, health, and telemetry, and is deferred as its own later
+slice rather than bundled here. The near-term honesty fix shipped: the
+Storehouse renders what is actually held - crates scale with fullness and the
+largest stacks are named (`storehouse_stock_lines`), so "how much bread
+exists" is answerable by looking at the map, not only from the macro strip's
+numeric chip. The map also draws the field lifecycle (bare / growing % /
+ripe), faded depleted tree stands, crossed-out mined-out stone, a `Seed` chip
+for the planting reserve, and source-state building sublabels; clicking any
+building opens a derived inspector card (staffing, recipe I/O, cycle
+progress, targets, source state, active exceptions).
+
 ## Architecture
 
 Three layers, built bottom-up. The engine and pawns work and pass tests
@@ -515,17 +611,20 @@ Build-2 economy direction from the Townsmen research:
 
 Tier 0 is extraction from map resource nodes. Each later tier needs the prior
 tier's output and, past tier 1, a research unlock - so an advanced building can
-only exist once its supplier and its tech do.
+only exist once its supplier and its tech do. Build 1's shipped Tier 0 faucets
+(Farm, Forester, Quarry, Water Well) now use the **Mechanic** column's
+physical-sourcing behaviour (see the design law refinement above); the build-2+
+rows adopt the same mechanics when they land.
 
-| Tier | Building | Consumes | Produces | Skill | Build |
-|---|---|---|---|---|---|
-| 0 | Forester | tree node | logs | forestry | 1 |
-| 0 | Quarry | stone node | stone | mining | 1 |
-| 0 | Farm (crops) | field node | grain, vegetables | farming | 1 |
-| 0 | Water Well | water table | water | water | 2 |
-| 0 | Mine | ore node | ore | mining | 3 |
-| 0 | Pasture / Animal Farm | feed (grain) | raw meat, hide, wool | herding | 3 |
-| 0 | Hunter's Hut | wild game node | raw meat, hide | hunting | 3 |
+| Tier | Building | Consumes | Produces | Skill | Build | Mechanic |
+|---|---|---|---|---|---|---|
+| 0 | Forester | tree node | logs | forestry | 1 | extracted + regrows |
+| 0 | Quarry | stone node | stone | mining | 1 | extracted, no regrow |
+| 0 | Farm (crops) | field node | grain, vegetables | farming | 1 | cultivated (plant/grow/harvest) |
+| 0 | Water Well | water table | water | water | 2 | replenished (no depletion) |
+| 0 | Mine | ore node | ore | mining | 3 | extracted, no regrow |
+| 0 | Pasture / Animal Farm | feed (grain) | raw meat, hide, wool | herding | 3 | cultivated (feed-gated) |
+| 0 | Hunter's Hut | wild game node | raw meat, hide | hunting | 3 | extracted + regrows |
 | 1 | Sawmill | logs | planks | woodworking | 1 |
 | 1 | Mill | grain | flour | milling | 1 |
 | 1 | Bakery | flour, water | bread | baking | 1 |
@@ -787,6 +886,8 @@ Rules:
 | Storehouse capacity and pressure badges shipped | Built Storehouses add deterministic global storage capacity, while the HUD and Storehouse world badge shift from normal to amber at 80% and critical red at 95%. This keeps storage pressure truthful without faking district storage or hauling pressure before those systems exist | 2026-06-30 Storehouse slice |
 | Critical review findings become harness inputs before feature work | Confirmed P0/P1 findings from `docs/reviews/` block new roadmap features until reproduced and fixed or explicitly downgraded with source-backed evidence. The immediate contract fixes are one-pawn-one-job, default-deny model safety, executable conservation checks, and model-efficacy gates | 2026-07-01 Fable 5 peer review |
 | Model-origin actions pass an explicit default-deny allowlist (grow-safe) | Both P0s are fixed: forced `assign_pawn` releases prior staffing (Slice A) and the model-safety guard is now an explicit per-kind allowlist - unlisted kinds default-deny. The model may grow the economy (rest a flagged pawn, raise essential priorities, place known buildings, pick research, retarget non-essential goods) but may not force per-pawn assignment (the E-1 trigger) or cap a survival good (grain/flour/bread/water). Rejections carry a reason to the decision audit. Prompt wording is guidance only; the allowlist is the boundary | 2026-07-01 Fable 5 review Slices A+B |
+| Physical sourcing shipped: every Tier 0 faucet draws from a located, gated node | Farms plant/grow/harvest owned field nodes (24h season, seed reserve), Foresters deplete regrowing tree stands, Quarries mine finite outcrops, the Well stays a named aquifer. The arbiter frees pawns from sourceless work and upgrades them back on strict priority; the crisis line was re-verified (marginal civ recovers by day 4; fail state proven under an inert governor). Closes review E-9 | 2026-07-02 physical sourcing |
+| Viewer P2 batch: derived attention label, shared idle definition, decodable mood dots, per-decision pressures, visible storage, building inspection | The Governor card/macro/menu drop the invented confidence %; pawn sheets say "off shift" vs "idle (no job)" to match the Idle chip; hovering decodes the mood dot; decision records carry live exception kinds so the audit panel derives its context; the Storehouse names real held stock; clicking a building opens a derived "why is this (not) producing" card | 2026-07-02 review P-5/P-8/P-9/P-10 + Slice 5 |
 | Surplus producers get a starting production ceiling so food survives the storage cap | Unifying the crisis line (sustain floor) with the truth loop (finite storage) exposed a latent starvation: uncapped water/logs/planks/stone flood the 240-cap stockpile and crowd out grain/flour/bread. The default civ now seeds each surplus producer a `production_target` (water 48, logs 24, planks 40, stone 40) leaving ~90 units of food headroom, and research is unavailable while bread cover is under a day so a farmer never idles on the Laboratory during a shortage | 2026-07-01 crisis+truth-loop merge |
 
 ## Health Criteria

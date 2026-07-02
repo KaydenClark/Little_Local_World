@@ -9,7 +9,7 @@ without burning inputs, and net-shrinking transforms can still run while full.
 import unittest
 
 from agent_town import buildings, economy, health, telemetry
-from agent_town.core import FactionState, Good, Pawn, Stockpile
+from agent_town.core import FactionState, Good, Pawn, ResourceNode, Stockpile
 
 
 def worker(pawn_id: str, skill: str, level: int = 10) -> Pawn:
@@ -51,6 +51,9 @@ class StorageCapTests(unittest.TestCase):
             buildings={building.id: building},
             pawns={pawn.id: pawn},
         )
+        # Physical sourcing: give the extractor a real stand to draw from - the
+        # storage cap, not the source, is what this test pins.
+        state.resource_nodes.append(ResourceNode(Good.LOGS, 500, 1, 1))
 
         for _ in range(4):
             economy.production_tick(state)
@@ -118,6 +121,7 @@ class StorageCapTests(unittest.TestCase):
         state.buildings["storehouse1"] = buildings.make_building(
             "Storehouse", 2, 0, building_id="storehouse1"
         )
+        state.resource_nodes.append(ResourceNode(Good.LOGS, 500, 1, 1))
 
         economy.production_tick(state)
 

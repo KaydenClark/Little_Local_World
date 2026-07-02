@@ -122,6 +122,7 @@ def build_faction_summary(state: FactionState) -> dict[str, Any]:
         "research_points": state.research_points,
         "water_days_of_cover": round(economy.water_days_of_cover(state), 3),
         "food_days_of_cover": round(economy.food_days_of_cover(state), 3),
+        "seed_grain": state.seed_grain,
         "stockpile": {good.value: count for good, count in state.stockpile.counts.items()},
     }
 
@@ -191,6 +192,38 @@ def build_exception_queue(state: FactionState) -> list[CivilizationException]:
 
     for building in sorted(state.buildings.values(), key=lambda b: b.id):
         if not building.built or building.recipe is None:
+            continue
+        # Physical sourcing: a Farm's field and an extractor's nodes gate work.
+        # A growing field is informational (staffed or not, it is genuinely
+        # waiting on time - by design the arbiter frees the farmer meanwhile),
+        # so it also suppresses the unstaffed alarm for that farm. An empty
+        # field with no seed, or a mined-out extractor, is a real blocker.
+        source_kind = economy.SOURCED_BUILDING_GOODS.get(building.kind)
+        if source_kind is Good.GRAIN:
+            status = economy.field_status(state, building)
+            if status == economy.FIELD_GROWING:
+                fraction = economy.field_growth_fraction(state, building) or 0.0
+                exceptions.append(
+                    CivilizationException(
+                        "field_growing", building_id=building.id, detail=f"{round(fraction * 100)}% grown"
+                    )
+                )
+                continue
+            if status == economy.FIELD_NO_SEED:
+                # The arbiter frees the farmer while planting is blocked, so an
+                # unstaffed alarm on top would be noise - the seed is the problem.
+                exceptions.append(
+                    CivilizationException(
+                        "no_seed_grain",
+                        building_id=building.id,
+                        detail=f"seed {state.seed_grain}/{economy.PLANT_SEED_COST} needed",
+                    )
+                )
+                continue
+        elif source_kind is not None and economy.source_depleted(state, building):
+            exceptions.append(
+                CivilizationException("node_depleted", building_id=building.id, detail=source_kind.value)
+            )
             continue
         if building.job_slots > 0 and not building.staffed_by:
             exceptions.append(
