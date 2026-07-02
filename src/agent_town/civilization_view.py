@@ -222,17 +222,26 @@ EXCEPTION_SEVERITY = {
     "unhappy_pawn": health.WARN,
     "idle_pawn": health.WARN,
     "skill_mismatch": health.WARN,
+    # Physical sourcing: blocked planting and mined-out extractors are real
+    # problems; a growing field is narration ("staffed but waiting on time"),
+    # never a warn badge - by design it must not read as broken (BLUEPRINT).
+    "no_seed_grain": health.WARN,
+    "node_depleted": health.WARN,
+    "field_growing": health.INFO,
 }
 EXCEPTION_KIND_RANK = {
     "low_food": 0,
     "pawn_break": 1,
     "pawn_breaking": 2,
     "low_water": 3,
-    "missing_inputs": 4,
-    "unstaffed_building": 5,
-    "unhappy_pawn": 6,
-    "skill_mismatch": 7,
-    "idle_pawn": 8,
+    "no_seed_grain": 4,
+    "node_depleted": 5,
+    "missing_inputs": 6,
+    "unstaffed_building": 7,
+    "unhappy_pawn": 8,
+    "skill_mismatch": 9,
+    "idle_pawn": 10,
+    "field_growing": 11,
 }
 GOVERNOR_CARD_WIDTH = 332
 GOVERNOR_CARD_HEIGHT = 146
@@ -390,6 +399,12 @@ def _exception_title_and_cause(state: FactionState, exc: CivilizationException) 
         return ("Low food", f"Food reserve or nutrition is below the safe line ({exc.detail}).")
     if exc.kind == "low_water":
         return ("Low water", f"Water reserve or need is below the safe line ({exc.detail}).")
+    if exc.kind == "no_seed_grain":
+        return (f"No seed: {subject}", f"The field is bare and the seed reserve is short ({exc.detail}).")
+    if exc.kind == "node_depleted":
+        return (f"Source depleted: {subject}", f"No standing {exc.detail} left to harvest nearby.")
+    if exc.kind == "field_growing":
+        return (f"Field growing: {subject}", f"Crop needs time, not labour ({exc.detail}).")
     return (exc.kind.replace("_", " ").title(), exc.detail or "Needs attention.")
 
 
@@ -515,6 +530,12 @@ def _plan_for_exception(item: ExceptionStackItem) -> str:
         return "Staff open work"
     if item.kind == "missing_inputs":
         return "Unblock production"
+    if item.kind == "no_seed_grain":
+        return "Restock seed grain"
+    if item.kind == "node_depleted":
+        return "Relocate extraction"
+    if item.kind == "field_growing":
+        return "Wait for the harvest"
     if item.kind == "skill_mismatch":
         return "Fix role mismatch"
     return f"Handle {item.title.lower()}"

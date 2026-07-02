@@ -14,7 +14,7 @@ way to bake bread still starves (a real fail state stays reachable for later).
 
 import unittest
 
-from agent_town import buildings, economy, engine, governor, mood, pawns
+from agent_town import buildings, economy, engine, governor, mood, pawns, world
 from agent_town.civilization import create_default_civilization
 from agent_town.civilization_view import exception_stack_items, governor_card_summary
 from agent_town.core import FactionState, Good, NEED_FOOD, NEED_WATER, Pawn
@@ -40,6 +40,7 @@ class ProductionCarryoverTests(unittest.TestCase):
         )
         state.pawns["p"] = pawn
         forester.staffed_by.append("p")
+        state.resource_nodes.append(world.ResourceNode(Good.LOGS, 500, 1, 1))
 
         # One hour alone produces nothing, but the work is banked (not lost).
         economy.production_tick(state)
@@ -177,13 +178,21 @@ class VisionBoundaryTests(unittest.TestCase):
         self.assertGreater(economy.average_mood(state), 55.0)
 
     def test_bakery_less_civ_still_starves(self):
-        # A fail state must stay reachable: with no bakery, no bread can ever be
-        # made, so the reserve empties and pawns go hungry (later slices turn this
-        # into an actual death + documented run-end).
+        # A fail state must stay reachable: with no bakery and no governor
+        # response, no bread can ever be made, so the reserve empties and pawns
+        # go hungry (later slices turn this into an actual death + documented
+        # run-end). The governor here is deliberately inert - under the real
+        # FallbackGovernor the dig-out now rebuilds a Bakery and the civ
+        # recovers (test_dig_out pins that), which is exactly the crisis line's
+        # "escapable with good governance, fatal without".
+        class InertGovernor:
+            def decide(self, context):
+                return []
+
         state = create_default_civilization()
         for bid in [b.id for b in state.buildings.values() if b.kind == "Bakery"]:
             del state.buildings[bid]
-        engine.run_days(state, governor.FallbackGovernor(), days=10)
+        engine.run_days(state, InertGovernor(), days=10)
 
         self.assertEqual(state.stockpile.counts.get(Good.BREAD, 0), 0)
         avg_food = economy.average_need(state, NEED_FOOD)

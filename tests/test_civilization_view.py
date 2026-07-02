@@ -189,8 +189,11 @@ class WorkGridTests(unittest.TestCase):
         state = civilization.create_default_civilization()
         state.buildings.pop("waterwell1")
         engine.step_hour(state)
-        # Removing the well leaves 12 pawns for 11 legal slots, so one stays idle.
-        self.assertEqual(idle_pawn_count(state), 1)
+        # Removing the well leaves 12 pawns for 11 slots (one idle), and
+        # physical sourcing frees the three farmers whose staggered fields are
+        # still growing (a growing field is time, not work) - so four pawns
+        # honestly have no legal job this hour.
+        self.assertEqual(idle_pawn_count(state), 4)
 
 
 class ViewerLayoutTests(unittest.TestCase):

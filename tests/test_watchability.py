@@ -97,7 +97,10 @@ class ExceptionAgeTests(unittest.TestCase):
         state = self._blocked_state()
         tracker = ExceptionAgeTracker()
         tracker.observe(state)
-        sig = next(iter(tracker.ages))
+        # Pick a problem the fresh civ below does NOT share (a fresh civ now
+        # carries field_growing narration from day 0, so any of those
+        # signatures would keep aging straight through the "cleared" hour).
+        sig = next(s for s in sorted(tracker.ages) if s.startswith("missing_inputs"))
         # The problem disappears for an hour...
         tracker.ages.pop(sig)
         empty_state = civilization.create_default_civilization()  # no exceptions pre-step

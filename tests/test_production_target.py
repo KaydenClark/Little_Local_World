@@ -11,7 +11,7 @@ target idles the building (no inputs consumed), and the full governor lever path
 import unittest
 
 from agent_town import buildings, economy, governor
-from agent_town.core import FactionState, Good, GovernorAction, Pawn, Stockpile
+from agent_town.core import FactionState, Good, GovernorAction, Pawn, ResourceNode, Stockpile
 
 
 def worker(pawn_id: str, skill: str, level: int = 10) -> Pawn:
@@ -38,6 +38,9 @@ def civ_with(building, pawn, *, time_of_day: int = 8, stock: dict | None = None)
     state.pawns = {pawn.id: pawn}
     if stock is not None:
         state.stockpile = Stockpile(dict(stock))
+    # Physical sourcing: extractors draw from real nodes, so the lever tests get
+    # an ample stand of trees - the target, not the source, is under test here.
+    state.resource_nodes.append(ResourceNode(Good.LOGS, 500, 1, 1))
     return state
 
 
