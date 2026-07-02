@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from collections import deque
 from dataclasses import dataclass, field
 
 import pygame
@@ -296,6 +297,11 @@ class ExceptionStackItem:
     title: str
     cause: str
     subject: str = ""
+    # How many consecutive sim-hours this exact problem has been on the stack
+    # (0 = unknown/new). Rendered so a warning that has screamed unchanged for
+    # five days reads as chronic instead of urgent (review P-1: the cry-wolf
+    # stack taught viewers that warnings are decorative).
+    age_hours: int = 0
 
 
 @dataclass(frozen=True)
@@ -387,7 +393,41 @@ def _exception_title_and_cause(state: FactionState, exc: CivilizationException) 
     return (exc.kind.replace("_", " ").title(), exc.detail or "Needs attention.")
 
 
-def exception_stack_items(state: FactionState) -> list[ExceptionStackItem]:
+def exception_signature(exc: CivilizationException) -> str:
+    """Stable identity of one problem across hours (for age tracking)."""
+    return f"{exc.kind}:{exc.building_id or ''}:{exc.pawn_id or ''}"
+
+
+@dataclass
+class ExceptionAgeTracker:
+    """Tracks how many consecutive sim-hours each exception has persisted.
+
+    Observed once per engine hour by the viewer; an exception that disappears
+    re-ages from 1 if it comes back, so the stack distinguishes a chronic
+    condition ("blocked 2d 4h") from a fresh one (review P-1).
+    """
+
+    ages: dict[str, int] = field(default_factory=dict)
+
+    def observe(self, state: FactionState) -> dict[str, int]:
+        signatures = {exception_signature(exc) for exc in build_exception_queue(state)}
+        self.ages = {sig: self.ages.get(sig, 0) + 1 for sig in signatures}
+        return dict(self.ages)
+
+
+def exception_age_text(hours: int) -> str:
+    """Compact age tag for an exception row ('' hides brand-new ones)."""
+    if hours <= 1:
+        return ""
+    if hours < 24:
+        return f"{hours}h"
+    days, rem = divmod(hours, 24)
+    return f"{days}d {rem}h" if rem else f"{days}d"
+
+
+def exception_stack_items(
+    state: FactionState, ages: dict[str, int] | None = None
+) -> list[ExceptionStackItem]:
     """Active governor exceptions sorted for the observer stack."""
     items: list[ExceptionStackItem] = []
     for exc in build_exception_queue(state):
@@ -399,6 +439,7 @@ def exception_stack_items(state: FactionState) -> list[ExceptionStackItem]:
                 title=title,
                 cause=cause,
                 subject=_exception_subject(state, exc),
+                age_hours=(ages or {}).get(exception_signature(exc), 0),
             )
         )
     return sorted(
@@ -691,6 +732,8 @@ def render_civilization(
     speed_multiplier: int = 1,
     alert: tuple[str, int] | None = None,
     governor_summary: GovernorCardSummary | None = None,
+    flows_today: dict[Good, int] | None = None,
+    exception_ages: dict[str, int] | None = None,
 ) -> None:
     """Draw the whole civilization (tiles, nodes, buildings, pawns, HUD) onto ``surface``."""
     camera = camera or Camera()
@@ -734,8 +777,12 @@ def render_civilization(
         _draw_construction_site(surface, site, assets, font, camera, ox, oy, base_ts)
 
     storage_pressure = _storage_pressure_level(economy.storage_fullness(state))
+    exception_badges = building_exception_badges(state)
     for building in sorted(state.buildings.values(), key=lambda b: (b.y, b.x, b.id)):
-        _draw_building(surface, building, assets, font, camera, ox, oy, base_ts, storage_pressure)
+        _draw_building(
+            surface, building, assets, font, camera, ox, oy, base_ts, storage_pressure,
+            exception_badge=exception_badges.get(building.id),
+        )
 
     pawn_keys = sorted(assets.pawns_scaled)
     for pawn in state.pawns.values():
@@ -760,9 +807,12 @@ def render_civilization(
 
     surface.set_clip(previous_clip)
     summary = governor_summary or governor_card_summary(state)
-    _draw_macro_strip(surface, font, state, status_line, summary, alert, layout.macro)
+    _draw_macro_strip(surface, font, state, status_line, summary, alert, layout.macro, flows_today)
     _draw_pawn_roster(surface, state, assets, font, selected_pawn_id, layout.roster)
-    _draw_right_column(surface, state, font, selected_pawn_id, layout.right, active_tab=inspector_tab)
+    _draw_right_column(
+        surface, state, font, selected_pawn_id, layout.right,
+        active_tab=inspector_tab, exception_ages=exception_ages,
+    )
     if active_panel and layout.command_panel is not None:
         _draw_command_panel(
             surface,
@@ -878,6 +928,7 @@ def _draw_building(
     oy: int,
     base_ts: int,
     storage_pressure: str | None = None,
+    exception_badge: str | None = None,
 ) -> None:
     sprite = _scale_for_camera(
         assets.buildings_scaled[BUILDING_SPRITE.get(building.kind, DEFAULT_BUILDING_SPRITE)],
@@ -888,11 +939,26 @@ def _draw_building(
     surface.blit(sprite, (cx - sprite.get_width() // 2, bottom - sprite.get_height()))
     if building.kind == "Storehouse" and storage_pressure is not None:
         _draw_storage_badge(surface, cx + sprite.get_width() // 2 - 12, bottom - sprite.get_height() + 10, storage_pressure, camera)
+    if exception_badge is not None:
+        _draw_exception_badge(
+            surface, font, cx - sprite.get_width() // 2 + 2,
+            bottom - sprite.get_height() + 10, exception_badge, camera,
+        )
 
     if camera.zoom >= 0.85:
         staffed = len(building.staffed_by)
         label = f"{building.kind} {staffed}/{building.job_slots}"
         _draw_label(surface, font, label, cx, bottom - sprite.get_height() - 2)
+
+
+def _draw_exception_badge(surface: pygame.Surface, font, x: int, y: int, severity: str, camera: Camera) -> None:
+    """A '!' badge on a building with an active warn/critical exception (P-7)."""
+    color = SEVERITY_COLOR.get(severity, NEED_WARN)
+    radius = max(7, round(9 * camera.zoom))
+    pygame.draw.circle(surface, (16, 18, 18), (x, y), radius)
+    pygame.draw.circle(surface, color, (x, y), radius, 2)
+    glyph = font.render("!", True, color)
+    surface.blit(glyph, (x - glyph.get_width() // 2, y - glyph.get_height() // 2))
 
 
 def _draw_storage_badge(surface: pygame.Surface, x: int, y: int, pressure: str, camera: Camera) -> None:
@@ -1176,26 +1242,44 @@ def _draw_stat_chip(
     return rect
 
 
-def _draw_macro_strip(
-    surface: pygame.Surface,
-    font: pygame.font.Font,
-    state: FactionState,
-    status_line: tuple[str, tuple[int, int, int]] | None,
-    summary: GovernorCardSummary,
-    alert: tuple[str, int] | None,
-    rect: pygame.Rect,
-) -> None:
-    """Age/Townsmen-style macro strip: stable counts and one governor summary."""
-    pygame.draw.rect(surface, HUD_BG, rect)
-    pygame.draw.line(surface, PANEL_BORDER, rect.bottomleft, rect.bottomright, 1)
+@dataclass
+class GoodsFlowTracker:
+    """Rolling last-24-sim-hours net production per good.
 
-    x = rect.x + MARGIN
-    y = rect.y + 9
+    Reads the Slice C conservation journal (``Stockpile.flow_in``) once per
+    engine hour, so the macro strip can show goods *flowing* ("Grain 0 +38")
+    instead of just standing stock - a just-in-time chain at stock 0 stops
+    reading as "bread from nothing" (review P-2).
+    """
+
+    window: int = 24
+    history: deque = field(default_factory=deque)
+
+    def observe(self, state: FactionState) -> dict[Good, int]:
+        snapshot = dict(state.stockpile.flow_in)
+        self.history.append(snapshot)
+        while len(self.history) > self.window + 1:
+            self.history.popleft()
+        base = self.history[0]
+        return {
+            good: snapshot.get(good, 0) - base.get(good, 0)
+            for good in snapshot
+            if snapshot.get(good, 0) - base.get(good, 0) > 0
+        }
+
+
+def macro_strip_chips(
+    state: FactionState,
+    alert: tuple[str, int] | None = None,
+    flows_today: dict[Good, int] | None = None,
+) -> list[str]:
+    """The macro-strip chip texts, in draw order (pure - unit-testable)."""
     chips = [
         f"Day {state.day}",
         f"{state.time_of_day:02d}:00",
         f"Pop {len(state.pawns)}",
         f"Idle {idle_pawn_count(state)}",
+        f"Mood {round(economy.average_mood(state))}",
         f"Coin {state.coin}",
     ]
     # Storage fullness readout (integration truth-loop): only when storage is
@@ -1204,10 +1288,74 @@ def _draw_macro_strip(
     storage = economy.storage_fullness(state)
     if storage is not None:
         chips.append(f"Storage {round(storage * 100)}%")
-    chips.extend(f"{label} {state.stockpile.counts.get(good, 0)}" for label, good in HUD_GOODS)
+    for label, good in HUD_GOODS:
+        chip = f"{label} {state.stockpile.counts.get(good, 0)}"
+        produced = (flows_today or {}).get(good, 0)
+        if produced > 0:
+            chip = f"{chip} +{produced}"
+        chips.append(chip)
     alert_severity, alert_count = alert if alert else (None, 0)
     if alert_count:
         chips.append(f"Alerts {alert_count}")
+    return chips
+
+
+def governor_macro_text(
+    summary: GovernorCardSummary,
+    status_line: tuple[str, tuple[int, int, int]] | None,
+) -> str:
+    """The macro strip's governor summary, attribution first.
+
+    Who-is-driving (fallback vs model) leads the string so a narrow window
+    truncates the plan text, never the attribution (review P-6: the shipped
+    proofs' own widths cut exactly the model-vs-fallback field).
+    """
+    text = f"Governor: {summary.phase} | {summary.plan} | {summary.confidence}%"
+    status_text = (status_line or ("", None))[0]
+    detail = status_text.replace("Governor: ", "")
+    if detail:
+        text = f"{text} | {detail}"
+    return text
+
+
+def building_exception_badges(state: FactionState) -> dict[str, str]:
+    """Worst active exception severity per building id (warn/critical only).
+
+    Powers truthful map badges (review P-7): a building blocked on inputs or
+    left unstaffed carries a visible badge at the moment the problem exists,
+    instead of the menu claiming badges the map never draws.
+    """
+    badges: dict[str, str] = {}
+    for exc in build_exception_queue(state):
+        if not exc.building_id or exc.building_id not in state.buildings:
+            continue
+        severity = _exception_severity(exc)
+        if severity not in (health.WARN, health.CRITICAL):
+            continue
+        current = badges.get(exc.building_id)
+        if current is None or EXCEPTION_SEVERITY_RANK[severity] < EXCEPTION_SEVERITY_RANK[current]:
+            badges[exc.building_id] = severity
+    return badges
+
+
+def _draw_macro_strip(
+    surface: pygame.Surface,
+    font: pygame.font.Font,
+    state: FactionState,
+    status_line: tuple[str, tuple[int, int, int]] | None,
+    summary: GovernorCardSummary,
+    alert: tuple[str, int] | None,
+    rect: pygame.Rect,
+    flows_today: dict[Good, int] | None = None,
+) -> None:
+    """Age/Townsmen-style macro strip: stable counts and one governor summary."""
+    pygame.draw.rect(surface, HUD_BG, rect)
+    pygame.draw.line(surface, PANEL_BORDER, rect.bottomleft, rect.bottomright, 1)
+
+    x = rect.x + MARGIN
+    y = rect.y + 9
+    chips = macro_strip_chips(state, alert, flows_today)
+    alert_severity = alert[0] if alert else None
 
     status_w = min(360, max(240, rect.width // 3))
     chip_limit = rect.right - status_w - MARGIN
@@ -1222,10 +1370,8 @@ def _draw_macro_strip(
         drawn = _draw_stat_chip(surface, font, chip, (x, y))
         x = drawn.right + 6
 
-    status_text, status_color = status_line or ("Governor: fallback autopilot", HUD_MUTED)
-    gov_text = f"Governor: {summary.plan} | {summary.confidence}%"
-    if status_text:
-        gov_text = f"{gov_text} | {status_text.replace('Governor: ', '')}"
+    status_color = (status_line or ("", HUD_MUTED))[1] or HUD_MUTED
+    gov_text = governor_macro_text(summary, status_line)
     alert_color = SEVERITY_COLOR.get(alert_severity, status_color)
     status_x = chip_limit + 8
     _draw_text(surface, font, gov_text, alert_color, (status_x, y + 4), rect.right - status_x - MARGIN)
@@ -1347,13 +1493,14 @@ def _draw_right_column(
     rect: pygame.Rect,
     *,
     active_tab: str = "needs",
+    exception_ages: dict[str, int] | None = None,
 ) -> None:
     """Docked right column: urgent exceptions above selected-object detail."""
     pygame.draw.rect(surface, INSPECTOR_BG, rect)
     pygame.draw.line(surface, INSPECTOR_BORDER, rect.topleft, rect.bottomleft, 1)
 
     exception_rect, inspector_rect = right_column_regions(rect)
-    _draw_exception_stack(surface, font, exception_stack_items(state), exception_rect)
+    _draw_exception_stack(surface, font, exception_stack_items(state, exception_ages), exception_rect)
     _draw_inspector(surface, state, font, selected_pawn_id, inspector_rect, active_tab=active_tab)
 
 
@@ -1685,7 +1832,15 @@ def _draw_exception_stack(
     for item in rows:
         color = SEVERITY_COLOR.get(item.severity, INSPECTOR_TEXT)
         pygame.draw.circle(surface, color, (x + 5, y + 7), 4)
-        _draw_text(surface, font, item.title, INSPECTOR_TEXT, (x + 16, y - 1), width - 28)
+        age = exception_age_text(item.age_hours)
+        title_w = width - 28
+        if age:
+            # Persistence tag (review P-1): a problem that has sat unchanged for
+            # days reads as chronic, not as a fresh alarm.
+            age_glyph = font.render(age, True, INSPECTOR_MUTED)
+            surface.blit(age_glyph, (rect.right - 10 - age_glyph.get_width(), y - 1))
+            title_w -= age_glyph.get_width() + 8
+        _draw_text(surface, font, item.title, INSPECTOR_TEXT, (x + 16, y - 1), title_w)
         _draw_text(surface, font, item.cause, INSPECTOR_MUTED, (x + 16, y + 18), width - 28)
         y += 42
     remaining = len(items) - len(rows)
@@ -2185,13 +2340,18 @@ def _draw_research_panel(surface: pygame.Surface, state: FactionState, font: pyg
 
 
 def menu_speed_button_rects(rect: pygame.Rect) -> dict[int, pygame.Rect]:
-    """Visible Menu speed controls keyed by multiplier."""
+    """Visible Menu speed controls keyed by multiplier.
+
+    The buttons occupy the Speed row's value slot plus the spacer row beneath it
+    (rows are 20px, buttons 24px), so they never paint over another row's text
+    (review F1.6: they used to sit on the Plan row).
+    """
     panel = rect.inflate(-MARGIN * 2, -MARGIN * 2)
     x = panel.x + 142
-    y = panel.y + 8 + 2 * 27
+    y = panel.y + 36 + 2 * 20  # title block (36) + two rows above the Speed row
     buttons: dict[int, pygame.Rect] = {}
     for speed in VIEW_SPEEDS:
-        buttons[speed] = pygame.Rect(x, y - 3, 48, 24)
+        buttons[speed] = pygame.Rect(x, y - 2, 48, 24)
         x += 56
     return buttons
 
@@ -2208,11 +2368,12 @@ def _draw_menu_panel(
     rows = [
         ("Governor", status_text, status_color),
         ("Plan", f"{summary.plan} ({summary.confidence}% confidence)", INSPECTOR_TEXT),
-        ("Speed", f"{speed_multiplier}x watch speed", INSPECTOR_TEXT),
+        ("Speed", "", INSPECTOR_TEXT),  # value slot + spacer row below hold the buttons
+        ("", "", None),
         ("Keyboard", "Esc closes panels, Q quits, Tab selects next pawn, L toggles model", INSPECTOR_TEXT),
         ("Camera", "WASD/arrows pan, mouse wheel or +/- zoom", INSPECTOR_TEXT),
         ("Proof", "UI screenshots are saved under docs/proof/ui_navigation/", HUD_MUTED),
-        ("Overlays", "Jobs/needs/pathing filters are planned; current map shows critical badges", HUD_MUTED),
+        ("Overlays", "Map badges: '!' blocked/unstaffed buildings, idle tags, danger rings, storage pressure", HUD_MUTED),
     ]
     _draw_panel_lines(surface, font, rect, "Menu - run controls and viewer status", rows)
     for speed, button in menu_speed_button_rects(rect).items():
@@ -2338,6 +2499,12 @@ class CivilizationViewer:
         self.logger = telemetry.RunLogger(telemetry.MultiSink(log_sinks))
         self._step_governor = telemetry.TelemetryGovernor(self.governor)
         self.logger.log_run_start(self.state, self._step_governor, source="viewer")
+        # Watchability trackers (review Slice E): rolling per-good production for
+        # the macro strip's flow chips, and per-exception persistence ages.
+        self.flow_tracker = GoodsFlowTracker()
+        self.flows_today: dict[Good, int] = self.flow_tracker.observe(self.state)
+        self.age_tracker = ExceptionAgeTracker()
+        self.exception_ages: dict[str, int] = self.age_tracker.observe(self.state)
         self.assets = None  # set after the display mode exists
 
         grid = self.state.grid
@@ -2557,6 +2724,8 @@ class CivilizationViewer:
     def _step_and_log(self) -> None:
         result = engine.step_hour(self.state, self._step_governor)
         _snap, _decision, events = self.logger.log_hour(self.state, result, self._step_governor)
+        self.flows_today = self.flow_tracker.observe(self.state)
+        self.exception_ages = self.age_tracker.observe(self.state)
         # Latch the worst severity and tally unacknowledged warn/critical events
         # so the HUD alert persists until the History feed is opened.
         new_alerts = sum(1 for e in events if e.get("severity") in (health.WARN, health.CRITICAL))
@@ -2590,6 +2759,8 @@ class CivilizationViewer:
                 self._step_governor,
                 last_actions=self._step_governor.last_actions,
             ),
+            flows_today=self.flows_today,
+            exception_ages=self.exception_ages,
         )
         pygame.display.flip()
 
