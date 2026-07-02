@@ -60,6 +60,13 @@ HUNGER_HUNGRY_VALUE = -6.0
 HUNGER_RAVENOUS_VALUE = -12.0
 HUNGER_MALNOURISHED_VALUE = -20.0
 
+# A fully-starved pawn (food == 0) keeps this fraction of its work rather than
+# dropping to zero. RimWorld colonists still labour (slowly) while starving, and
+# a hard zero here made a food shortage mathematically unrecoverable: no food ->
+# no work -> no food. Paired with continuous production (economy.production_tick
+# banks fractional work), this floor keeps a slow dig-out path open.
+HUNGER_STARVING_FLOOR = 0.15
+
 # Water is the first Build-2 essential need. Values are deliberately close to
 # hunger so the mood ledger explains drought pressure without adding lethal
 # dehydration in this slice.
@@ -100,7 +107,7 @@ def hunger_productivity_factor(pawn: Pawn) -> float:
     """Direct work multiplier from hunger state."""
     food = pawn.needs.get(NEED_FOOD, 1.0)
     if food <= 0.0:
-        return 0.0
+        return HUNGER_STARVING_FLOOR
     if food < HUNGER_RAVENOUS_BAND:
         return 0.25
     if food < HUNGER_FED_BAND:

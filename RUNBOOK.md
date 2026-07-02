@@ -94,6 +94,8 @@ Expected result:
 - A civilization map appears.
 - The engine advances simulated hours over time.
 - Civilization sprites appear for terrain, buildings, resources, and pawns.
+- The top macro strip shows day/time, population, idle count, coin, stockpiles,
+  alert count, and a compact Governor status.
 - A top pawn roster shows colonist portraits, names, mood dots, and selection.
 - Mouse wheel, `+`, and `-` zoom.
 - `WASD` or arrow keys pan.
@@ -107,22 +109,27 @@ Expected result:
   keep a double outline, and break/stress danger rings draw above selection.
 - Active construction sites render as translucent building ghosts with a
   footprint outline and progress bar.
-- The Civ stats panel shows Mood, Food, Water, Recreation, and Rest.
 - Pressing `L` connects to or disconnects from LM Studio/Ollama while the game is running.
 - The HUD shows local model state: disabled, idle, thinking, offline, or invalid.
-- A bottom-left Governor card stays visible with the current plan, phase,
-  bottleneck, confidence, last policy change, and top exception.
-- A right-edge exception stack lists the active governor exceptions by severity,
-  including the likely cause for the highest-priority problems.
-- The `Work` button opens the work-priority grid; the `History` button opens a
-  live run-event feed. The remaining command buttons (`Architect`, `Assign`,
-  `Research`, `Menu`) are still placeholders.
+- The right column lists active governor exceptions by severity, then shows the
+  selected pawn/building inspector with needs, skills, and job rationale.
+- The inspector tabs are clickable: `Log` shows the last work decision and
+  rejected jobs, `Gear` states the current inventory gap, `Social` shows traits
+  and wants, `Bio` shows schedule/position/skills, `Needs` shows need bars and
+  thoughts, and `Health` shows status/risk.
+- The bottom strip is navigation only. `Architect`, `Work`, `Assign`,
+  `Research`, `History`, and `Menu` each open a real docked panel. Clicking the
+  same button closes it; opening another panel closes the previous one. `Esc`
+  closes an open panel before quitting.
+- The map remains reserved for the town, selection labels, construction
+  progress, and critical badges; persistent explanation text lives in panels.
 
 Work-priority arbiter manual check (build-2 step 1):
 
-- Click the bottom-strip `Work` button (or press `Esc` to close it). A grid of
-  pawns (rows) by work types (columns) appears, each cell showing the effective
-  priority `1`-`4` (blank = disabled), brightest at `1`.
+- Click the bottom-strip `Work` button (or press `Esc` to close it). A docked
+  command panel opens with a grid of pawns (rows) by work types (columns), each
+  cell showing the effective priority `1`-`4` (blank = disabled), brightest at
+  `1`. The map and right inspector remain visible above it.
 - Click a cell to cycle its priority (`1` highest .. `4` lowest .. blank off).
   Within a second or two the pawn re-routes: disable a baker's `Bake` and set its
   `Farm` to `1`, and watch it leave the Bakery and walk to a Farm.
@@ -142,15 +149,52 @@ Research spine manual check (truth-loop slice):
 - For a headless proof, run
   `.\.venv\Scripts\python.exe -m unittest tests.test_research_spine`.
 
+UI navigation manual check:
+
+- Click `Architect`: confirm build options show counts, slots, cost, missing
+  materials, and active construction blockers without covering the map.
+- Click `Assign`: confirm the left column selects pawns and the right column
+  lists job slots. Open/current rows pin the selected pawn as a forced override;
+  occupied rows select the worker holding the slot for inspection.
+- Click `Research`: confirm current research plus disabled future entries with
+  reason text.
+- Click `History`: confirm recent decisions and events appear, any alert chip is
+  acknowledged, and clicking a Governor decision opens proposed/applied/rejected
+  policy details with after-state goods/needs.
+- Click `Menu`: confirm run controls, local model status, proof path, overlay
+  status, and `1x`/`8x`/`20x` watch-speed buttons appear. Click `20x`, reopen
+  `History`, and confirm the History title includes `(20x)`.
+- Click each button twice and confirm the second click closes the panel. Press
+  `Esc` with a panel open and confirm the app stays open with the panel closed.
+
 Water essential manual check (build-2 water slice):
 
 - Start the viewer and confirm the default civilization has a Water Well,
-  Water in the HUD stockpile chips, and a Water row in the Civ stats panel.
+  Water in the top macro stockpile chips, and Water visible in the selected-pawn
+  needs inspector.
 - Open the `Work` grid and confirm `Water` is a work type. A water-skilled pawn
   should staff the Water Well under the arbiter.
 - For a headless proof, run `.\.venv\Scripts\python.exe -m unittest tests.test_water`.
   It covers Water Well production, drinking, days of cover, and the `low_water`
   governor exception.
+
+Starvation-escapability manual check (crisis/response Slice 0):
+
+- The default civilization must now *sustain* under the fallback governor: step it
+  many days (or run `.\.venv\Scripts\python.exe -m unittest tests.test_food`) and
+  confirm bread stays on hand and pawns stay fed - the old frozen death spiral
+  (production stuck at zero once food hit 0) is gone.
+- A fail state must stay reachable: with the bakeries removed no bread can be made
+  and the civ still starves toward empty (later slices turn this into an actual
+  death + documented run-end).
+- For a headless proof, run `.\.venv\Scripts\python.exe -m unittest tests.test_food`.
+  It covers fractional production carry-over, the hunger work floor,
+  `food_days_of_cover`, the `low_food` governor exception, and both boundary runs
+  (default civ sustains, bakery-less civ starves).
+- Storage-cap interaction: the default civ seeds surplus-producer ceilings (water,
+  logs, planks, stone) so an uncapped producer cannot flood the finite stockpile
+  and crowd the food chain out; `.\.venv\Scripts\python.exe -m unittest tests.test_dig_out`
+  proves the healthy civ never over-builds and a marginal civ digs out and recovers.
 
 Storage-cap manual check (Paper 4 storage slice):
 
@@ -194,15 +238,21 @@ Map readability manual check (Paper 5 current-systems slice):
 Live viewer monitoring:
 
 - Run the app and click `History` in the bottom strip (or press `Esc` to close).
-  The panel shows recent structured events newest-first from an in-memory ring:
-  completed buildings, the food staple depleting, sustained supply stalls, pawn
-  breaks, mass idle, mood dips/collapse, LLM dropped decisions, and invariant
-  violations.
+  The panel shows recent structured decisions and events newest-first from an
+  in-memory ring. Click a Governor decision to inspect source/model state,
+  proposed policy payloads, applied payloads, rejected payloads, completed
+  buildings, after-state goods/needs, and the compact causality map for goods,
+  jobs, and bottlenecks.
+- Event rows still include completed buildings, the food staple depleting,
+  sustained supply stalls, pawn breaks, mass idle, mood dips/collapse, LLM
+  dropped decisions, and invariant violations.
+- Use `Menu` to switch between `1x`, `8x`, and `20x` watch speed. A crisis proof
+  at 20x should still show the selected Governor decision audit in `History`.
 - When warn/critical events occur the HUD shows a coloured alert chip with a
   count and the `History` button glows; opening the feed acknowledges them.
-- The Governor card and exception stack are live observer surfaces, not command
-  editors; use them to diagnose whether the current bottleneck is supply,
-  staffing, mood, model availability, or construction.
+- The macro Governor summary and right-side exception stack are live observer
+  surfaces, not command editors; use them to diagnose whether the current
+  bottleneck is supply, staffing, mood, model availability, or construction.
 - Live viewer runs also write a JSONL log under `logs\`; these are local proof
   artifacts and are git-ignored.
 
@@ -254,6 +304,21 @@ Expected result:
 - Smoke test exits without import or display errors.
 - Workbench validation passes.
 - Asset checks prove the civilization runtime sprites and provenance notes exist.
+
+Watchable proof (required for any behavior slice with a visible consequence):
+
+- A green suite is not proof the slice is watchable. Render a real frame of the
+  new behavior and inspect it before calling it done (see AGENTS.md "Watchability
+  Is Part Of Done"). Save proof frames under `docs\proof\<slice>\`.
+- Headless render recipe: `SDL_VIDEODRIVER=dummy`, build the state, call
+  `render_civilization(...)`, `pygame.image.save(...)`, then open the PNG.
+- If the slice touches the local model, confirm the model path actually ran (model
+  loaded in LM Studio, a non-fallback outcome). A fallback-only run uses no model
+  and no GPU and proves nothing about the LLM behavior.
+- For viewer navigation or placement work, render at least
+  `docs\proof\ui_navigation\default.png` plus one panel proof per changed command
+  panel, and refresh `docs\screenshots\current-state.png` when the default screen
+  changes.
 
 Scaling benchmark:
 

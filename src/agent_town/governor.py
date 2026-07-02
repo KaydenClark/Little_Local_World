@@ -20,7 +20,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any, Callable, Protocol
 
-from . import economy, pawns, schedule, work
+from . import buildings, economy, pawns, schedule, work
 from .core import (
     ACTION_ASSIGN_PAWN,
     ACTION_PLACE_BUILDING,
@@ -33,6 +33,7 @@ from .core import (
     Good,
     GovernorAction,
     JobRef,
+    NEED_FOOD,
     NEED_WATER,
 )
 from .llm import LLMClientError, LocalLLMClient, ModelDiscovery
@@ -46,6 +47,25 @@ LOW_WATER_COVER_DAYS = 1.0
 LOW_WATER_NEED = 0.35
 WATER_BUILDING_KIND = "Water Well"
 WATER_BUILD_LOCATION = (5, 5)
+# Food-chain expansion (the dig-out): during a shortage the governor grows more
+# food capacity, front of chain first, so a low-food civ visibly "plants more
+# wheat". Balanced ratio that feeds the bakeries, from the recipes (Farm -> 1
+# grain; Mill: 2 grain -> 1 flour; Bakery: 2 flour -> 4 bread): ~4 farms + 2 mills
+# per bakery. New buildings spread across a field area so ghosts do not stack.
+FOOD_CHAIN_KINDS = ("Farm", "Mill", "Bakery")
+FOOD_EXPANSION_ORIGIN = (2, 11)
+
+# Food shortage signal. Neither metric works alone: bread-days-of-cover twitches
+# on just-in-time eating bursts, and average nutrition craters every night because
+# synced pawns cannot eat while asleep - so a healthy, bread-rich civ still dips to
+# 0% saturation before breakfast. The honest signal is the *conjunction*: the pawns
+# are actually hungry AND the civ has no bread buffer to fix it. A healthy civ's
+# overnight dip has hungry pawns but a fat buffer, so it never fires; a real deficit
+# has both. (The hunger gate also samples cover during the stable overnight window,
+# dodging the daytime eating-burst noise.)
+LOW_FOOD_COVER_DAYS = 1.0
+LOW_FOOD_NEED = 0.5
+
 LABORATORY_BUILDING_KIND = "Laboratory"
 LABORATORY_BUILD_LOCATION = (7, 1)
 
@@ -54,6 +74,12 @@ RESCHEDULE_KINDS = ("unhappy_pawn", "pawn_breaking", "pawn_break")
 RESTORATIVE_SCHEDULE = "rest"
 ESSENTIAL_WORK_TYPES = frozenset(("water", "farming", "milling", "baking"))
 LOWEST_SAFE_MODEL_ESSENTIAL_PRIORITY = 2
+# The survival chain the model may not throttle via a production cap. Capping any
+# of these at/near zero idles a food/water building (set_production_target is a
+# ceiling: production halts once stock reaches the target), so the model is barred
+# from targeting them at all - it grows food via place_building / priorities, not
+# by capping essentials.
+ESSENTIAL_GOODS = frozenset((Good.GRAIN, Good.FLOUR, Good.BREAD, Good.WATER))
 BUILD_ORDER: tuple[tuple[str, int, int], ...] = (
     ("Forester", 1, 1),
     ("Sawmill", 2, 1),
@@ -95,6 +121,7 @@ def build_faction_summary(state: FactionState) -> dict[str, Any]:
         "research_target": state.research_target,
         "research_points": state.research_points,
         "water_days_of_cover": round(economy.water_days_of_cover(state), 3),
+        "food_days_of_cover": round(economy.food_days_of_cover(state), 3),
         "stockpile": {good.value: count for good, count in state.stockpile.counts.items()},
     }
 
@@ -182,6 +209,19 @@ def build_exception_queue(state: FactionState) -> list[CivilizationException]:
                 )
 
     if state.pawns:
+        food_cover = economy.food_days_of_cover(state)
+        food_need = economy.average_need(state, NEED_FOOD)
+        # Conjunction (see LOW_FOOD_* notes): fire only when pawns are hungry AND
+        # the bread buffer is gone, so an overnight saturation dip in a bread-rich
+        # civ never trips it and the dig-out does not manically over-build.
+        if food_need < LOW_FOOD_NEED and food_cover < LOW_FOOD_COVER_DAYS:
+            exceptions.append(
+                CivilizationException(
+                    "low_food",
+                    detail=f"{round(food_cover, 2)} days cover, {round(food_need * 100)}% need",
+                )
+            )
+
         water_cover = economy.water_days_of_cover(state)
         water_need = economy.average_need(state, NEED_WATER)
         if water_cover < LOW_WATER_COVER_DAYS or water_need < LOW_WATER_NEED:
@@ -287,6 +327,12 @@ def validate_action(state: FactionState, action: GovernorAction) -> bool:
     if action.kind == ACTION_PLACE_BUILDING:
         if not action.building_kind or action.x is None or action.y is None:
             return False
+        # An LLM-sourced building_kind is untrusted input: a live model can
+        # propose a plausible but nonexistent kind (seen in practice: "bread
+        # storage"), which would otherwise reach construction and crash on the
+        # first building_def lookup. Reject it here instead.
+        if not buildings.is_known_kind(action.building_kind):
+            return False
         if state.grid is not None:
             return state.grid.in_bounds(action.x, action.y)
         return True
@@ -305,10 +351,11 @@ def apply_actions(state: FactionState, actions: list[GovernorAction]) -> list[Go
             continue
         if action.kind == ACTION_ASSIGN_PAWN:
             building = state.buildings[action.building_id]
-            building.staffed_by.append(action.pawn_id)
             # assign_pawn is now the forced override (the arbiter's top lane): pin
             # the pawn here so the work arbiter keeps it instead of reassigning.
             pawn = state.pawns[action.pawn_id]
+            work.release_staff_references(state, pawn.id, keep_building_id=building.id)
+            building.staffed_by.append(action.pawn_id)
             pawn.assignment = JobRef(action.building_id, action.role)
             pawn.forced_assignment = JobRef(action.building_id, action.role)
             applied.append(action)
@@ -343,6 +390,43 @@ def apply_actions(state: FactionState, actions: list[GovernorAction]) -> list[Go
     return applied
 
 
+def food_expansion_action(
+    buildings: list[dict[str, Any]], construction: list[dict[str, Any]]
+) -> GovernorAction | None:
+    """The dig-out: which food building to add during a shortage, or ``None``.
+
+    One building at a time - if a food-chain building is already under
+    construction, wait for it rather than queueing a pile. Otherwise grow the
+    stage that is short of the ratio that feeds the bakeries, front of chain first
+    so a shortage reads as "plant more wheat": no bakery at all -> Bakery; too few
+    farms for the bakeries -> Farm; too few mills -> Mill; otherwise raise the
+    output ceiling with another Bakery. This is *additional* capacity (duplicates
+    allowed), which ``BUILD_ORDER`` never adds - it only fills missing kinds.
+    """
+    if any(site.get("building_kind") in FOOD_CHAIN_KINDS for site in construction):
+        return None
+    counts = {kind: 0 for kind in FOOD_CHAIN_KINDS}
+    for building in buildings:
+        if building.get("kind") in counts:
+            counts[building["kind"]] += 1
+    farms, mills, bakeries = counts["Farm"], counts["Mill"], counts["Bakery"]
+    if bakeries == 0:
+        kind = "Bakery"
+    elif farms < 4 * bakeries:
+        kind = "Farm"
+    elif mills < 2 * bakeries:
+        kind = "Mill"
+    else:
+        # Already at the balanced ratio for the bakeries on hand. Adding more would
+        # just churn, so stop growing - a lingering shortage here is a staffing or
+        # productivity problem, not a building-count one.
+        return None
+    total = farms + mills + bakeries
+    x = FOOD_EXPANSION_ORIGIN[0] + (total % 8) * 2
+    y = FOOD_EXPANSION_ORIGIN[1] + (total // 8)
+    return GovernorAction.place_building(kind, x, y)
+
+
 class FallbackGovernor:
     """Deterministic policy governor: restorative reschedule, next-building.
 
@@ -360,16 +444,33 @@ class FallbackGovernor:
         buildings = context.get("buildings", [])
         construction = context.get("construction", [])
         exceptions = context.get("exceptions", [])
+        low_food = any(exc["kind"] == "low_food" for exc in exceptions)
 
-        # 1) Move unhappy / breaking pawns onto a restorative schedule.
+        # 1) Move unhappy / breaking pawns onto a restorative schedule - unless the
+        # civ is short on food. The rest schedule has zero work hours and does not
+        # restore the food reserve, so resting a hungry pawn cannot lift the mood
+        # (the drag is hunger) and only pulls a producer off the food chain,
+        # deepening the shortage. During a food crisis, keep everyone working so
+        # the chain can recover; the food response owns that lane.
         rescheduled: set[str] = set()
-        for exc in exceptions:
-            pawn_id = exc.get("pawn_id")
-            if exc["kind"] in RESCHEDULE_KINDS and pawn_id and pawn_id not in rescheduled:
-                actions.append(GovernorAction.set_schedule(pawn_id, RESTORATIVE_SCHEDULE))
-                rescheduled.add(pawn_id)
+        if not low_food:
+            for exc in exceptions:
+                pawn_id = exc.get("pawn_id")
+                if exc["kind"] in RESCHEDULE_KINDS and pawn_id and pawn_id not in rescheduled:
+                    actions.append(GovernorAction.set_schedule(pawn_id, RESTORATIVE_SCHEDULE))
+                    rescheduled.add(pawn_id)
 
-        # 2) Ask the engine to place the next missing build-1 chain link. The
+        # 2) The dig-out: on a food shortage, grow more food capacity (plant more
+        # wheat) before anything else. Food is the survival staple, so it outranks
+        # water and the generic build order. The engine/Track A owns the cost check
+        # and construction realization.
+        if low_food:
+            expansion = food_expansion_action(buildings, construction)
+            if expansion is not None:
+                actions.append(expansion)
+                return actions
+
+        # 3) Ask the engine to place the next missing build-1 chain link. The
         # engine/Track A owns cost checks and construction-site realization.
         existing = {building["kind"] for building in buildings}
         pending = {site["building_kind"] for site in construction}
@@ -537,33 +638,97 @@ def parse_action_list(payload: dict[str, Any]) -> list[GovernorAction]:
     return actions
 
 
-def filter_model_actions(context: dict[str, Any], actions: list[GovernorAction]) -> list[GovernorAction]:
-    """Drop LLM-only policy actions that can shut down survival essentials.
+def partition_model_actions(
+    context: dict[str, Any], actions: list[GovernorAction]
+) -> tuple[list[GovernorAction], list[tuple[GovernorAction, str]]]:
+    """Split model-origin actions into (allowed, [(rejected, reason), ...]).
 
-    Validation still answers "is this action structurally legal?". This answers
-    the narrower safety question for model-originated policy: the model may rest
-    named unhappy pawns and raise essential priorities for named pawns, but it
-    may not churn schedules, flatten the whole town's specializations, boost
-    nonessential work above survival work, or demote the food/water chain below
-    its survival floor.
+    The rejected list carries a short reason per action so the decision audit can
+    show *what* the model proposed and *why* the guard denied it, instead of the
+    action silently vanishing (review E-2 / Slice B).
     """
-    return [action for action in actions if _model_action_safe(context, action)]
+    allowed: list[GovernorAction] = []
+    rejected: list[tuple[GovernorAction, str]] = []
+    for action in actions:
+        reason = _model_action_reason(context, action)
+        if reason is None:
+            allowed.append(action)
+        else:
+            rejected.append((action, reason))
+    return allowed, rejected
+
+
+def filter_model_actions(context: dict[str, Any], actions: list[GovernorAction]) -> list[GovernorAction]:
+    """Drop model-origin policy actions the safety guard denies (allowed subset)."""
+    allowed, _rejected = partition_model_actions(context, actions)
+    return allowed
+
+
+def _model_action_reason(context: dict[str, Any], action: GovernorAction) -> str | None:
+    """Why a model-origin action is unsafe, or ``None`` if the guard allows it.
+
+    Default-deny allowlist (review E-2 / Slice B): every action kind needs an
+    explicit rule here. Validation answers "is this structurally legal?"; this
+    answers the narrower "may an *untrusted local model* emit this policy?". Kinds
+    without an explicit allow rule are denied so the Governor/pawn autonomy
+    boundary is enforced by policy, not by prompt etiquette. The "grow-safe"
+    policy lets the model grow the economy (place buildings, retask essential
+    priorities, pick research) but not shut down survival essentials or seize
+    per-pawn control via a forced assignment.
+    """
+    kind = action.kind
+    if kind == ACTION_SET_SCHEDULE:
+        # Only a rest schedule, only for a named pawn that is actually flagged -
+        # never a town-wide reschedule (that would idle the whole civ).
+        if action.template != RESTORATIVE_SCHEDULE:
+            return "schedule: only a rest schedule is allowed"
+        if action.group == "all" or action.group is None:
+            return "schedule: no town-wide reschedule"
+        if not _rest_target_has_exception(context, action.group):
+            return "schedule: target has no rest-worthy exception"
+        return None
+    if kind == ACTION_SET_WORK_PRIORITY:
+        if action.group == "all":
+            return "priority: no town-wide priority change"
+        if action.work_type not in ESSENTIAL_WORK_TYPES:
+            return "priority: only essential work types"
+        if action.level is None:
+            return None
+        if not 0 < action.level <= LOWEST_SAFE_MODEL_ESSENTIAL_PRIORITY:
+            return "priority: essential level out of safe range"
+        return None
+    if kind == ACTION_PLACE_BUILDING:
+        # Grow-safe: the model may expand the economy. Unknown kinds are caught by
+        # validate_action; placement only spends coin + queues a site, so it can
+        # never idle a running essential.
+        if not action.building_kind or not buildings.is_known_kind(action.building_kind):
+            return "place: unknown building kind"
+        return None
+    if kind == ACTION_SET_PRODUCTION_TARGET:
+        # Grow-safe with an essential-shutdown floor: production_target is a
+        # ceiling, so capping a survival good idles its building. The model may
+        # retarget non-essential goods, never the food/water chain.
+        if action.amount is None:
+            return "target: missing amount"
+        if action.good in ESSENTIAL_GOODS:
+            return "target: cannot cap an essential survival good"
+        return None
+    if kind == ACTION_SET_RESEARCH:
+        # Research is the victory spine; choosing a tech cannot break survival.
+        if not action.tech:
+            return "research: missing tech"
+        return None
+    if kind == ACTION_ASSIGN_PAWN:
+        # Forced override is the arbiter's top lane and the demonstrated
+        # labor-conservation trigger (review E-1); it is an operator/fallback
+        # lever, not a model action.
+        return "assign_pawn: forced override is not a model-allowed action"
+    return f"{kind}: no model-safety rule (default-deny)"
 
 
 def _model_action_safe(context: dict[str, Any], action: GovernorAction) -> bool:
-    if action.kind == ACTION_SET_SCHEDULE:
-        return action.template == RESTORATIVE_SCHEDULE and action.group != "all" and _rest_target_has_exception(
-            context, action.group
-        )
-    if action.kind == ACTION_SET_WORK_PRIORITY:
-        if action.group == "all":
-            return False
-        if action.work_type not in ESSENTIAL_WORK_TYPES:
-            return False
-        if action.level is None:
-            return True
-        return 0 < action.level <= LOWEST_SAFE_MODEL_ESSENTIAL_PRIORITY
-    return True
+    """Back-compat boolean guard: True when the action is model-safe."""
+    return _model_action_reason(context, action) is None
 
 
 def _rest_target_has_exception(context: dict[str, Any], group: str | None) -> bool:
@@ -609,15 +774,19 @@ class LLMGovernor:
         # "disabled" (no model loaded - fallback by design, not a failure).
         self.last_outcome = "idle"
         self.last_error = ""
+        # Model actions the safety guard denied this hour, with reasons - surfaced
+        # in the decision audit so a rejected proposal is visible, not silent.
+        self.last_guard_rejected: list[tuple[GovernorAction, str]] = []
 
     def decide(self, context: dict[str, Any]) -> list[GovernorAction]:
         try:
             payload = self._propose(context) if self._propose is not None else self._ask_model(context)
-            actions = filter_model_actions(context, parse_action_list(payload))
+            actions, self.last_guard_rejected = partition_model_actions(context, parse_action_list(payload))
         except Exception as exc:
             disabled = self._propose is None and (self.client is None or not self.client.enabled)
             self.last_outcome = "disabled" if disabled else "error"
             self.last_error = str(exc)
+            self.last_guard_rejected = []
             return self.fallback.decide(context)
         if actions:
             self.last_outcome = "model"
@@ -705,10 +874,13 @@ class CivilizationDecisionScheduler:
         self.interval = max(0.0, interval)
         self.clock = clock
         self._executor = self._create_executor()
-        self._future: Future[tuple[list[GovernorAction], float]] | None = None
+        self._future: Future[tuple[list[GovernorAction], list[tuple[GovernorAction, str]], float]] | None = None
         self._pending: list[GovernorAction] | None = None
         self._next_time = 0.0
         self.status = self._idle_status()
+        # Model actions the safety guard denied on the last completed call, with
+        # reasons - carried to the decision audit like ``status.last_action_kinds``.
+        self.last_guard_rejected: list[tuple[GovernorAction, str]] = []
 
     @classmethod
     def from_env(
@@ -809,7 +981,7 @@ class CivilizationDecisionScheduler:
         future, self._future = self._future, None
         self._next_time = self.clock() + self.interval
         try:
-            actions, latency = future.result()
+            actions, self.last_guard_rejected, latency = future.result()
         except LLMClientError as exc:
             self.status.state = GOV_OFFLINE if _connection_error(str(exc)) else GOV_INVALID
             self.status.last_error = str(exc)
@@ -826,7 +998,9 @@ class CivilizationDecisionScheduler:
         # LLMGovernor: "the model chose nothing, keep the civilization moving".
         self._pending = actions or None
 
-    def _decide_actions(self, context: dict[str, Any]) -> tuple[list[GovernorAction], float]:
+    def _decide_actions(
+        self, context: dict[str, Any]
+    ) -> tuple[list[GovernorAction], list[tuple[GovernorAction, str]], float]:
         """Worker-thread body: ask the model and parse its action list."""
         start = self.clock()
         payload = self.client.complete_json(
@@ -835,6 +1009,5 @@ class CivilizationDecisionScheduler:
             schema=CIVILIZATION_ACTION_SCHEMA,
             name="civilization_actions",
         )
-        actions = parse_action_list(payload)
-        actions = filter_model_actions(context, actions)
-        return actions, self.clock() - start
+        actions, rejected = partition_model_actions(context, parse_action_list(payload))
+        return actions, rejected, self.clock() - start

@@ -32,7 +32,7 @@ skill so a fresh civilization staffs itself sensibly with zero micro.
 
 from __future__ import annotations
 
-from . import pawns, schedule
+from . import economy, pawns, schedule
 from .core import (
     Building,
     FactionState,
@@ -81,6 +81,13 @@ WORK_TYPE_ORDER: dict[str, int] = {
     "commerce": 34,
 }
 DEFAULT_WORK_TYPE_ORDER = 30  # unknown work types sort after the known chain
+# Research is only real work when (a) there is an active research target - a
+# Laboratory with none produces nothing (economy.research_tick early-returns) -
+# and (b) the civ is not starving: a pawn should grow wheat, not research, while
+# bread cover is below this many days. Both guards free a pawn the survival chain
+# needs; without them a farmer can sit idle on the Lab while the civ starves.
+RESEARCH_WORK_TYPE = "research"
+RESEARCH_MIN_FOOD_COVER_DAYS = 1.0
 
 # Skill thresholds for a pawn's *default* priority when the governor/player has
 # set none. Mirrors RimWorld's "skilled pawns gravitate to their specialty"
@@ -220,6 +227,19 @@ def _why_lost(state: FactionState, pawn: Pawn, winner, candidate) -> str:
     return "tie-break by id"
 
 
+def _research_block_reason(state: FactionState) -> str | None:
+    """Why research is not real work right now, or None if a Lab may be staffed.
+
+    Applied to both new candidates and a pawn's kept assignment so a farmer stuck
+    researching migrates back to the food chain when a crisis starts.
+    """
+    if not state.research_target:
+        return "no research target"
+    if economy.food_days_of_cover(state) < RESEARCH_MIN_FOOD_COVER_DAYS:
+        return "food crisis: research paused"
+    return None
+
+
 def _scan_candidates(
     state: FactionState, pawn: Pawn, reserved: dict[str, int], *, exclude_id: str | None = None
 ) -> tuple[list[tuple[Building, str, int]], list[RejectedJob]]:
@@ -238,6 +258,11 @@ def _scan_candidates(
         work_type = building_work_type(building)
         if work_type is None:
             continue
+        if work_type == RESEARCH_WORK_TYPE:
+            block = _research_block_reason(state)
+            if block is not None:
+                illegal.append(RejectedJob(building.id, work_type, block))
+                continue
         priority = default_priority(pawn, work_type)
         if priority <= WORK_PRIORITY_DISABLED:
             illegal.append(RejectedJob(building.id, work_type, "work disabled"))
@@ -308,6 +333,10 @@ def _assignment_legal(state: FactionState, pawn: Pawn) -> bool:
     work_type = building_work_type(building)
     if work_type is None:
         return False
+    # Research that is no longer real work (no target, or a food crisis) releases
+    # the pawn so it can rejoin the survival chain instead of idling on the Lab.
+    if work_type == RESEARCH_WORK_TYPE and _research_block_reason(state) is not None:
+        return False
     # A work type the governor/player just disabled releases the pawn to replan.
     return default_priority(pawn, work_type) > WORK_PRIORITY_DISABLED
 
@@ -320,6 +349,42 @@ def _release(state: FactionState, pawn: Pawn) -> None:
         if building is not None and pawn.id in building.staffed_by:
             building.staffed_by.remove(pawn.id)
     pawn.assignment = None
+
+
+def release_staff_references(
+    state: FactionState, pawn_id: str, *, keep_building_id: str | None = None
+) -> None:
+    """Remove ``pawn_id`` from every staffed slot except an optional keeper."""
+    for building in state.buildings.values():
+        if building.id == keep_building_id:
+            continue
+        if pawn_id in building.staffed_by:
+            building.staffed_by = [pid for pid in building.staffed_by if pid != pawn_id]
+
+
+def _normalize_staffing(state: FactionState) -> None:
+    """Heal stale staff lists before reservations or production can count them."""
+    for building in sorted(state.buildings.values(), key=lambda b: b.id):
+        kept: list[str] = []
+        for pawn_id in building.staffed_by:
+            pawn = state.pawns.get(pawn_id)
+            if pawn is None or pawn_id in kept:
+                continue
+            if pawn.assignment is None or pawn.assignment.building_id != building.id:
+                continue
+            kept.append(pawn_id)
+
+        overflow = kept[building.job_slots :]
+        if overflow:
+            for pawn_id in overflow:
+                pawn = state.pawns.get(pawn_id)
+                if pawn is not None:
+                    pawn.assignment = None
+                    if pawn.forced_assignment is not None and pawn.forced_assignment.building_id == building.id:
+                        pawn.forced_assignment = None
+            kept = kept[: building.job_slots]
+
+        building.staffed_by = kept
 
 
 def _seat(state: FactionState, pawn: Pawn, building: Building, work_type: str, reserved: dict[str, int]) -> None:
@@ -365,6 +430,8 @@ def assign_jobs(state: FactionState) -> dict[str, WorkDecision]:
     the same state always produces the same assignments - the integration
     survival oracle and the LLM-vs-fallback equality proof both depend on it.
     """
+    _normalize_staffing(state)
+
     # Phase A: release assignments that are illegal now or held by broken pawns.
     for pawn in state.pawns.values():
         if pawn.assignment is None:

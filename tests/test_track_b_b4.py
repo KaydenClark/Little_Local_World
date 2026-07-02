@@ -1,6 +1,6 @@
 import unittest
 
-from agent_town import governor, work
+from agent_town import governor, health, work
 from agent_town.core import (
     ACTION_PLACE_BUILDING,
     ACTION_SET_SCHEDULE,
@@ -47,10 +47,25 @@ class FallbackGovernorTests(unittest.TestCase):
 
     def test_reschedules_unhappy_pawn(self):
         state = town()
+        state.stockpile.add(Good.BREAD, 50)  # fed civ: no food crisis in play
         state.pawns["ben"].mood = 0.2  # breaking
         actions = governor.FallbackGovernor().decide(governor.build_context(state))
         scheds = [a for a in actions if a.kind == ACTION_SET_SCHEDULE]
         self.assertTrue(any(a.group == "ben" and a.template == "rest" for a in scheds))
+
+    def test_does_not_rest_unhappy_pawn_during_food_crisis(self):
+        # Resting has zero work hours and cannot restore the food reserve, so
+        # rest-scheduling a hungry pawn only pulls a producer off the food chain.
+        # With bread empty (low_food active) the fallback keeps everyone working.
+        state = town()  # no bread stocked
+        for pawn in state.pawns.values():
+            pawn.needs["food"] = 0.1  # and actually hungry -> low_food fires
+        state.pawns["ben"].mood = 0.2  # breaking
+        context = governor.build_context(state)
+        self.assertTrue(any(exc["kind"] == "low_food" for exc in context["exceptions"]))
+        actions = governor.FallbackGovernor().decide(context)
+        scheds = [a for a in actions if a.kind == ACTION_SET_SCHEDULE]
+        self.assertFalse(scheds)
 
     def test_requests_next_missing_chain_building(self):
         state = FactionState()
@@ -90,11 +105,38 @@ class ApplyActionsTests(unittest.TestCase):
 
         self.assertEqual(governor.apply_actions(state, [action]), [action])
 
+    def test_place_building_with_unknown_kind_is_rejected(self):
+        # Regression: a live LLM governor proposed place_building with
+        # building_kind="bread_storage" (plausible, not in the catalogue) and it
+        # reached the engine, which crashed on the first building_def lookup.
+        # An LLM-sourced building_kind is untrusted input and must be validated.
+        state = FactionState()
+        action = GovernorAction.place_building("bread_storage", 1, 1)
+
+        self.assertFalse(governor.validate_action(state, action))
+        self.assertEqual(governor.apply_actions(state, [action]), [])
+
     def test_assign_pawn_sets_forced_override(self):
         state = town()
         governor.apply_actions(state, [GovernorAction.assign_pawn("ace", "saw1", "woodcutting")])
         # The override pins the pawn so the arbiter keeps it (the forced lane).
         self.assertEqual(state.pawns["ace"].forced_assignment, JobRef("saw1", "woodcutting"))
+
+    def test_reassign_pawn_releases_previous_staff_slot(self):
+        state = town()
+        state.buildings["saw2"] = Building(
+            id="saw2", kind="Sawmill", x=2, y=0, recipe=wood_recipe(), job_slots=1
+        )
+
+        first = GovernorAction.assign_pawn("ace", "saw1", "woodcutting")
+        second = GovernorAction.assign_pawn("ace", "saw2", "woodcutting")
+        self.assertEqual(governor.apply_actions(state, [first]), [first])
+        self.assertEqual(governor.apply_actions(state, [second]), [second])
+
+        self.assertEqual(state.buildings["saw1"].staffed_by, [])
+        self.assertEqual(state.buildings["saw2"].staffed_by, ["ace"])
+        self.assertEqual(state.pawns["ace"].assignment, JobRef("saw2", "woodcutting"))
+        self.assertEqual(health.check_invariants(state), [])
 
     def test_set_work_priority_applies_to_group(self):
         state = town()

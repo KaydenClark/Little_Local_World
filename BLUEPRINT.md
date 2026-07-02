@@ -103,6 +103,13 @@ nothing; everything traces to a source.
 When a new system is proposed, the test is: where does each thing come from, and
 where does it go? If the answer is "nowhere," the design is wrong.
 
+This is also an executable contract. Each shipped economy or staffing slice must
+state the ledger it relies on and add a test or invariant that catches duplication,
+negative stock, phantom staff, or one pawn being counted in two jobs. Primary
+producer faucets such as farms, wells, and quarries are allowed only when they are
+named as external natural sources; downstream chains still need traceable inputs
+and outputs.
+
 ## Architecture
 
 Three layers, built bottom-up. The engine and pawns work and pass tests
@@ -157,6 +164,10 @@ Operator interaction principles:
 - Persistent UI is for scanability, not completeness. Keep the Civ strip, pawn
   roster, alert stack, and governor status short; put causes, full thought
   ledgers, decision traces, and stockpile detail in the inspector or drill-downs.
+- Screen regions are exclusive by default: top macro strip, pawn roster, central
+  map, right inspector/alert column, docked command panel, and bottom command
+  strip. Persistent text boxes should not float over the map except for
+  hover/selection labels, construction progress, and critical world badges.
 - Do not rely on color alone. Critical states need at least two channels such as
   color plus icon, shape, position, or brief motion. Text belongs on dark
   back-plates, not directly on terrain.
@@ -632,9 +643,16 @@ Pawns have RimWorld-style free will: each picks its highest-priority available
 job from its priority list. The Governor's main lever is tuning priorities and
 schedules, not hand-placing pawns in slots - `assign_pawn` is an override for
 the rare case. Watching how the agent balances priorities across the roster is
-the substance of the spectator view. `set_research` now selects an active tech
-target; Laboratory work completes it, and completed techs must change simulation
-behavior. The full Space-Age victory remains a later spine, not a stretch goal.
+the substance of the spectator view. (`set_work_priority` is a build-2 addition.)
+`set_research` now selects an active tech target; Laboratory work completes it,
+and completed techs must change simulation behavior. The full Space-Age victory
+remains a later spine, not a stretch goal.
+
+Model-originated Governor actions are narrower than the total action vocabulary.
+The local model is untrusted policy input, so every model-allowed action kind
+needs an explicit allowlist rule. Unknown or unreviewed kinds default-deny and
+fall back to the deterministic governor. Prompt instructions may guide the model,
+but only validation and the model safety filter enforce the boundary.
 
 Build-2 autonomy direction from the RimWorld work-priority research:
 
@@ -671,7 +689,8 @@ Two governors share one `decide(context) -> list of GovernorAction` interface:
   chain link. This is also the test oracle: if a town survives N days under the
   fallback, the economy is winnable.
 - `LLMGovernor`: same signature, backed by Gemma 4 E4B via `llm.py` with
-  JSON-schema output and a hard fallback to `FallbackGovernor` on any error.
+  JSON-schema output, explicit model-action allowlisting, and a hard fallback to
+  `FallbackGovernor` on any error or unsafe policy proposal.
 
 ## Two-track division of labor
 
@@ -693,7 +712,13 @@ Rules:
 
 - All economy, pawn, mood, schedule, and governor logic is testable without
   Pygame.
-- Governor actions are validated against state before they mutate it.
+- Governor actions are validated against state before they mutate it; model-origin
+  actions also pass a stricter default-deny safety filter.
+- One pawn may count for one staffed job at a time. Forced/manual assignment must
+  release the previous slot, and the arbiter must heal or reject stale staffed
+  entries before production can count them.
+- Conservation checks must cover real run paths. A healthy long-run gate checks
+  invariants during the run, not only on a fresh state or a final snapshot.
 - The viewer may read civilization state but must not duplicate engine logic or block
   on model output.
 - The deterministic core and the fallback governor must pass tests before the
@@ -738,7 +763,7 @@ Rules:
 | Build-2 step 1 shipped: pawns self-select work via `work.py`; the governor stops routine `assign_pawn` | A deterministic lane arbiter (forced -> hard-state -> self-care -> normal work -> idle; medical/emergency are ordered stubs) does staffing by manual priority -> work-type order -> distance -> skill, with `job_slots`-aware reservations (no double-claim), no-thrash job retention, and a `work.explain` decision trace. `set_work_priority` is the governor/LLM lever and the player's clickable Work grid; `assign_pawn` becomes the forced override. Self-care is a lane label only (eating/drinking stays instant); job-candidate indexes (Paper 7) and emergency/medical content are deferred. Both survival oracles (I1 3-day, LLM==fallback) stay green | 2026-06-29 build-2 step 1 |
 | Build-2 water slice shipped as the first essential economy extension | `Good.WATER`, `NEED_WATER`, Water Well production, one-unit drinking, thirst thoughts, Civ Water readout, HUD stockpile chip, water work priority, days-of-cover summary, and `low_water` governor exception make the first Townsmen essential conserved and visible. District buffers, service queues, seasonal demand, markets, wages, and storage caps remain deferred | 2026-06-29 build-2 water slice |
 | Paper 5 current-systems readability shipped before the governor card | The viewer now separates hover from selection, draws danger rings above selection, shows `work.LANE_IDLE` pawns with an overhead `!`, and renders construction sites as ghosts with footprint outlines and two-stage material/work progress. Storage 80/95% badges remain deferred until stockpile capacity exists, because uncapped totals cannot produce truthful pressure | 2026-06-29 Paper 5 current-systems slice |
-| Paper 6 governor observer shell shipped | The viewer derives a read-only Governor card from current exceptions, scheduler status, and recent policy actions: plan, phase, bottleneck, confidence, last reallocation, and top exception. A right-edge exception stack sorts active governor exceptions by severity and actionability. It is diagnosis-first UI, not a micromanagement surface; decision-log drill-down and policy editors remain deferred | 2026-06-29 Paper 6 observer UI slice |
+| Paper 6 governor observer shell shipped, with decision audit drilldown | The viewer derives a read-only Governor card from current exceptions, scheduler status, and recent policy actions: plan, phase, bottleneck, confidence, last reallocation, and top exception. A right-edge exception stack sorts active governor exceptions by severity and actionability. History now adds a selectable decision audit showing proposed/applied/rejected policy payloads plus after-state goods/needs and the compact goods/jobs/bottleneck causality map. It is diagnosis-first UI, not a micromanagement surface; policy editors remain deferred | 2026-06-29 Paper 6 observer UI slice, updated 2026-07-01 |
 | Close the 12-pawn truth loop before Paper 7 scale work | A 2026-06-30 audit found dead governor levers (`set_production_target`, `set_research` applied but changed nothing), an autopilot that halted after a 7-item build order, and a one-way economy where only the upstream-shortage bottleneck can occur. Paper 8 itself says not to scale before the 12-pawn loop is satisfying, so scale (PR #21) was re-sequenced behind these fixes. PRs #23-#29 closed them | 2026-06-30 audit + user direction |
 | No Potemkin governor actions: an applied action must change sim state or be rejected | A validated-and-"applied" action that mutates nothing makes the Governor card report changes that did not happen, which breaks the Paper 5/6 truth contract that the UI must let the player verify the sim is honest. `set_production_target` must cap production or be rejected; `set_research` must accrue/spend toward a real tech effect | 2026-06-30 audit |
 | The autopilot needs a goal function; a minimal research/Space-Age spine is the first one | "Watch a town grow over time" fails when the fallback halts at a fixed build order. The stated primary victory (Space Age via research) did not exist in code, so a minimal Laboratory -> research-points -> linear tech spine with at least one real effect is the autopilot's first end-game and the minimum thing worth spectating | 2026-06-30 audit |
@@ -748,6 +773,9 @@ Rules:
 | Finite storage capacity shipped before wages/markets | Storage saturation is now a real bottleneck: `Stockpile.capacity` blocks net-growing production before inputs are consumed, telemetry records storage used/capacity/fullness, and the HUD shows storage percent. Storehouse upgrades and pressure badges are now live; district storage, hauling pressure, repair, and trade stay deferred | 2026-06-30 Paper 4 storage slice |
 | First wage/market money loop shipped | Pawns now have personal coin, assigned pawns receive deterministic daily wages from the treasury, and a staffed Market can export a small bread surplus above reserve into treasury coin. This starts the money loop without replacing the legacy abstract tax floor; richer household spending, service spending, reserve-aware trade, and Storehouse capacity upgrades followed or remain future Build-2 slices | 2026-06-30 wage/market slice |
 | Storehouse capacity and pressure badges shipped | Built Storehouses add deterministic global storage capacity, while the HUD and Storehouse world badge shift from normal to amber at 80% and critical red at 95%. This keeps storage pressure truthful without faking district storage or hauling pressure before those systems exist | 2026-06-30 Storehouse slice |
+| Critical review findings become harness inputs before feature work | Confirmed P0/P1 findings from `docs/reviews/` block new roadmap features until reproduced and fixed or explicitly downgraded with source-backed evidence. The immediate contract fixes are one-pawn-one-job, default-deny model safety, executable conservation checks, and model-efficacy gates | 2026-07-01 Fable 5 peer review |
+| Model-origin actions pass an explicit default-deny allowlist (grow-safe) | Both P0s are fixed: forced `assign_pawn` releases prior staffing (Slice A) and the model-safety guard is now an explicit per-kind allowlist - unlisted kinds default-deny. The model may grow the economy (rest a flagged pawn, raise essential priorities, place known buildings, pick research, retarget non-essential goods) but may not force per-pawn assignment (the E-1 trigger) or cap a survival good (grain/flour/bread/water). Rejections carry a reason to the decision audit. Prompt wording is guidance only; the allowlist is the boundary | 2026-07-01 Fable 5 review Slices A+B |
+| Surplus producers get a starting production ceiling so food survives the storage cap | Unifying the crisis line (sustain floor) with the truth loop (finite storage) exposed a latent starvation: uncapped water/logs/planks/stone flood the 240-cap stockpile and crowd out grain/flour/bread. The default civ now seeds each surplus producer a `production_target` (water 48, logs 24, planks 40, stone 40) leaving ~90 units of food headroom, and research is unavailable while bread cover is under a day so a farmer never idles on the Laboratory during a shortage | 2026-07-01 crisis+truth-loop merge |
 
 ## Health Criteria
 
@@ -757,4 +785,10 @@ The project is healthy when:
 - the frozen contract in `core.py` imports and instantiates;
 - `.\.venv\Scripts\python.exe -m agent_town --smoke-test` exits successfully;
 - `.\scripts\validate-workbench.ps1` passes;
+- `health.check_invariants` or its run-level companion catches double-staffing,
+  phantom staff, negative stock, and any executable conservation ledger breach;
+- model-originated actions are explicit-allowlist only, with unsafe proposals
+  rejected or falling back visibly;
+- local-model proof distinguishes pipeline availability from useful, applied
+  non-fallback model policy;
 - secrets and local data are not exposed in committed or built output.

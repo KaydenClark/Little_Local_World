@@ -47,7 +47,16 @@ class EffectiveWorkTests(unittest.TestCase):
         self.assertEqual(mood.effective_work(fed, WOOD, 8), 1.0)
         self.assertEqual(mood.effective_work(hungry, WOOD, 8), 0.5)
         self.assertEqual(mood.effective_work(ravenous, WOOD, 8), 0.25)
-        self.assertEqual(mood.effective_work(malnourished, WOOD, 8), 0.0)
+        # A fully-starved pawn keeps a small floor of work rather than zero, so a
+        # food shortage stays escapable (no food -> zero work -> no food spiral).
+        self.assertEqual(
+            mood.effective_work(malnourished, WOOD, 8), mood.HUNGER_STARVING_FLOOR
+        )
+        self.assertGreater(mood.effective_work(malnourished, WOOD, 8), 0.0)
+        self.assertLess(
+            mood.effective_work(malnourished, WOOD, 8),
+            mood.effective_work(ravenous, WOOD, 8),
+        )
 
     def test_break_state_stops_effective_work(self):
         pawn = make_pawn(skills={"woodcutting": 10}, state=pawns.STATE_SLACKING)

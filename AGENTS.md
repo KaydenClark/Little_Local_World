@@ -133,6 +133,31 @@ Every completed task leaves proof in two places:
 
 Do not claim work is complete unless verification ran. If verification could not run, say exactly why and record the gap in `ROADMAP.md`.
 
+### Watchability Is Part Of Done
+
+This is a game to watch, not only a simulation to pass. A behavior slice is not
+complete until its new state is proven **visible and correct on screen**, not only
+green in headless tests. Headless tests prove the core; they do not prove the
+spectator experience.
+
+- Render a real frame of the new behavior and **look at it** before claiming done:
+  set `SDL_VIDEODRIVER=dummy`, build the state, call `render_civilization(...)`,
+  `pygame.image.save(...)`, then open the image. Save proof under
+  `docs/proof/<slice>/`.
+- Any new governor signal or civ state (exception, bottleneck, need, status) must
+  be wired into what the watcher sees - exception-stack rank and severity, the
+  Governor card, a Civ stat, or a world badge - not only into
+  `build_exception_queue`. A signal that lives only in the data is invisible and
+  does not count as delivered.
+- Add a viewer test that asserts the new signal surfaces with the right priority
+  (a survival-staple shortage must outrank lesser warnings), so a buried signal is
+  a red test, not a silent gap.
+- If the change involves the local model, verify the model path **actually ran** -
+  a model loaded in LM Studio, a non-fallback decision outcome - before claiming
+  the LLM behavior works. The fallback governor needs no model and no GPU, so a
+  green fallback run proves nothing about the model path. Say so plainly if the
+  model path was not exercised.
+
 For scale, pathfinding, large-population, or performance architecture work,
 read `research_papers/7.scalable-sim-report.md`, run the scaling benchmark when
 practical, and preserve exact simulation for player-visible truth before adding

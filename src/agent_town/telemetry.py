@@ -27,10 +27,10 @@ from pathlib import Path
 from typing import Any
 
 from . import economy, health
-from .core import BUILD1_NEEDS, FactionState
+from .core import BUILD1_NEEDS, Good, FactionState
 
 # Bump when the record schema changes in a way the analyzer must branch on.
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 def _now_iso() -> str:
@@ -108,6 +108,58 @@ def _multiset_diff(proposed: list[str], applied: list[str]) -> list[str]:
     return list((Counter(proposed) - Counter(applied)).elements())
 
 
+def _action_record(action: Any) -> dict[str, Any]:
+    """Compact JSON-safe policy action payload for the in-window audit trail."""
+    record: dict[str, Any] = {"kind": getattr(action, "kind", type(action).__name__)}
+    for name in (
+        "pawn_id",
+        "group",
+        "building_id",
+        "building_kind",
+        "role",
+        "template",
+        "good",
+        "amount",
+        "x",
+        "y",
+        "tech",
+        "work_type",
+        "level",
+    ):
+        value = getattr(action, name, None)
+        if value is None:
+            continue
+        record[name] = value.value if isinstance(value, Good) else value
+    return record
+
+
+def _action_signature(action: dict[str, Any]) -> tuple[tuple[str, Any], ...]:
+    return tuple(sorted(action.items()))
+
+
+def _rejected_action_records(proposed: list[dict[str, Any]], applied: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Full proposed actions that did not take effect, preserving useful payload."""
+    remaining = Counter(_action_signature(action) for action in applied)
+    rejected: list[dict[str, Any]] = []
+    for action in proposed:
+        sig = _action_signature(action)
+        if remaining[sig] > 0:
+            remaining[sig] -= 1
+        else:
+            rejected.append(action)
+    return rejected
+
+
+def _state_after_summary(state: FactionState) -> dict[str, Any]:
+    return {
+        "coin": state.coin,
+        "stockpile": {good.value: count for good, count in sorted(state.stockpile.counts.items(), key=lambda kv: kv[0].value)},
+        "needs": {need: round(economy.average_need(state, need), 3) for need in BUILD1_NEEDS},
+        "idle": sum(1 for pawn in state.pawns.values() if pawn.assignment is None),
+        "construction_sites": len(state.construction_sites),
+    }
+
+
 def build_decision(state: FactionState, governor: Any, step_result: Any) -> dict[str, Any]:
     """What the governor proposed vs. what took effect, plus LLM health.
 
@@ -117,17 +169,32 @@ def build_decision(state: FactionState, governor: Any, step_result: Any) -> dict
     where a *configured* model failed and the deterministic fallback covered - a
     disabled run (no model loaded) is fallback-by-design and never "dropped".
     """
-    proposed = [a.kind for a in getattr(governor, "last_actions", []) or []]
-    applied = [a.kind for a in getattr(step_result, "actions_applied", ()) or ()]
+    proposed_actions = [_action_record(a) for a in getattr(governor, "last_actions", []) or []]
+    # Model actions the safety guard denied never reach last_actions - fold them
+    # back into the proposal (carrying the guard's reason) so the audit shows the
+    # full model proposal and why each was rejected (review E-2 / Slice B).
+    guard_rejected = [
+        {**_action_record(action), "reason": reason, "rejected_by": "guard"}
+        for action, reason in (getattr(governor, "last_guard_rejected", None) or [])
+    ]
+    proposed_actions = proposed_actions + guard_rejected
+    applied_actions = [_action_record(a) for a in getattr(step_result, "actions_applied", ()) or ()]
+    proposed = [a["kind"] for a in proposed_actions]
+    applied = [a["kind"] for a in applied_actions]
+    rejected_actions = _rejected_action_records(proposed_actions, applied_actions)
     record: dict[str, Any] = {
         "type": "decision",
         "day": state.day,
         "hour": state.time_of_day,
         "governor_kind": type(getattr(governor, "inner", governor)).__name__,
         "proposed": proposed,
+        "proposed_actions": proposed_actions,
         "applied": applied,
-        "rejected": _multiset_diff(proposed, applied),
+        "applied_actions": applied_actions,
+        "rejected": [a["kind"] for a in rejected_actions] or _multiset_diff(proposed, applied),
+        "rejected_actions": rejected_actions,
         "buildings_completed": list(getattr(step_result, "buildings_completed", ()) or ()),
+        "state_after": _state_after_summary(state),
         "decide_ms": round(getattr(governor, "last_decide_ms", 0.0), 1),
         "dropped": False,
         "dropped_reason": "",

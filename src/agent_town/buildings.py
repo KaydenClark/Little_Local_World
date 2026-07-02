@@ -107,6 +107,21 @@ def building_def(kind: str) -> BuildingDef:
         raise ValueError(f"Unknown building kind: {kind}") from exc
 
 
+def is_known_kind(kind: str) -> bool:
+    """Whether ``kind`` names a real building in the catalogue.
+
+    A non-raising check for callers that must validate an *untrusted* kind
+    string before committing to it - the LLM governor's ``place_building``
+    action is the reason this exists: a live model can propose a plausible but
+    nonexistent kind (e.g. "bread storage"), and without this check that string
+    reaches construction and crashes on the first ``building_def`` lookup.
+    """
+    if not kind:
+        return False
+    normalized = kind.strip().lower().replace("_", " ").replace("-", " ")
+    return normalized in BUILDING_DEFS
+
+
 def make_building(kind: str, x: int, y: int, *, building_id: str, built: bool = True) -> Building:
     """Instantiate a Building of ``kind`` from its definition."""
     if not building_id:
