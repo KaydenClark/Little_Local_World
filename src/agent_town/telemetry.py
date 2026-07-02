@@ -30,7 +30,9 @@ from . import economy, health
 from .core import BUILD1_NEEDS, Good, FactionState
 
 # Bump when the record schema changes in a way the analyzer must branch on.
-SCHEMA_VERSION = 2
+# v3: decision records carry "origin" ("model"/"fallback") - which policy drove
+# THIS hour - so the analyzer can count model emissions, not scheduler hours.
+SCHEMA_VERSION = 3
 
 
 def _now_iso() -> str:
@@ -204,6 +206,11 @@ def build_decision(state: FactionState, governor: Any, step_result: Any) -> dict
         "llm_latency": 0.0,
         "llm_error": "",
         "outcome": "",
+        # Which policy drove THIS hour's actions (review E-4 / Slice D). The
+        # scheduler's pipeline state can be healthy for a whole run while every
+        # hour is fallback-driven; this field is what the analyzer counts as a
+        # model emission, so pipeline health can never impersonate model efficacy.
+        "origin": getattr(governor, "last_source", "fallback"),
     }
     status = getattr(governor, "status", None)
     if status is not None:
