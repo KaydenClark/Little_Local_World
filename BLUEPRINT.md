@@ -122,6 +122,96 @@ hour and proves the oracle can fail (tamper tests). Primary-producer faucets
 external sources, and the ledger guarantees everything downstream of them is
 conserved.
 
+### Physical sourcing (2026-07-02 refinement, planned)
+
+The Slice C ledger proves goods balance in *count*; it does not prove goods
+exist in *place* or *time*. Today every Tier 0 faucet (Farm, Forester, Quarry,
+Water Well) has an empty-input recipe: a staffed pawn's `effective_work` mints
+the output the instant `Building.production_progress` crosses
+`recipe.work_units`, with no reference to the `ResourceNode`/`TILE_FIELD` map
+data `world.create_world` already scatters and `civilization_view._draw_node`
+already draws. The field/tree/outcrop sprite the player sees on the map today
+is decorative - the building ignores it. This is a real gap, not a naming
+issue: "labour in, resource out" with no located source violates the "nothing
+from nothing" law's spirit even while the ledger's numbers still balance.
+
+Refine the law: **a faucet's output must be tied to a located, finite- or
+time-gated source**, not a labor-only spigot. Three mechanics cover every
+Tier 0 producer:
+
+- **Cultivated** (Farm -> grain): the source is empty until planted, then
+  needs elapsed growth time before it can be harvested. Grain cannot appear
+  faster than a growing season, regardless of headcount.
+- **Extracted** (Forester -> logs, Quarry -> stone): the source is a
+  `ResourceNode` with a finite `amount`; harvesting depletes it.
+  Logs additionally regrow over time (a tree is a renewable but
+  slow-growing extracted resource); stone does not regrow (a quarry face is
+  mined out - the building eventually relocates or goes idle).
+- **Replenished** (Water Well): the source is effectively inexhaustible at
+  colony scale (an aquifer/water table) - modeled as an always-available
+  extracted node with no depletion, so the well keeps the "physical location,
+  not a spigot" property without inventing an artificial water shortage.
+
+#### The field/node lifecycle
+
+```
+work "farming" at Farm, targeting the Farm's owned field (a ResourceNode on TILE_FIELD):
+
+  state == EMPTY:
+      if seed_reserve >= PLANT_COST:
+          plant(field)                # consumes from a *local* seed store, not bread stock
+          state -> PLANTED
+      else:
+          idle; raise exception "no_seed_grain"
+
+  state in (PLANTED, GROWING):
+      field.growth_progress += 1 per elapsed hour   # ticks even if the farmer is reassigned
+      if field.growth_progress >= GROWTH_TARGET:
+          state -> READY
+
+  state == READY:
+      harvested = harvest(field)      # yields grain; node.amount -> 0 for this cycle
+      seed_reserve += harvested * SEED_RESERVE_FRACTION   # next planting's seed, not purchased
+      stockpile.add(GRAIN, harvested - seed_taken)
+      state -> EMPTY
+```
+
+Growth does not require the pawn's continuous attention - only planting and
+harvesting are labor. A farmer can be reassigned mid-growth and reassigned
+back for harvest; the work arbiter (`work.py`) needs a "field ready to
+plant/harvest" signal distinct from "field growing, nothing to do here" so it
+does not chain a farmer to an empty wait.
+
+Forester/logs follow the same EMPTY/GROWING/READY shape without an explicit
+plant step (a felled tree's stump regrows on its own). Quarry/stone and Water
+Well use the simpler extracted-node depletion only - `world.harvest_node`
+already exists and already does this; it just needs to be called from
+`economy.production_tick` instead of being dead code.
+
+Bootstrap: a fresh colony starts with a small seed grain reserve (brought from
+the old country, not purchased) so the first Farm is never seed-locked. This
+mirrors how the default civ's bread reserve is already hand-seeded at
+colony creation.
+
+New exception codes for `health.py` / the governor's exception queue:
+`no_seed_grain` (field empty, nothing to plant), `field_growing`
+(informational, not a warning - staffed but genuinely waiting on time), and
+`node_depleted` (Quarry/Forester's node is exhausted; the building needs
+relocation or is dead weight). These feed the existing `!`-badge system
+(`building_exception_badges`, Slice E) so a field waiting to grow does not
+misread as broken the way an unstaffed building does.
+
+#### Visible storage (near-term slice)
+
+`Stockpile` stays faction-wide for now - per-building storage (pawns walking
+to a specific granary to eat) is a materially bigger change touching engine,
+economy, governor, health, and telemetry, and is deferred as its own later
+slice rather than bundled here. The near-term honesty fix: render what is
+actually held. `_draw_storage_badge` today draws only a fullness *ring* on the
+Storehouse; it should draw a real per-good pile/count scaled to
+`state.stockpile.counts`, so "how much bread exists" is answerable by looking
+at the map, not only from the macro strip's numeric chip.
+
 ## Architecture
 
 Three layers, built bottom-up. The engine and pawns work and pass tests
@@ -515,17 +605,20 @@ Build-2 economy direction from the Townsmen research:
 
 Tier 0 is extraction from map resource nodes. Each later tier needs the prior
 tier's output and, past tier 1, a research unlock - so an advanced building can
-only exist once its supplier and its tech do.
+only exist once its supplier and its tech do. Build 1 currently ships Tier 0
+faucets as empty-input, labor-only recipes with no reference to `ResourceNode`
+at all; the **Mechanic** column below is the "physical sourcing" target
+(see the design law refinement above) build 1 has not yet wired up.
 
-| Tier | Building | Consumes | Produces | Skill | Build |
-|---|---|---|---|---|---|
-| 0 | Forester | tree node | logs | forestry | 1 |
-| 0 | Quarry | stone node | stone | mining | 1 |
-| 0 | Farm (crops) | field node | grain, vegetables | farming | 1 |
-| 0 | Water Well | water table | water | water | 2 |
-| 0 | Mine | ore node | ore | mining | 3 |
-| 0 | Pasture / Animal Farm | feed (grain) | raw meat, hide, wool | herding | 3 |
-| 0 | Hunter's Hut | wild game node | raw meat, hide | hunting | 3 |
+| Tier | Building | Consumes | Produces | Skill | Build | Mechanic |
+|---|---|---|---|---|---|---|
+| 0 | Forester | tree node | logs | forestry | 1 | extracted + regrows |
+| 0 | Quarry | stone node | stone | mining | 1 | extracted, no regrow |
+| 0 | Farm (crops) | field node | grain, vegetables | farming | 1 | cultivated (plant/grow/harvest) |
+| 0 | Water Well | water table | water | water | 2 | replenished (no depletion) |
+| 0 | Mine | ore node | ore | mining | 3 | extracted, no regrow |
+| 0 | Pasture / Animal Farm | feed (grain) | raw meat, hide, wool | herding | 3 | cultivated (feed-gated) |
+| 0 | Hunter's Hut | wild game node | raw meat, hide | hunting | 3 | extracted + regrows |
 | 1 | Sawmill | logs | planks | woodworking | 1 |
 | 1 | Mill | grain | flour | milling | 1 |
 | 1 | Bakery | flour, water | bread | baking | 1 |
