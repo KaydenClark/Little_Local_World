@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./secrets/**)",
+      "Read(./credentials/**)",
+      "Read(./**/*.pem)",
+      "Read(./**/*.key)",
+      "Edit(./.env)",
+      "Edit(./.env.*)",
+      "Edit(./.venv/**)",
+      "Edit(./logs/**)",
+      "Edit(./saves/**)",
+      "Edit(./**/*.egg-info/**)",
+      "Edit(./src/agent_town/assets/**/*.zip)"
+    ],
+    "ask": [
+      "Bash(git push:*)",
+      "Bash(rm -rf:*)",
+      "Edit(./src/agent_town/core.py)",
+      "Edit(./pyproject.toml)",
+      "Edit(./requirements.txt)",
+      "Edit(./research_papers/**)"
+    ],
+    "allow": [
+      "Edit(./src/agent_town/**)",
+      "Edit(./tests/**)",
+      "Edit(./scripts/**)",
+      "Edit(./docs/**)",
+      "Edit(./AGENTS.md)",
+      "Edit(./BLUEPRINT.md)",
+      "Edit(./TASKBOARD.md)",
+      "Edit(./RUNBOOK.md)",
+      "Edit(./README.md)",
+      "Edit(./HARNESS_FEEDBACK.md)",
+      "Edit(./VISUAL_DESIGN.md)",
+      "Edit(./BRANCHING.md)",
+      "Bash(python -m unittest discover -s tests)",
+      "Bash(python -m agent_town --smoke-test)"
+    ]
+  }
+}
