@@ -24,7 +24,10 @@ from agent_town.civilization_view import (
     assign_panel_targets,
     active_panel_from_button,
     building_card_lines,
+    exception_stack_row_rects,
     find_building_at_screen,
+    roster_chip_at,
+    roster_chip_rects,
     _construction_progress,
     _need_bar_color,
     _mood_color,
@@ -754,6 +757,76 @@ class BuildingInspectionTests(unittest.TestCase):
         building = next(iter(state.buildings.values()))
         cx, cy = camera.tile_center_to_screen(building.x, building.y, (0, 0), 25)
         self.assertEqual(find_building_at_screen(state, (cx, cy), (0, 0), 25, camera), building.id)
+
+
+class SpectatorNavigationTests(unittest.TestCase):
+    """Paper 6 interaction rules: roster chips and alert rows are navigation."""
+
+    def setUp(self):
+        pygame.display.init()
+        pygame.font.init()
+        pygame.display.set_mode((64, 64))
+
+    def test_roster_chip_rects_cover_the_visible_roster(self):
+        state = civilization.create_default_civilization()
+        rect = viewer_layout(1280, 900).roster
+        chips = roster_chip_rects(state, rect)
+        self.assertEqual([pid for pid, _r in chips], list(state.pawns)[: len(chips)])
+        self.assertGreater(len(chips), 0)
+        pid, chip = chips[0]
+        self.assertEqual(roster_chip_at(state, rect, chip.center), pid)
+
+    def test_clicking_a_roster_portrait_selects_and_centers(self):
+        viewer = CivilizationViewer(smoke_test=True)
+        rect = viewer_layout(viewer.screen.get_width(), viewer.screen.get_height()).roster
+        chips = roster_chip_rects(viewer.state, rect)
+        target_id, chip = chips[min(3, len(chips) - 1)]
+        viewer.selected_building_id = "farm1"
+
+        viewer._handle_click(chip.center)
+
+        self.assertEqual(viewer.selected_pawn_id, target_id)
+        self.assertIsNone(viewer.selected_building_id)
+
+    def test_clicking_an_exception_row_selects_its_subject(self):
+        viewer = CivilizationViewer(smoke_test=True)
+        engine.step_hour(viewer.state)  # staffed bakeries raise missing_inputs
+        layout = viewer_layout(viewer.screen.get_width(), viewer.screen.get_height())
+        exception_rect, _inspector = right_column_regions(layout.right)
+        rows = exception_stack_row_rects(exception_stack_items(viewer.state), exception_rect)
+        target = next((r, item) for r, item in rows if item.building_id)
+        row_rect, item = target
+
+        viewer._handle_click(row_rect.center)
+
+        self.assertEqual(viewer.selected_building_id, item.building_id)
+        self.assertIsNone(viewer.selected_pawn_id)
+
+    def test_follow_toggle_tracks_selected_pawn(self):
+        viewer = CivilizationViewer(smoke_test=True)
+        pawn_id = next(iter(viewer.state.pawns))
+        viewer.selected_pawn_id = pawn_id
+
+        viewer._toggle_follow()
+        self.assertEqual(viewer.follow_pawn_id, pawn_id)
+        viewer._toggle_follow()
+        self.assertIsNone(viewer.follow_pawn_id)
+
+    def test_manual_pan_breaks_follow(self):
+        viewer = CivilizationViewer(smoke_test=True)
+        viewer.selected_pawn_id = next(iter(viewer.state.pawns))
+        viewer._toggle_follow()
+        self.assertIsNotNone(viewer.follow_pawn_id)
+
+        viewer._manual_pan(10, 0)
+
+        self.assertIsNone(viewer.follow_pawn_id)
+
+    def test_center_on_tile_clamps_to_world(self):
+        viewer = CivilizationViewer(smoke_test=True)
+        viewer._center_on_tile(0, 0)
+        self.assertGreaterEqual(viewer.camera.offset_x, 0.0)
+        self.assertGreaterEqual(viewer.camera.offset_y, 0.0)
 
 
 if __name__ == "__main__":

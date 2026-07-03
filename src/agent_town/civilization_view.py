@@ -73,6 +73,11 @@ MIN_ZOOM = 0.7
 MAX_ZOOM = 2.2
 ZOOM_STEP = 1.18
 CAMERA_PAN_PX = 70
+# Held-key panning (BG3-style camera feel): WASD/arrows pan continuously while
+# held, at this many screen pixels per second. The per-press CAMERA_PAN_PX
+# nudge stays for single taps. Q/E are deliberately unbound - reserved for a
+# future camera-rotation pair, and Q must never quit once fingers live on WASD.
+CAMERA_PAN_PX_PER_SEC = 420.0
 
 BACKGROUND = (38, 44, 38)
 HUD_BG = (18, 20, 18)
@@ -319,6 +324,11 @@ class ExceptionStackItem:
     # five days reads as chronic instead of urgent (review P-1: the cry-wolf
     # stack taught viewers that warnings are decorative).
     age_hours: int = 0
+    # The subject's ids, so clicking a stack row can select and jump to the
+    # pawn/building it names (Paper 6: "clicking an exception should center
+    # the event and pin the related agent").
+    pawn_id: str | None = None
+    building_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -465,6 +475,8 @@ def exception_stack_items(
                 cause=cause,
                 subject=_exception_subject(state, exc),
                 age_hours=(ages or {}).get(exception_signature(exc), 0),
+                pawn_id=exc.pawn_id,
+                building_id=exc.building_id,
             )
         )
     return sorted(
@@ -1693,15 +1705,9 @@ def _draw_pawn_roster(
     if not pawn_keys:
         return
 
-    card_w = 58
-    gap = 8
-    x = rect.x + MARGIN
-    y = rect.y + 7
-    for pawn in state.pawns.values():
-        if x + card_w > rect.right - MARGIN:
-            break
+    for pawn_id, card in roster_chip_rects(state, rect):
+        pawn = state.pawns[pawn_id]
         selected = pawn.id == selected_pawn_id
-        card = pygame.Rect(x, y, card_w, PAWN_ROSTER_HEIGHT - 14)
         pygame.draw.rect(surface, PANEL_BG_2, card, border_radius=3)
         pygame.draw.rect(surface, SELECTION if selected else PANEL_BORDER, card, 2 if selected else 1, border_radius=3)
 
@@ -1716,7 +1722,34 @@ def _draw_pawn_roster(
 
         short_name = pawn.name.split()[0]
         _draw_text(surface, font, short_name, INSPECTOR_TEXT, (card.x + 4, card.bottom - 15), card.width - 8)
+
+
+def roster_chip_rects(state: FactionState, rect: pygame.Rect) -> list[tuple[str, pygame.Rect]]:
+    """(pawn_id, chip rect) for every roster card that fits, in draw order.
+
+    One shared layout for drawing and hit-testing, so clicking a portrait
+    selects exactly the pawn it shows (Paper 6: "single-clicking a roster chip
+    should center the map and open the selected-agent sheet").
+    """
+    card_w = 58
+    gap = 8
+    x = rect.x + MARGIN
+    y = rect.y + 7
+    chips: list[tuple[str, pygame.Rect]] = []
+    for pawn in state.pawns.values():
+        if x + card_w > rect.right - MARGIN:
+            break
+        chips.append((pawn.id, pygame.Rect(x, y, card_w, PAWN_ROSTER_HEIGHT - 14)))
         x += card_w + gap
+    return chips
+
+
+def roster_chip_at(state: FactionState, rect: pygame.Rect, pos: tuple[int, int]) -> str | None:
+    """The pawn id of the roster chip under ``pos``, or None."""
+    for pawn_id, chip in roster_chip_rects(state, rect):
+        if chip.collidepoint(pos):
+            return pawn_id
+    return None
 
 
 def _draw_right_column(
@@ -2143,6 +2176,26 @@ def _draw_translucent_panel(surface: pygame.Surface, rect: pygame.Rect, *, alpha
     panel.fill((*PANEL_BG, alpha))
     surface.blit(panel, rect.topleft)
     pygame.draw.rect(surface, PANEL_BORDER, rect, 1)
+
+
+def exception_stack_row_rects(
+    items: list[ExceptionStackItem], stack_rect: pygame.Rect
+) -> list[tuple[pygame.Rect, ExceptionStackItem]]:
+    """Hit rects for the drawn exception rows (mirrors _draw_exception_stack).
+
+    Clicking a row selects and jumps to its subject, so the alert stack is a
+    navigation surface, not just a wall of text (Paper 6 interaction rule).
+    """
+    width = min(EXCEPTION_STACK_WIDTH, stack_rect.width - MARGIN * 2)
+    if width < 220:
+        return []
+    rect = pygame.Rect(stack_rect.right - MARGIN - width, stack_rect.y + MARGIN, width, stack_rect.height)
+    rows: list[tuple[pygame.Rect, ExceptionStackItem]] = []
+    y = rect.y + 8 + 24
+    for item in items[:EXCEPTION_STACK_MAX]:
+        rows.append((pygame.Rect(rect.x + 6, y - 3, width - 12, 40), item))
+        y += 42
+    return rows
 
 
 def _draw_exception_stack(
@@ -2723,8 +2776,8 @@ def _draw_menu_panel(
         ("Plan", f"{summary.plan} ({summary.attention})", INSPECTOR_TEXT),
         ("Speed", "", INSPECTOR_TEXT),  # value slot + spacer row below hold the buttons
         ("", "", None),
-        ("Keyboard", "Esc closes panels, Q quits, Tab selects next pawn, L toggles model", INSPECTOR_TEXT),
-        ("Camera", "WASD/arrows pan, mouse wheel or +/- zoom", INSPECTOR_TEXT),
+        ("Keyboard", "Esc closes panels then quits, Tab next pawn, F follow pawn, L toggles model", INSPECTOR_TEXT),
+        ("Camera", "Hold WASD/arrows to pan, wheel or +/- zoom; click a portrait or alert to jump (Q/E reserved for rotation)", INSPECTOR_TEXT),
         ("Proof", "UI screenshots are saved under docs/proof/ui_navigation/", HUD_MUTED),
         ("Overlays", "Map badges: '!' blocked/unstaffed buildings, idle tags, danger rings, storage pressure", HUD_MUTED),
         ("Mood dot", "Above each pawn: green content, amber strained, red near breaking - hover a pawn to read the number", HUD_MUTED),
@@ -2832,6 +2885,7 @@ class CivilizationViewer:
         self.camera = Camera()
         self.selected_pawn_id = next(iter(self.state.pawns), None)
         self.selected_building_id: str | None = None
+        self.follow_pawn_id: str | None = None
         self.hovered_pawn_id: str | None = None
         self.active_panel: str | None = None
         self.inspector_tab = "needs"
@@ -2904,12 +2958,15 @@ class CivilizationViewer:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.running = False
-            elif event.type == pygame.KEYDOWN and event.key == pygame.K_q:
-                self.running = False
+            # Q deliberately does NOT quit: with WASD panning it sits under the
+            # same fingers, and it is reserved (with E) for future camera
+            # rotation. Quit is Esc (with no panel open) or the window close.
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 self._handle_escape()
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_l:
                 self._toggle_governor()
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_f:
+                self._toggle_follow()
             elif event.type == pygame.KEYDOWN:
                 self._handle_camera_key(event.key)
             elif event.type == pygame.MOUSEMOTION:
@@ -2919,22 +2976,65 @@ class CivilizationViewer:
             elif event.type == pygame.MOUSEWHEEL:
                 factor = ZOOM_STEP if event.y > 0 else 1.0 / ZOOM_STEP
                 self._zoom_camera(factor, pygame.mouse.get_pos())
+        self._pan_from_held_keys()
 
     def _handle_camera_key(self, key: int) -> None:
         if key in (pygame.K_RIGHT, pygame.K_d):
-            self._pan_camera(CAMERA_PAN_PX, 0)
+            self._manual_pan(CAMERA_PAN_PX, 0)
         elif key in (pygame.K_LEFT, pygame.K_a):
-            self._pan_camera(-CAMERA_PAN_PX, 0)
+            self._manual_pan(-CAMERA_PAN_PX, 0)
         elif key in (pygame.K_DOWN, pygame.K_s):
-            self._pan_camera(0, CAMERA_PAN_PX)
+            self._manual_pan(0, CAMERA_PAN_PX)
         elif key in (pygame.K_UP, pygame.K_w):
-            self._pan_camera(0, -CAMERA_PAN_PX)
+            self._manual_pan(0, -CAMERA_PAN_PX)
         elif key in (pygame.K_EQUALS, pygame.K_PLUS, pygame.K_KP_PLUS):
             self._zoom_camera(ZOOM_STEP)
         elif key in (pygame.K_MINUS, pygame.K_KP_MINUS):
             self._zoom_camera(1.0 / ZOOM_STEP)
         elif key == pygame.K_TAB:
             self._select_next_pawn()
+
+    def _pan_from_held_keys(self) -> None:
+        """Smooth held-key panning (BG3-style): WASD/arrows pan while held.
+
+        Polled once per frame at the real frame dt, so the camera glides
+        instead of stuttering one nudge per key repeat. Any manual pan breaks
+        follow mode - the player is taking the camera back.
+        """
+        pressed = pygame.key.get_pressed()
+        dx = dy = 0.0
+        step = CAMERA_PAN_PX_PER_SEC * self.clock.get_time() / 1000.0
+        if pressed[pygame.K_d] or pressed[pygame.K_RIGHT]:
+            dx += step
+        if pressed[pygame.K_a] or pressed[pygame.K_LEFT]:
+            dx -= step
+        if pressed[pygame.K_s] or pressed[pygame.K_DOWN]:
+            dy += step
+        if pressed[pygame.K_w] or pressed[pygame.K_UP]:
+            dy -= step
+        if dx or dy:
+            self._manual_pan(dx, dy)
+
+    def _manual_pan(self, dx: float, dy: float) -> None:
+        self.follow_pawn_id = None
+        self._pan_camera(dx, dy)
+
+    def _toggle_follow(self) -> None:
+        """F: follow the selected pawn (camera tracks it every frame)."""
+        if self.follow_pawn_id is not None:
+            self.follow_pawn_id = None
+        elif self.selected_pawn_id is not None:
+            self.follow_pawn_id = self.selected_pawn_id
+
+    def _center_on_tile(self, tile_x: int, tile_y: int) -> None:
+        """Center the camera on a world tile (jump-to-subject navigation)."""
+        if self.assets is None:
+            return
+        base_ts = self.assets.tile_size
+        map_rect = self._map_rect()
+        self.camera.offset_x = tile_x * base_ts + base_ts / 2 - (map_rect.width / self.camera.zoom) / 2
+        self.camera.offset_y = tile_y * base_ts + base_ts / 2 - (map_rect.height / self.camera.zoom) / 2
+        self._clamp_camera()
 
     def _map_rect(self) -> pygame.Rect:
         return viewer_layout(self.screen.get_width(), self.screen.get_height(), self.active_panel).map
@@ -2982,11 +3082,35 @@ class CivilizationViewer:
             return
 
         layout = viewer_layout(self.screen.get_width(), self.screen.get_height(), self.active_panel)
-        _exception_rect, inspector_rect = right_column_regions(layout.right)
+        exception_rect, inspector_rect = right_column_regions(layout.right)
         for tab, tab_rect in inspector_tab_rects(self.state, self.selected_pawn_id, inspector_rect).items():
             if tab_rect.collidepoint(pos):
                 self.inspector_tab = tab
                 return
+
+        # Roster portraits are navigation: click a chip to select that pawn and
+        # jump the camera to it (Paper 6 interaction rule) - far easier than
+        # chasing a sprite across the map between frames.
+        chip_pawn_id = roster_chip_at(self.state, layout.roster, pos)
+        if chip_pawn_id is not None:
+            self._select_and_center_pawn(chip_pawn_id)
+            return
+
+        # Exception rows are navigation too: click a problem to select and jump
+        # to the pawn/building it names. Civ-wide rows (low_food) have no single
+        # subject and just swallow the click.
+        for row_rect, item in exception_stack_row_rects(exception_stack_items(self.state), exception_rect):
+            if not row_rect.collidepoint(pos):
+                continue
+            if item.pawn_id and item.pawn_id in self.state.pawns:
+                self._select_and_center_pawn(item.pawn_id)
+            elif item.building_id and item.building_id in self.state.buildings:
+                building = self.state.buildings[item.building_id]
+                self.selected_building_id = building.id
+                self.selected_pawn_id = None
+                self.follow_pawn_id = None
+                self._center_on_tile(building.x, building.y)
+            return
 
         if self.active_panel == "work" and layout.command_panel is not None:
             cell = work_grid_cell_at(layout.command_panel, sorted(self.state.pawns), pos)
@@ -3034,6 +3158,17 @@ class CivilizationViewer:
             self.assets.tile_size,
             self.camera,
         )
+
+    def _select_and_center_pawn(self, pawn_id: str) -> None:
+        """Select a pawn and jump the camera to it (roster/exception click)."""
+        pawn = self.state.pawns.get(pawn_id)
+        if pawn is None:
+            return
+        self.selected_pawn_id = pawn_id
+        self.selected_building_id = None
+        if self.follow_pawn_id is not None:
+            self.follow_pawn_id = pawn_id  # follow moves to the new subject
+        self._center_on_tile(pawn.x, pawn.y)
 
     def _select_pawn_at(self, pos: tuple[int, int]) -> None:
         """Select the pawn under the cursor, else the building under it.
@@ -3109,6 +3244,14 @@ class CivilizationViewer:
             )
 
     def _draw(self) -> None:
+        # Follow camera: track the followed pawn every frame until the player
+        # pans manually or toggles F off.
+        if self.follow_pawn_id is not None:
+            followed = self.state.pawns.get(self.follow_pawn_id)
+            if followed is None:
+                self.follow_pawn_id = None
+            else:
+                self._center_on_tile(followed.x, followed.y)
         alert = (self._alert_severity, self._alert_count) if self._alert_severity and self.active_panel != "history" else None
         render_civilization(
             self.screen,
