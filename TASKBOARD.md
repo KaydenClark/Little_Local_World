@@ -70,7 +70,6 @@ reclaimed per `AGENTS.md` -> Long Session Control.
 
 | ID | Priority | Task | Source / why now | Touches | Proof required | Docs impact | Owner | Status | Last update |
 |---|---:|---|---|---|---|---|---|---|---|
-| T-101 | 1 | The trader (crisis-line Slice 3): deterministic trader core + `buy_good` (coin -> bread), optional local-LLM trader personality behind a hard fallback | Design already specified in `BLUEPRINT.md` "Crisis, response, consequence"; physical sourcing gave grain a real lead time to price against; recorded as "the natural next code task" 2026-07-02 | `src/agent_town/economy.py`, `governor.py`, `civilization_view.py`, `tests/` | red/green: new `tests/test_trader.py`; full suite + smoke; watchable proof frame of a trade happening | `BLUEPRINT.md` (crisis line, governor interface), `RUNBOOK.md` (manual check) | agent | ready | 2026-07-03 |
 | T-102 | 2 | Repair debt: building condition degrades into output/service penalties before catastrophic failure; planks/stone + labour repair sink | Paper 4 economy; stated "next code task" across the Research Paper Implementation Queue | `src/agent_town/economy.py`, `buildings.py`, `engine.py`, `telemetry.py`, `civilization_view.py`, `tests/` | red/green: new `tests/test_repair.py` for decay, penalty, repair job, telemetry; full suite + smoke | `BLUEPRINT.md` (money loop, invariants), `RUNBOOK.md` (manual check) | agent | ready | 2026-07-02 |
 | T-103 | 3 | Paper 7 scale foundation: reachability-region rejection (`region_id` per walkable tile, dirty recompute) so impossible jobs are rejected before pathfinding | Paper 7/8 build order; first scale foundation after the truth loop and crisis line | `src/agent_town/world.py`, `work.py`, `engine.py`, `tests/` | red/green tests for region assignment + impossible-job rejection; determinism preserved; full suite | `BLUEPRINT.md` (Scale architecture) | agent | ready | 2026-07-02 |
 | T-104 | 3 | Paper 7 scale foundation: deterministic command/update phases (stable ordered job claims, reservations, path requests, movement, production, needs, tax) | Paper 7; pairs with T-103 before raising population | `src/agent_town/engine.py`, `work.py`, `tests/` | determinism + phase-order tests; I1 3-day survival + LLM==fallback oracles stay green | `BLUEPRINT.md` | agent | ready | 2026-07-02 |
@@ -80,7 +79,7 @@ reclaimed per `AGENTS.md` -> Long Session Control.
 
 | ID | Priority | Task | Owner | Started | Touches | Current note | Proof required | Status |
 |---|---:|---|---|---|---|---|---|---|
-| _(none)_ | | | | | | | | |
+| T-101 | 1 | The trader (crisis-line Slice 3): deterministic trader core + `buy_good` (coin -> bread), optional local-LLM trader personality behind a hard fallback | claude (sonnet) | 2026-07-03 | `src/agent_town/economy.py`, `governor.py`, `civilization_view.py`, `tests/` | Branched `claude/trader-crisis-slice-3` from `integration`; studying existing code before designing | red/green: new `tests/test_trader.py`; full suite + smoke; watchable proof frame of a trade happening | in-progress |
 
 ## Blocked
 
