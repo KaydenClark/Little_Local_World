@@ -2,10 +2,9 @@
 
 > Generated from LLM Workbench v2.1. See `RUNBOOK.md` -> Upgrading The Harness.
 
-**Current focus:** The trader (crisis-line Slice 3) - deterministic trader +
-`buy_good`, coin -> bread, optional local-LLM trader personality behind a hard
-fallback. Now genuinely unblocked: physical sourcing gave grain a real 24h
-growing season to price trader economics against.
+**Current focus:** Repair debt (T-102) - building condition degrades into
+output/service penalties before catastrophic failure; planks/stone + labour
+repair sink. The trader (crisis-line Slice 3) shipped 2026-07-03.
 **Owner:** Kayden and local coding agents
 **Last updated:** 2026-07-03
 
@@ -19,16 +18,16 @@ commands and verification procedures in `RUNBOOK.md`.
   governors, the Pygame viewer, mood/hunger, the work-priority arbiter, water,
   storage caps, the first wage/market money loop, physical resource sourcing
   (real fields/nodes with growth time and depletion), visible storage,
-  save/load persistence, and a spectator navigation/day-night/KPI-strip pass.
-  All five confirmed Fable 5 peer-review findings are fixed.
-- **Health:** green - full suite (385 tests as of this adoption, 2026-07-03;
+  save/load persistence, a spectator navigation/day-night/KPI-strip pass, and
+  the trader (coin -> bread crisis relief, `buy_good`). All five confirmed
+  Fable 5 peer-review findings are fixed.
+- **Health:** green - full suite (416 tests as of the trader slice, 2026-07-03;
   growing, do not hardcode a stale number) + smoke pass.
 - **Decision needed:** none blocking (see Pending Decisions for the open,
   non-blocking LICENSE question).
 - **Blocked on:** nothing (hosted AI, multiplayer, engine migration are
   intentionally gated, not blocked).
-- **Next milestone:** the trader, then repair debt, then Paper 7 scale
-  foundations.
+- **Next milestone:** repair debt, then Paper 7 scale foundations.
 
 ## Pending Decisions
 
@@ -79,7 +78,7 @@ reclaimed per `AGENTS.md` -> Long Session Control.
 
 | ID | Priority | Task | Owner | Started | Touches | Current note | Proof required | Status |
 |---|---:|---|---|---|---|---|---|---|
-| T-101 | 1 | The trader (crisis-line Slice 3): deterministic trader core + `buy_good` (coin -> bread), optional local-LLM trader personality behind a hard fallback | claude (sonnet) | 2026-07-03 | `src/agent_town/economy.py`, `governor.py`, `civilization_view.py`, `tests/` | Branched `claude/trader-crisis-slice-3` from `integration`; studying existing code before designing | red/green: new `tests/test_trader.py`; full suite + smoke; watchable proof frame of a trade happening | in-progress |
+| _(none)_ | | | | | | | | |
 
 ## Blocked
 
@@ -107,6 +106,7 @@ Valid work that should not be started yet.
 | DEF-09 | Engine migration off Pygame | Benchmark evidence that Pygame rendering/editor tooling is the blocker | Current measured risk is sim scale/persistence/pathfinding, not rendering | `scripts/benchmark_scaling.py` shows rendering as the cap |
 | DEF-10 | Clothes/beauty chain, full needs set, building-quality-to-mood, revolution meter + keep, healthcare, Church, disasters, pets | Their build-2 prerequisites (see `BLUEPRINT.md` build arc) | Build-2 depth | Trader + repair debt land first |
 | DEF-11 | Build 3 (pawn lifecycle, birth, soldier pipeline, ore->metal->tools chain, Police/Firehouse) | Build 2 depth complete | The people become real | Build 2 done |
+| DEF-12 | Trade depot/caravan building, arrival cadence, reserve-aware export/import, price bands (research paper 4's fuller trade vision) | A presentation-layer trade pass is scoped | The shipped trader (T-101) is deliberately buildingless and always-available for crisis relief; the richer Townsmen-style vision (trade depot, caravan yard, every-3-days arrival, export reserve locks) is a bigger, separate slice | Owner wants a fuller trade/logistics layer, or the buildingless trader proves too simple in play |
 
 ## Documentation Check
 
@@ -156,3 +156,4 @@ heading.
 | 2026-07-02 | (lmstudio-log-cleanup) | fable | `.\scripts\validate-workbench.ps1`; `.gitignore` updated | n/a | pass | n/a | Accidentally committed log removed; `docs/lmstudio_logs/` gitignored |
 | 2026-07-02 | (next-up-notes) | fable | docs-only; `.\scripts\validate-workbench.ps1` | n/a | pass | ROADMAP ("Next up" section) | Recorded trader/era-ladder/news-scaling/log-narration/no-ambient-mode context for the next session |
 | 2026-07-03 | (harness-adoption-v2.1-redo) | sonnet | Adopted AGENTS/BLUEPRINT/TASKBOARD/RUNBOOK/README v2.1 against current `integration` tip (19b0586); `ROADMAP.md`/`BOOTSTRAP_CHECKLIST.md`/`UNATTENDED_WORK_POLICY.md` retired to `archive/legacy-harness/`; `BRANCHING.md`/`VISUAL_DESIGN.md` kept as project-local docs; post-migration verification: `SDL_VIDEODRIVER=dummy PYTHONPATH=src .venv/Scripts/python.exe -m unittest discover -s tests` -> 385 OK; `python -m agent_town --smoke-test` exit 0; `.\scripts\validate-workbench.ps1` (retargeted at the v2.1 doc set) -> passed | n/a | pass | AGENTS/BLUEPRINT/TASKBOARD/RUNBOOK/README adopted; archive/legacy-harness/README.md records disposition | Supersedes the stale PR #40 draft, which was forked before physical sourcing/save-load/spectator-UI shipped and would have lost that content on merge |
+| 2026-07-03 | T-101 | sonnet | RED: new `tests/test_trader.py` (31 tests) failed with AttributeError against not-yet-implemented `economy.buy_good`/`governor.buy_good_action`/`governor.trader_relief_action`/`governor.trader_quip`. GREEN: same 31 pass; full discover 416 OK (385 + 31, zero regressions incl. `test_dig_out.py`, `test_llm_governor.py`, `test_money_loop.py`, `test_conservation.py`); `python -m agent_town --smoke-test` exit 0; `.\scripts\validate-workbench.ps1` -> passed (via `& scripts\validate-workbench.ps1`; nested `powershell -File` hit an `$PSScriptRoot` quirk in this shell, worked fine invoked directly). `buy_good` is a plain `GovernorAction(kind="buy_good", ...)` reusing the existing generic `good`/`amount` fields - `core.py` untouched, no one-file-PR needed (see BLUEPRINT Design Decisions). Trader is buildingless by design (richer trade-depot/caravan vision deferred, DEF-12) | `docs/proof/trader/01_history_buy_good_applied.png` (decision audit: "buy bread x8 from the trader" applied, coin 30->14) + `02_research_trade_live.png` (Research panel Trade row: "Live" not "Not implemented yet") | pass | BLUEPRINT (crisis line, Governor interface, known risks, design decisions), TASKBOARD (this row + DEF-12), RUNBOOK (trader manual check) | Optional `governor.trader_quip` (local-LLM personality) tested only via an injected fake HTTP client, not against a live loaded model, and not wired into the live viewer loop (would need its own non-blocking scheduler; documented as an explicit scope boundary, not a silent gap). Price/cap constants are a first pass, not playtested |

@@ -259,6 +259,17 @@ Run the viewer and confirm:
 - **Analyzer honesty:** a healthy-pipeline run with zero model-origin actions
   applied reports AMBER ("pipeline-only"), never GREEN. Headless proof:
   `unittest tests.test_analyzer_honesty`.
+- **The trader (crisis-line Slice 3):** during a `low_food` exception the
+  fallback governor's decision includes a `buy_good` action alongside the
+  dig-out's `place_building`; the `History` panel's decision detail shows
+  "buy bread xN from the trader" under Applied, with coin dropping by the
+  bought amount times the bread trade price in the after-state; the `Research` panel's Trade
+  row reads "Live" instead of "Not implemented yet". Headless proof:
+  `unittest tests.test_trader` (31 tests). Proof frames:
+  `docs/proof/trader/`. The optional local-LLM trader personality
+  (`governor.trader_quip`) is tested via an injected fake client only - it has
+  not been exercised against a live loaded model and is not wired into the
+  live viewer loop (see `BLUEPRINT.md` "Crisis, response, consequence").
 
 Starvation-escapability manual check (crisis/response Slice 0):
 
