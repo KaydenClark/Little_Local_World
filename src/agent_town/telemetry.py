@@ -26,7 +26,7 @@ from collections import Counter, deque
 from pathlib import Path
 from typing import Any
 
-from . import economy, health
+from . import economy, governor, health
 from .core import BUILD1_NEEDS, Good, FactionState
 
 # Bump when the record schema changes in a way the analyzer must branch on.
@@ -159,7 +159,22 @@ def _state_after_summary(state: FactionState) -> dict[str, Any]:
         "needs": {need: round(economy.average_need(state, need), 3) for need in BUILD1_NEEDS},
         "idle": sum(1 for pawn in state.pawns.values() if pawn.assignment is None),
         "construction_sites": len(state.construction_sites),
+        "seed_grain": state.seed_grain,
     }
+
+
+def _active_pressures(state: FactionState) -> list[str]:
+    """Exception kinds live after this hour, deduplicated with counts.
+
+    Recorded per decision so the audit's context panel is derived from what
+    was actually pressing on the governor (review P-5: the old "Causality map"
+    was static boilerplate posing as per-decision explanation).
+    """
+    counts: Counter[str] = Counter(exc.kind for exc in governor.build_exception_queue(state))
+    return [
+        kind if count == 1 else f"{kind} x{count}"
+        for kind, count in sorted(counts.items())
+    ]
 
 
 def build_decision(state: FactionState, governor: Any, step_result: Any) -> dict[str, Any]:
@@ -197,6 +212,7 @@ def build_decision(state: FactionState, governor: Any, step_result: Any) -> dict
         "rejected_actions": rejected_actions,
         "buildings_completed": list(getattr(step_result, "buildings_completed", ()) or ()),
         "state_after": _state_after_summary(state),
+        "pressures": _active_pressures(state),
         "decide_ms": round(getattr(governor, "last_decide_ms", 0.0), 1),
         "dropped": False,
         "dropped_reason": "",

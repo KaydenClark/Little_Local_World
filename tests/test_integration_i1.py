@@ -1,6 +1,6 @@
 import unittest
 
-from agent_town import buildings, economy, engine, pawns
+from agent_town import buildings, civilization, economy, engine, pawns
 from agent_town.core import FactionState, Good, Pawn
 
 
@@ -42,6 +42,9 @@ def make_state() -> FactionState:
         counts[kind] = counts.get(kind, 0) + 1
         building = buildings.make_building(kind, index, 0, building_id=f"{kind.lower().replace(' ', '')}{counts[kind]}")
         state.buildings[building.id] = building
+    # Physical sourcing: a settled colony's farms own staggered, established
+    # fields plus a seed reserve, mirroring the default viewer civilization.
+    civilization.bootstrap_farm_fields(state)
     return state
 
 

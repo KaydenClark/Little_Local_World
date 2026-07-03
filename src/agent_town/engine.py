@@ -37,7 +37,7 @@ from __future__ import annotations
 import random
 from dataclasses import dataclass
 
-from . import buildings, construction, economy, governor as governor_mod, mood, pawns, schedule, work
+from . import buildings, construction, economy, governor as governor_mod, mood, pawns, schedule, work, world
 from .core import (
     ACTION_PLACE_BUILDING,
     FactionState,
@@ -86,6 +86,9 @@ def step_hour(state: FactionState, gov: governor_mod.Governor | None = None) -> 
     completed.extend(_advance_construction(state))
 
     _advance_pawn_needs(state)
+    # Node time (physical sourcing): fields grow and trees regrow before the
+    # arbiter plans, so a field that ripens this hour is real work this hour.
+    world.advance_nodes(state)
     work.assign_jobs(state)
     _advance_pawn_activity(state)
     economy.production_tick(state)

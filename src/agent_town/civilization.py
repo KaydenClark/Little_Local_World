@@ -10,11 +10,19 @@ governor.
 from __future__ import annotations
 
 from . import buildings, pawns, world
-from .core import FactionState, Good, Pawn
+from .core import FactionState, Good, NODE_GROWING, Pawn
 
 CIVILIZATION_WIDTH = 24
 CIVILIZATION_HEIGHT = 16
 DEFAULT_STOCKPILE_CAPACITY = 240
+# Seed grain "brought from the old country": enough to plant every starting
+# field once (4 farms x PLANT_SEED_COST 2) before harvest diversion tops the
+# reserve back up. Physical sourcing bootstrap - never purchased.
+STARTING_SEED_GRAIN = 8
+# Starting fields are staggered through the growth cycle so harvests arrive in
+# a rolling rhythm instead of one synchronized burst: one field ripe on day 0,
+# the rest partway grown, spaced roughly a quarter-season apart.
+FIELD_STAGGER_HOURS = (None, 18, 12, 6)  # None = starts ripe
 # Surplus-producer ceilings. Primary producers (water, logs, planks, stone) have
 # weak or bursty sinks, so with the finite stockpile cap (above) an uncapped
 # producer floods shared storage and crowds the food chain out until the civ
@@ -70,6 +78,42 @@ STARTING_PAWNS: tuple[tuple[str, str], ...] = (
 PAWN_TRAITS = ("industrious", "optimist", "tough")
 
 
+def bootstrap_farm_fields(state: FactionState) -> None:
+    """Give every unbound Farm an established field (physical sourcing bootstrap).
+
+    A settled colony did not just break ground: its farms arrived mid-season.
+    Each Farm without a field gets one beside it, staggered through the growth
+    cycle (:data:`FIELD_STAGGER_HOURS`) so one field is ripe on day 0 and the
+    rest ripen in a rolling rhythm instead of a synchronized burst. Also seeds
+    the faction seed-grain reserve if it is empty. Used by the default viewer
+    civilization and the seeded survival-oracle civs in tests; a *newly built*
+    Farm mid-run never goes through this - it breaks bare ground and must plant.
+    """
+    if state.seed_grain <= 0:
+        state.seed_grain = STARTING_SEED_GRAIN
+    farms = sorted(
+        (
+            building
+            for building in state.buildings.values()
+            if building.kind == "Farm" and world.farm_field(state, building) is None
+        ),
+        key=lambda b: b.id,
+    )
+    for index, farm in enumerate(farms):
+        stagger = FIELD_STAGGER_HOURS[index % len(FIELD_STAGGER_HOURS)]
+        x, y = farm.x + 1, farm.y + 1
+        if state.grid is not None:
+            x = max(0, min(state.grid.width - 1, x))
+            y = max(0, min(state.grid.height - 1, y))
+        field = world.create_field_node(
+            state, x, y, field_id=f"field-{farm.id}", ripe=stagger is None
+        )
+        if stagger is not None:
+            field.state = NODE_GROWING
+            field.growth_progress = float(world.FIELD_GROWTH_HOURS - stagger)
+        farm.source_node_id = field.id
+
+
 def create_default_civilization(*, seed: int = 7) -> FactionState:
     """Build the seeded build-1 civilization the viewer renders and the engine steps."""
     grid, nodes = world.create_world(CIVILIZATION_WIDTH, CIVILIZATION_HEIGHT, seed=seed)
@@ -84,6 +128,7 @@ def create_default_civilization(*, seed: int = 7) -> FactionState:
     state.stockpile.base_capacity = DEFAULT_STOCKPILE_CAPACITY
     state.stockpile.add(Good.BREAD, 48)
     state.stockpile.add(Good.WATER, 24)
+    state.seed_grain = STARTING_SEED_GRAIN
 
     counts: dict[str, int] = {}
     for kind, x, y in STARTING_BUILDINGS:
@@ -95,6 +140,7 @@ def create_default_civilization(*, seed: int = 7) -> FactionState:
             good, amount = surplus_target
             building.production_target[good] = amount
         state.buildings[building.id] = building
+    bootstrap_farm_fields(state)
 
     for index, (name, skill) in enumerate(STARTING_PAWNS):
         px = 2 + (index % 6) * 3

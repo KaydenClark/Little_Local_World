@@ -16,8 +16,20 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable
 
-from . import mood, pawns
-from .core import BUILD1_NEEDS, FactionState, Good, NEED_FOOD, Pawn, Recipe, Stockpile
+from . import mood, pawns, world
+from .core import (
+    BUILD1_NEEDS,
+    Building,
+    FactionState,
+    Good,
+    NEED_FOOD,
+    NODE_EMPTY,
+    NODE_GROWING,
+    NODE_READY,
+    Pawn,
+    Recipe,
+    Stockpile,
+)
 
 # Base output rate per unit of summed effective work, per tick.
 BASE_RATE = 1.0
@@ -32,6 +44,32 @@ MARKET_BREAD_PRICE = 1
 TECH_EFFICIENT_BAKING = "efficient_baking"
 RESEARCH_COSTS = {TECH_EFFICIENT_BAKING: 4}
 LABORATORY_KIND = "Laboratory"
+
+# --- Physical sourcing (BLUEPRINT "Physical sourcing" refinement) -------------
+# Tier 0 faucets that must draw from a located map node instead of minting their
+# output from labor alone. The Water Well is deliberately absent: its source is
+# the aquifer (replenished mechanic), inexhaustible at colony scale.
+SOURCED_BUILDING_GOODS: dict[str, Good] = {
+    "Farm": Good.GRAIN,
+    "Forester": Good.LOGS,
+    "Quarry": Good.STONE,
+}
+# Planting a field consumes this much seed grain from the faction seed reserve.
+PLANT_SEED_COST = 2
+# Harvests divert grain back into the seed reserve until it holds this much,
+# before any grain reaches the stockpile - each field is self-seeding.
+SEED_RESERVE_TARGET = 8
+# Grain harvested from a ripe field per completed work cycle. Harvesting is
+# faster than the old mint-1-per-cycle faucet because the grain already exists
+# on the field; the growing season is the rate limiter, not the sickle.
+HARVEST_UNITS_PER_CYCLE = 4
+
+# Farm field status codes (work arbiter, governor exceptions, and viewer).
+FIELD_READY = "ready"  # ripe crop standing - harvest is real work
+FIELD_GROWING = "growing"  # crop growing - nothing for a farmer to do here
+FIELD_PLANTABLE = "plantable"  # empty field and seed on hand - planting is work
+FIELD_NO_SEED = "no_seed"  # empty field, seed reserve short - blocked
+FIELD_UNCLAIMED = "unclaimed"  # farm has not broken ground yet (will on first work)
 
 # Bread a pawn eats per day at steady state, derived from the need model so the
 # food cover metric tracks the real drain: a full day of food decay divided by
@@ -102,12 +140,20 @@ def production_tick(state: FactionState, *, work_fn: WorkFn = mood.effective_wor
     accumulated into a burst it fires on resume.
     """
     refresh_storage_capacity(state)
+    world.normalize_nodes(state.resource_nodes)
     for building_id, building in state.buildings.items():
         recipe = building.recipe
         if not building.built or recipe is None or not building.staffed_by:
             continue
         if recipe.work_units <= 0:
             raise ValueError("Recipe work_units must be positive")
+        source_good = SOURCED_BUILDING_GOODS.get(building.kind)
+        if source_good is Good.GRAIN:
+            _farm_tick(state, building, work_fn)
+            continue
+        if source_good is not None:
+            _extraction_tick(state, building, source_good, work_fn)
+            continue
         building.production_progress += building_output_rate(state, building_id, work_fn)
         runnable = int(building.production_progress // recipe.work_units)
         if runnable <= 0:
@@ -136,6 +182,135 @@ def production_tick(state: FactionState, *, work_fn: WorkFn = mood.effective_wor
         for good, amount in outputs.items():
             _validate_recipe_amount(good, amount)
             state.stockpile.add(good, amount * cycles)
+
+
+def field_status(state: FactionState, building: Building) -> str:
+    """What a Farm's field offers a farmer right now (read-only, no binding).
+
+    One of :data:`FIELD_READY`, :data:`FIELD_GROWING`, :data:`FIELD_PLANTABLE`,
+    :data:`FIELD_NO_SEED`, :data:`FIELD_UNCLAIMED`. The work arbiter treats
+    ``ready``/``plantable``/``unclaimed`` as real work; ``growing`` and
+    ``no_seed`` free the farmer for other jobs.
+    """
+    node = world.farm_field(state, building)
+    if node is None:
+        return FIELD_PLANTABLE if state.seed_grain >= PLANT_SEED_COST else FIELD_UNCLAIMED
+    if node.state == NODE_GROWING:
+        return FIELD_GROWING
+    if node.state == NODE_READY and node.amount > 0:
+        return FIELD_READY
+    return FIELD_PLANTABLE if state.seed_grain >= PLANT_SEED_COST else FIELD_NO_SEED
+
+
+def field_growth_fraction(state: FactionState, building: Building) -> float | None:
+    """0..1 growth progress of a Farm's growing field, or None when not growing."""
+    node = world.farm_field(state, building)
+    if node is None or node.state != NODE_GROWING:
+        return None
+    return max(0.0, min(1.0, node.growth_progress / world.FIELD_GROWTH_HOURS))
+
+
+def source_depleted(state: FactionState, building: Building) -> bool:
+    """Whether an extractor (Forester/Quarry) has no standing source left."""
+    source_good = SOURCED_BUILDING_GOODS.get(building.kind)
+    if source_good is None or source_good is Good.GRAIN:
+        return False
+    return world.harvestable_amount(state, source_good) <= 0
+
+
+def _banked_cycles(state: FactionState, building: Building, work_fn: WorkFn) -> int:
+    """Bank this hour's effective work; return the whole cycles now spendable."""
+    recipe = building.recipe
+    building.production_progress += building_output_rate(state, building.id, work_fn)
+    runnable = int(building.production_progress // recipe.work_units)
+    if runnable > 0:
+        building.production_progress -= runnable * recipe.work_units
+    return runnable
+
+
+def _units_allowed(stockpile: Stockpile, good: Good, targets: dict[Good, int]) -> int | None:
+    """How many single units of ``good`` may enter storage (target + capacity)."""
+    limits: list[int] = []
+    target = targets.get(good)
+    if target is not None:
+        limits.append(max(0, target - stockpile.counts.get(good, 0)))
+    available = stockpile.available_capacity()
+    if available is not None:
+        limits.append(available)
+    return min(limits) if limits else None
+
+
+def _farm_tick(state: FactionState, building: Building, work_fn: WorkFn) -> None:
+    """Cultivated production: plant (labor + seed) -> grow (time) -> harvest (labor).
+
+    The field node is the source of grain, not the farmer's hands: an EMPTY
+    field yields nothing however hard the pawn works, and a GROWING field needs
+    time, not labor (the work arbiter frees the farmer meanwhile). Harvested
+    grain first tops up the faction seed reserve (each field is self-seeding),
+    then enters the stockpile through the conservation ledger - the field is the
+    named external source. Grain that storage cannot take stays standing on the
+    field rather than vanishing.
+    """
+    cycles = _banked_cycles(state, building, work_fn)
+    if cycles <= 0:
+        return
+    field = world.claim_farm_field(state, building)
+
+    if field.state == NODE_EMPTY:
+        if state.seed_grain >= PLANT_SEED_COST:
+            state.seed_grain -= PLANT_SEED_COST
+            field.state = NODE_GROWING
+            field.growth_progress = 0.0
+        # Remaining cycles this hour are lost work - you cannot harvest a field
+        # you just planted, and no-seed idling is surfaced as an exception.
+        return
+
+    if field.state != NODE_READY or field.amount <= 0:
+        return
+
+    want = cycles * HARVEST_UNITS_PER_CYCLE
+    seed_take = min(field.amount, want, max(0, SEED_RESERVE_TARGET - state.seed_grain))
+    if seed_take > 0:
+        world.harvest_node(field, seed_take)
+        state.seed_grain += seed_take
+        want -= seed_take
+    if want <= 0 or field.amount <= 0:
+        return
+    allowed = _units_allowed(state.stockpile, Good.GRAIN, building.production_target)
+    units = min(want, field.amount) if allowed is None else min(want, field.amount, allowed)
+    if units <= 0:
+        return
+    taken = world.harvest_node(field, units)
+    if taken > 0:
+        state.stockpile.add(Good.GRAIN, taken)
+
+
+def _extraction_tick(state: FactionState, building: Building, good: Good, work_fn: WorkFn) -> None:
+    """Extracted production: labor harvests real standing nodes, nearest-first.
+
+    Output per cycle matches the recipe, but every unit now leaves a located
+    node: a Quarry mines its outcrops dry (stone never regrows - the face is
+    mined out) and a Forester's stands thin out and slowly recover
+    (``world.advance_nodes``). No nodes left means no output, surfaced as a
+    ``node_depleted`` exception rather than silent free goods.
+    """
+    cycles = _banked_cycles(state, building, work_fn)
+    if cycles <= 0:
+        return
+    per_cycle = building.recipe.outputs.get(good, 0)
+    if per_cycle <= 0:
+        return
+    want = cycles * per_cycle
+    allowed = _units_allowed(state.stockpile, good, building.production_target)
+    if allowed is not None:
+        want = min(want, allowed)
+    standing = world.harvestable_amount(state, good)
+    want = min(want, standing)
+    if want <= 0:
+        return
+    taken = world.harvest_from_nodes(state, good, want, near=(building.x, building.y))
+    if taken > 0:
+        state.stockpile.add(good, taken)
 
 
 def research_tick(state: FactionState, *, work_fn: WorkFn = mood.effective_work) -> tuple[str, ...]:

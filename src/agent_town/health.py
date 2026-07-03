@@ -112,6 +112,17 @@ def check_invariants(state: FactionState) -> list[str]:
     for good, count in state.stockpile.counts.items():
         if count < 0:
             violations.append(f"stockpile {good.value} is negative ({count})")
+    # Physical sourcing: nodes and the seed reserve obey the same law - no
+    # negative stock, no crop standing on a field that is not ripe.
+    if state.seed_grain < 0:
+        violations.append(f"seed grain reserve is negative ({state.seed_grain})")
+    for node in state.resource_nodes:
+        if node.amount < 0:
+            violations.append(f"node {node.id or '?'} ({node.kind.value}) amount is negative ({node.amount})")
+        if node.max_amount and node.amount > node.max_amount:
+            violations.append(
+                f"node {node.id or '?'} ({node.kind.value}) overfull: {node.amount}/{node.max_amount}"
+            )
     ledger_goods = set(state.stockpile.counts) | set(state.stockpile.flow_in) | set(state.stockpile.flow_out)
     for good in sorted(ledger_goods, key=lambda g: g.value):
         stock = state.stockpile.counts.get(good, 0)

@@ -116,6 +116,8 @@ class TrackA2Tests(unittest.TestCase):
             "forester": worker("forester", "forestry"),
             "sawyer": worker("sawyer", "woodworking"),
         }
+        # Physical sourcing: the Forester fells real trees now.
+        state.resource_nodes.append(world.ResourceNode(Good.LOGS, 500, 1, 2))
 
         for _ in range(4):
             economy.production_tick(state)
@@ -183,11 +185,20 @@ class TrackA4Tests(unittest.TestCase):
             building.staffed_by.append(pawn.id)
             state.buildings[building.id] = building
             state.pawns[pawn.id] = pawn
+        # Physical sourcing: the Farm harvests a ripe bound field (seed reserve
+        # already full so nothing is diverted), the Quarry mines a real outcrop.
+        state.seed_grain = economy.SEED_RESERVE_TARGET
+        field = world.create_field_node(state, 1, 1, field_id="field-farm", ripe=True)
+        state.buildings["farm"].source_node_id = field.id
+        state.resource_nodes.append(world.ResourceNode(Good.STONE, 500, 2, 2))
 
         for _ in range(8):
             economy.production_tick(state)
 
-        self.assertEqual(state.stockpile.counts.get(Good.BREAD), 8)
+        # Harvesting a standing crop is faster than the old mint-per-cycle
+        # faucet (4 grain per work cycle), so the mill is grain-fed every hour
+        # and the bakery fires every second hour: 4 cycles x 4 bread.
+        self.assertEqual(state.stockpile.counts.get(Good.BREAD), 16)
         self.assertEqual(state.stockpile.counts.get(Good.STONE), 8)
         self.assertTrue(economy.can_afford(state, {Good.BREAD: 1}, coin_cost=0))
         self.assertFalse(economy.can_afford(state, {Good.PLANKS: 1}, coin_cost=0))

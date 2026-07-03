@@ -240,6 +240,30 @@ def _research_block_reason(state: FactionState) -> str | None:
     return None
 
 
+def _source_block_reason(state: FactionState, building: Building) -> str | None:
+    """Why a sourced building (Farm/Forester/Quarry) has no real work right now.
+
+    Physical sourcing: a Farm whose field is growing offers a farmer nothing but
+    a pointless wait (growth is time, not labor), an empty field with no seed
+    cannot be planted, and an extractor whose nodes are mined out has nothing to
+    take. Freeing the pawn here is what lets a farmer mill or bake through the
+    growing season and return for the harvest.
+    """
+    source_good = economy.SOURCED_BUILDING_GOODS.get(building.kind)
+    if source_good is None:
+        return None
+    if source_good == economy.Good.GRAIN:
+        status = economy.field_status(state, building)
+        if status == economy.FIELD_GROWING:
+            return "field growing"
+        if status == economy.FIELD_NO_SEED:
+            return "no seed grain"
+        return None
+    if economy.source_depleted(state, building):
+        return "source depleted"
+    return None
+
+
 def _scan_candidates(
     state: FactionState, pawn: Pawn, reserved: dict[str, int], *, exclude_id: str | None = None
 ) -> tuple[list[tuple[Building, str, int]], list[RejectedJob]]:
@@ -263,6 +287,10 @@ def _scan_candidates(
             if block is not None:
                 illegal.append(RejectedJob(building.id, work_type, block))
                 continue
+        source_block = _source_block_reason(state, building)
+        if source_block is not None:
+            illegal.append(RejectedJob(building.id, work_type, source_block))
+            continue
         priority = default_priority(pawn, work_type)
         if priority <= WORK_PRIORITY_DISABLED:
             illegal.append(RejectedJob(building.id, work_type, "work disabled"))
@@ -337,8 +365,49 @@ def _assignment_legal(state: FactionState, pawn: Pawn) -> bool:
     # the pawn so it can rejoin the survival chain instead of idling on the Lab.
     if work_type == RESEARCH_WORK_TYPE and _research_block_reason(state) is not None:
         return False
+    # A sourced building with nothing to work (field growing, seed short, nodes
+    # mined out) releases its pawn instead of chaining it to a pointless wait.
+    if _source_block_reason(state, building) is not None:
+        return False
     # A work type the governor/player just disabled releases the pawn to replan.
     return default_priority(pawn, work_type) > WORK_PRIORITY_DISABLED
+
+
+def _upgrade_available(state: FactionState, pawn: Pawn) -> bool:
+    """Whether a strictly higher-priority job with an open slot exists for ``pawn``.
+
+    Physical sourcing made stop-gap jobs normal: a farmer freed by a growing
+    field takes whatever ranks next (mill, bakery) - and the no-thrash rule
+    would then hold it there forever, never returning for the harvest. This
+    check lets phase A release a pawn *only* for a strict manual-priority
+    upgrade (e.g. priority-4 stopgap -> priority-1 specialty), so equal-priority
+    jobs never churn and the farmer walks back when the field turns ripe.
+    """
+    assignment = pawn.assignment
+    if assignment is None or pawn.forced_assignment is not None:
+        return False
+    current = state.buildings.get(assignment.building_id)
+    current_type = building_work_type(current)
+    if current_type is None:
+        return False
+    current_priority = default_priority(pawn, current_type)
+    for building in sorted(state.buildings.values(), key=lambda b: b.id):
+        if building.id == assignment.building_id or not building.built:
+            continue
+        work_type = building_work_type(building)
+        if work_type is None:
+            continue
+        priority = default_priority(pawn, work_type)
+        if priority <= WORK_PRIORITY_DISABLED or priority >= current_priority:
+            continue
+        if len(building.staffed_by) >= building.job_slots:
+            continue
+        if work_type == RESEARCH_WORK_TYPE and _research_block_reason(state) is not None:
+            continue
+        if _source_block_reason(state, building) is not None:
+            continue
+        return True
+    return False
 
 
 def _release(state: FactionState, pawn: Pawn) -> None:
@@ -443,6 +512,10 @@ def assign_jobs(state: FactionState) -> dict[str, WorkDecision]:
                 _release(state, pawn)
                 pawn.forced_assignment = None
         elif not _assignment_legal(state, pawn):
+            _release(state, pawn)
+        elif _upgrade_available(state, pawn):
+            # Strict-priority upgrade (see _upgrade_available): the pawn re-plans
+            # this same cycle and wins its specialty back deterministically.
             _release(state, pawn)
 
     # Phase B: reserve the slots pawns are still holding.

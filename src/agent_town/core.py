@@ -88,14 +88,35 @@ class GridMap:
         return self.tiles[y][x]
 
 
+# ResourceNode.state values (physical sourcing, 2026-07-02 contract addition).
+# Extracted nodes (trees, stone) are READY while they hold any amount; cultivated
+# fields cycle EMPTY -> GROWING -> READY (plant is labor, growth is time,
+# harvest is labor). world.py owns the lifecycle; economy.py consumes it.
+NODE_EMPTY = "empty"
+NODE_GROWING = "growing"
+NODE_READY = "ready"
+NODE_STATES = (NODE_EMPTY, NODE_GROWING, NODE_READY)
+
+
 @dataclass
 class ResourceNode:
-    """A harvestable node on the map (tree, field, stone outcrop)."""
+    """A harvestable node on the map (tree, field, stone outcrop).
+
+    Physical-sourcing fields (post-freeze addition via the one-file-PR process):
+    ``id`` lets a building own a node (a Farm's field); ``state`` and
+    ``growth_progress`` drive the cultivated/regrowth lifecycle; ``max_amount``
+    is the ripe/full capacity a growing node refills toward (0 = adopt the
+    starting ``amount`` on first world tick).
+    """
 
     kind: Good
     amount: int
     x: int
     y: int
+    id: str = ""
+    state: str = NODE_READY
+    growth_progress: float = 0.0
+    max_amount: int = 0
 
 
 @dataclass
@@ -228,6 +249,10 @@ class Building:
     staffed_by: list[str] = field(default_factory=list)
     built: bool = True
     production_target: dict[Good, int] = field(default_factory=dict)
+    # The located source this building draws from (physical sourcing). A Farm
+    # owns exactly one field ``ResourceNode`` by id; extractors (Forester,
+    # Quarry) share the map's nodes of their good and leave this None.
+    source_node_id: str | None = None
     # Banked fractional work toward the next production cycle. Production is
     # continuous, not lumpy: a building accrues ``effective_work`` each hour and
     # completes a cycle when the bank reaches ``recipe.work_units``. This is what
@@ -376,6 +401,12 @@ class FactionState:
     seed: int = 0
     grid: GridMap | None = None
     resource_nodes: list[ResourceNode] = field(default_factory=list)
+    # Seed grain held back for planting fields (physical sourcing). This is a
+    # separate reserve, not stockpile grain: planting consumes it, and each
+    # harvest diverts a little grain back into it before the rest reaches the
+    # stockpile. A fresh colony bootstraps a small reserve ("brought from the
+    # old country") so its first Farm is never seed-locked.
+    seed_grain: int = 0
 
 
 @dataclass(frozen=True)

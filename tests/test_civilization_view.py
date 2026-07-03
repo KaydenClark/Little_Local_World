@@ -1,4 +1,5 @@
 import os
+import tempfile
 import unittest
 
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
@@ -23,6 +24,11 @@ from agent_town.civilization_view import (
     assign_panel_target_at,
     assign_panel_targets,
     active_panel_from_button,
+    building_card_lines,
+    exception_stack_row_rects,
+    find_building_at_screen,
+    roster_chip_at,
+    roster_chip_rects,
     _construction_progress,
     _need_bar_color,
     _mood_color,
@@ -189,8 +195,11 @@ class WorkGridTests(unittest.TestCase):
         state = civilization.create_default_civilization()
         state.buildings.pop("waterwell1")
         engine.step_hour(state)
-        # Removing the well leaves 12 pawns for 11 legal slots, so one stays idle.
-        self.assertEqual(idle_pawn_count(state), 1)
+        # Removing the well leaves 12 pawns for 11 slots (one idle), and
+        # physical sourcing frees the three farmers whose staggered fields are
+        # still growing (a growing field is time, not work) - so four pawns
+        # honestly have no legal job this hour.
+        self.assertEqual(idle_pawn_count(state), 4)
 
 
 class ViewerLayoutTests(unittest.TestCase):
@@ -382,7 +391,9 @@ class GovernorObserverModelTests(unittest.TestCase):
         self.assertIn("water", summary.plan.lower())
         self.assertIn("water", summary.bottleneck.lower())
         self.assertEqual(summary.top_exception.kind, "low_water")
-        self.assertLess(summary.confidence, 80)
+        # The attention label is derived from live exceptions (review P-8), so
+        # a water crisis must not read as "stable".
+        self.assertNotEqual(summary.attention, "stable")
 
     def test_governor_card_describes_last_reallocation_actions(self):
         state = civilization.create_default_civilization()
@@ -678,17 +689,148 @@ class HistoryFeedTests(unittest.TestCase):
         self.assertEqual(viewer.speed_multiplier, 20)
 
     def test_twenty_x_speed_advances_twenty_hours_per_normal_interval(self):
-        viewer = CivilizationViewer(smoke_test=False, governor=FallbackGovernor())
-        try:
-            viewer.speed_multiplier = 20
-            before = viewer.state.day * 24 + viewer.state.time_of_day
+        # A temp save_dir keeps this live-mode viewer from writing (or
+        # resuming) the real saves/autosave.json during a test run.
+        with tempfile.TemporaryDirectory() as tmp:
+            viewer = CivilizationViewer(smoke_test=False, governor=FallbackGovernor(), save_dir=tmp)
+            try:
+                viewer.speed_multiplier = 20
+                before = viewer.state.day * 24 + viewer.state.time_of_day
 
-            viewer._advance(0.6)
+                viewer._advance(0.6)
 
-            after = viewer.state.day * 24 + viewer.state.time_of_day
-            self.assertEqual(after - before, 20)
-        finally:
-            viewer._shutdown_governor()
+                after = viewer.state.day * 24 + viewer.state.time_of_day
+                self.assertEqual(after - before, 20)
+            finally:
+                viewer._shutdown_governor()
+
+
+class BuildingInspectionTests(unittest.TestCase):
+    """Clicking a building must answer "why is this (not) producing"."""
+
+    def setUp(self):
+        pygame.display.init()
+        pygame.font.init()
+        pygame.display.set_mode((64, 64))
+
+    def test_farm_card_explains_the_field(self):
+        state = civilization.create_default_civilization()
+        farms = sorted((b for b in state.buildings.values() if b.kind == "Farm"), key=lambda b: b.id)
+        all_text = "\n".join(
+            text for farm in farms for text, _tone in building_card_lines(state, farm)
+        )
+        self.assertIn("Field growing", all_text)
+        self.assertIn("Field ripe", all_text)
+
+    def test_quarry_card_names_its_source(self):
+        state = civilization.create_default_civilization()
+        quarry = next(b for b in state.buildings.values() if b.kind == "Quarry")
+        lines = [text for text, _tone in building_card_lines(state, quarry)]
+        self.assertTrue(any("Source" in text for text in lines), lines)
+
+    def test_click_on_building_selects_it_and_clears_pawn(self):
+        viewer = CivilizationViewer(smoke_test=True)
+        building = next(iter(viewer.state.buildings.values()))
+        # Park every pawn far from the building so the pawn hit-test misses.
+        for pawn in viewer.state.pawns.values():
+            pawn.x, pawn.y = 0, 15
+        building.x, building.y = 20, 2
+        origin = viewer._map_origin()
+        cx, cy = viewer.camera.tile_center_to_screen(
+            building.x, building.y, origin, viewer.assets.tile_size
+        )
+
+        viewer._handle_click((cx, cy))
+
+        self.assertEqual(viewer.selected_building_id, building.id)
+        self.assertIsNone(viewer.selected_pawn_id)
+
+    def test_render_with_selected_building_smokes(self):
+        assets = load_civilization_assets()
+        font = pygame.font.Font(None, 16)
+        state = civilization.create_default_civilization()
+        surface = pygame.Surface((1280, 900))
+        farm_id = next(b.id for b in state.buildings.values() if b.kind == "Farm")
+        render_civilization(
+            surface, state, assets, font, (12, 12), selected_building_id=farm_id
+        )
+
+    def test_find_building_at_screen_hits_center(self):
+        state = civilization.create_default_civilization()
+        camera = Camera()
+        building = next(iter(state.buildings.values()))
+        cx, cy = camera.tile_center_to_screen(building.x, building.y, (0, 0), 25)
+        self.assertEqual(find_building_at_screen(state, (cx, cy), (0, 0), 25, camera), building.id)
+
+
+class SpectatorNavigationTests(unittest.TestCase):
+    """Paper 6 interaction rules: roster chips and alert rows are navigation."""
+
+    def setUp(self):
+        pygame.display.init()
+        pygame.font.init()
+        pygame.display.set_mode((64, 64))
+
+    def test_roster_chip_rects_cover_the_visible_roster(self):
+        state = civilization.create_default_civilization()
+        rect = viewer_layout(1280, 900).roster
+        chips = roster_chip_rects(state, rect)
+        self.assertEqual([pid for pid, _r in chips], list(state.pawns)[: len(chips)])
+        self.assertGreater(len(chips), 0)
+        pid, chip = chips[0]
+        self.assertEqual(roster_chip_at(state, rect, chip.center), pid)
+
+    def test_clicking_a_roster_portrait_selects_and_centers(self):
+        viewer = CivilizationViewer(smoke_test=True)
+        rect = viewer_layout(viewer.screen.get_width(), viewer.screen.get_height()).roster
+        chips = roster_chip_rects(viewer.state, rect)
+        target_id, chip = chips[min(3, len(chips) - 1)]
+        viewer.selected_building_id = "farm1"
+
+        viewer._handle_click(chip.center)
+
+        self.assertEqual(viewer.selected_pawn_id, target_id)
+        self.assertIsNone(viewer.selected_building_id)
+
+    def test_clicking_an_exception_row_selects_its_subject(self):
+        viewer = CivilizationViewer(smoke_test=True)
+        engine.step_hour(viewer.state)  # staffed bakeries raise missing_inputs
+        layout = viewer_layout(viewer.screen.get_width(), viewer.screen.get_height())
+        exception_rect, _inspector = right_column_regions(layout.right)
+        rows = exception_stack_row_rects(exception_stack_items(viewer.state), exception_rect)
+        target = next((r, item) for r, item in rows if item.building_id)
+        row_rect, item = target
+
+        viewer._handle_click(row_rect.center)
+
+        self.assertEqual(viewer.selected_building_id, item.building_id)
+        self.assertIsNone(viewer.selected_pawn_id)
+
+    def test_follow_toggle_tracks_selected_pawn(self):
+        viewer = CivilizationViewer(smoke_test=True)
+        pawn_id = next(iter(viewer.state.pawns))
+        viewer.selected_pawn_id = pawn_id
+
+        viewer._toggle_follow()
+        self.assertEqual(viewer.follow_pawn_id, pawn_id)
+        viewer._toggle_follow()
+        self.assertIsNone(viewer.follow_pawn_id)
+
+    def test_manual_pan_breaks_follow(self):
+        viewer = CivilizationViewer(smoke_test=True)
+        viewer.selected_pawn_id = next(iter(viewer.state.pawns))
+        viewer._toggle_follow()
+        self.assertIsNotNone(viewer.follow_pawn_id)
+
+        viewer._manual_pan(10, 0)
+
+        self.assertIsNone(viewer.follow_pawn_id)
+
+    def test_center_on_tile_clamps_to_world(self):
+        viewer = CivilizationViewer(smoke_test=True)
+        viewer._center_on_tile(0, 0)
+        self.assertGreaterEqual(viewer.camera.offset_x, 0.0)
+        self.assertGreaterEqual(viewer.camera.offset_y, 0.0)
 
 
 if __name__ == "__main__":
