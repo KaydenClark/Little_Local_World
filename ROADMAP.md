@@ -406,6 +406,47 @@ Slices (all done 2026-07-02):
    depleted-and-relocated Forester, and a Storehouse pile that visibly
    shrinks/grows with real stock.
 
+## Next up (recorded 2026-07-02, not yet started)
+
+Captured from the 2026-07-02 UI/product conversation so the next session picks
+up with real context instead of re-deriving it. Ordered by what unblocks what,
+not strictly by priority.
+
+1. **The trader (crisis line Slice 3).** Now genuinely unblocked: physical
+   sourcing gave grain a real lead time (plant -> 24h grow -> harvest), so
+   trader economics (coin -> bread) can be priced against an actual growing
+   season instead of an instant-mint assumption that would have needed
+   redoing. Design is already specified in "Active line of work: crisis,
+   response, consequence" above - deterministic trader core + `buy_good`,
+   optional local-LLM trader personality behind a hard fallback, reusing
+   `LocalLLMClient`. This is the natural next code task.
+2. **Era ladder (owner-directed, blocked on owner's own research).** The
+   civilization's development spine should read as eras, AoE-style: stone age
+   -> farming age (current build) -> castle age -> city state -> full
+   civilization, each gated by supporting technologies. The distinctive
+   requirement: **advancing an era requires going back and upgrading old
+   buildings**, not just unlocking new ones - so era progression is also a
+   recurring material/labour sink, not a one-way tech unlock. Owner is
+   researching the specifics before this is scoped; do not design a deep tech
+   tree ahead of that. When it lands, it reshapes/absorbs the current minimal
+   research spine (`efficient_baking` -> Space Age) rather than replacing it
+   wholesale, since techs already gate simulation behaviour today.
+3. **News/alert scaling for multi-civilization.** The macro strip's `News`
+   chip (things that happened - deaths, depletion, breaks) is one-civ shaped
+   today. Before build 4 (two Governor agents, one map), decide how per-civ
+   news aggregates into a spectator-of-many view without becoming noise -
+   this is a design question, not yet a code task.
+4. **Log-as-source-of-truth narration (deliberately not built).** Owner
+   direction: keep the JSONL run log rich and answer "what happened while I
+   was away" by writing the story *from* the log on request, rather than
+   building an always-on digest UI. No auto-summary feature should be added
+   without this framing being revisited first - see
+   `[[spectator-product-direction]]` memory for the full rationale.
+5. **No ambient/compact desktop-pet mode until packaging.** Explicitly
+   deprioritized by the owner: simulation depth (era ladder, trader, later
+   multi-civ) beats presentation modes until the project is ready to package.
+   Do not pick this up unless asked.
+
 ## Truth-loop gaps (audited 2026-06-30; closed by PRs #23-#29)
 
 Paper 8 is explicit that population must not scale "before the 12-pawn truth
@@ -872,7 +913,10 @@ Build 2 (depth and the spectator):
 - Operator-triggered disasters (fire, lightning, cold) via a deliberate UI
   action or a separate storyteller model - never the playing Governor.
 - Revolution meter (mood -> revolt risk) + the keep avatar + fail state.
-- Save state (wake the dormant SQLite scaffold for long games).
+- Save state - **done** (`save.py`, 2026-07-02): full-state JSON round-trip,
+  viewer autosave/resume. The old "wake the dormant SQLite scaffold" plan is
+  superseded; see the Design Decisions row and "Next up" above for what
+  still depends on it (nothing currently).
 - Pets as decor once population passes a threshold.
 
 Build 3 (the people are real):
