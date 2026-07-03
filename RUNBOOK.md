@@ -1,17 +1,22 @@
 # Local Agent Town - Runbook
 
-**Last reviewed:** 2026-06-28
-**Runtime owner:** Kayden  
-**Environment:** local desktop
+> Generated from LLM Workbench v2.1. See Upgrading The Harness below.
 
-This file explains how to operate the project.
+**Last reviewed:** 2026-07-03
+**Runtime owner:** Kayden
+**Environment:** local desktop (developed on Windows; Mac/Linux gates verified
+separately, see Evaluation And Benchmarking)
+
+This file explains how to operate, verify, recover, and evaluate the project.
+It is boring, exact, and executable.
 
 ## Prerequisites
 
 Required tools:
 
-- Windows PowerShell.
-- Python 3.11 or newer.
+- Windows PowerShell, or a POSIX shell on macOS/Linux.
+- Python 3.11 or newer (Mac/hosted gates have used 3.12; avoid a system Python
+  3.9).
 
 Required accounts or services:
 
@@ -20,46 +25,49 @@ Required accounts or services:
 
 Required local files:
 
-- None before setup. `setup.ps1` creates `.venv`.
+- None before setup. `setup.ps1` (Windows) creates `.venv`; on macOS/Linux, use
+  the manual venv steps below.
 
 ## Environment Configuration
 
 No `.env` file is required for the base prototype.
 
-Required variables:
-
-| Variable | Purpose | Secret | Example or notes |
+| Variable | Purpose | Secret? | Example / Notes |
 |---|---|---|---|
-| `SDL_VIDEODRIVER` | Optional Pygame smoke-test override | no | `dummy`, set automatically by `--smoke-test` |
-
-Optional local model variables:
-
-| Variable | Purpose | Secret | Example or notes |
-|---|---|---|---|
-| `AGENT_TOWN_LLM_MODEL` | Optional explicit model override | no | `google/gemma-4-e4b`, or the exact model id loaded in LM Studio/Ollama |
+| `SDL_VIDEODRIVER` | Headless Pygame smoke/test override | no | `dummy`, set automatically by `--smoke-test`; set manually for headless test runs |
+| `AGENT_TOWN_LLM_MODEL` | Explicit model override | no | `google/gemma-4-e4b`, or the exact id loaded in LM Studio/Ollama |
 | `AGENT_TOWN_LLM_BASE_URL` | OpenAI-compatible local endpoint | no | `http://localhost:1234/v1` for LM Studio, `http://localhost:11434/v1` for Ollama |
 | `AGENT_TOWN_LLM_TIMEOUT` | Per-request timeout in seconds | no | default `4.0` |
 | `AGENT_TOWN_LLM_MAX_TOKENS` | Max tokens for compact decision JSON | no | default `180` |
-| `AGENT_TOWN_LLM_AUTO_DISCOVER` | Controls startup model discovery when no model is set | no | default `1`; set `0` to keep local model disabled unless `AGENT_TOWN_LLM_MODEL` is set |
+| `AGENT_TOWN_LLM_AUTO_DISCOVER` | Controls startup model discovery when no model is set | no | default `1`; set `0` to keep the local model disabled unless `AGENT_TOWN_LLM_MODEL` is set |
 
 Rules:
 
-- Do not commit real `.env` files, tokens, local databases, logs, or private data.
+- Do not commit real `.env` files, tokens, local databases, logs, or private
+  data.
 - Keep future LLM provider credentials local-only.
-- Prefer a visible degraded state over fake external data when a future provider is unavailable.
-- If no model variable is set, the app briefly checks the configured `/models` endpoint and selects the first non-embedding local model it finds.
+- Prefer a visible degraded state over fake external data when a future
+  provider is unavailable.
+- If no model variable is set, the app briefly checks the configured `/models`
+  endpoint and selects the first non-embedding local model it finds.
 
 ## Install
+
+Windows:
 
 ```powershell
 .\setup.ps1
 ```
 
-Expected result:
+macOS/Linux (manual venv):
 
-- `.venv` exists.
-- The package installs editable into `.venv`.
-- Pygame is available inside `.venv`.
+```bash
+python3.12 -m venv .venv
+.venv/bin/python -m pip install -e .
+```
+
+Expected result: `.venv` exists, the package installs editable, Pygame is
+available inside `.venv`.
 
 ## Asset Preparation
 
@@ -67,13 +75,19 @@ The civilization viewer uses runtime sprites under `src\agent_town\assets\colony
 
 When adding a new free asset:
 
-- Verify the source URL, license, author, and attribution requirements before download.
-- Prefer CC0 or public domain. Use CC-BY only when attribution is recorded next to the imported files.
-- Keep the original download or source zip untouched and generate runtime files from it.
+- Verify the source URL, license, author, and attribution requirements before
+  download.
+- Prefer CC0 or public domain. Use CC-BY only when attribution is recorded next
+  to the imported files.
+- Keep the original download or source zip untouched and generate runtime
+  files from it.
 - Update nearby asset notes and asset tests when the runtime asset set changes.
-- If no license-safe asset fits, use the smallest temporary placeholder and record that it should be replaced.
+- If no license-safe asset fits, use the smallest temporary placeholder and
+  record that it should be replaced.
 
 ## Run Locally
+
+Windows:
 
 ```powershell
 .\run.ps1
@@ -85,174 +99,196 @@ Double-click launcher:
 Launch Local Agent Town.cmd
 ```
 
-Open:
+macOS/Linux:
 
-- A local Pygame desktop window titled `Local Agent Town`.
+```bash
+.venv/bin/python -m agent_town
+```
+
+Open: a local Pygame desktop window titled `Local Agent Town`.
 
 Expected result:
 
-- A civilization map appears.
+- A civilization map appears with a day/night light overlay (dawn/dusk/night).
 - The engine advances simulated hours over time.
-- Civilization sprites appear for terrain, buildings, resources, and pawns.
-- The top macro strip shows day/time, population, idle count, coin, stockpiles,
-  alert count, and a compact Governor status.
-- A top pawn roster shows colonist portraits, names, mood dots, and selection.
-- Mouse wheel, `+`, and `-` zoom.
-- `WASD` or arrow keys pan.
+- Civilization sprites appear for terrain, buildings, resources, and pawns;
+  fields show their lifecycle (bare / growing % / ripe), depleted tree stands
+  fade, mined-out stone reads crossed-out, and the Storehouse renders real held
+  stock.
+- The top KPI strip shows Day, Pop, Idle, Mood, Coin, Food-days, Storage, and
+  News (trimmed to the Paper 6 budget; per-good stock/flow detail moved to a
+  Goods drill-down panel).
+- A top pawn roster shows colonist portraits, names, mood dots (hover/select to
+  decode), and selection; clicking a roster portrait or an exception-stack row
+  jumps the camera to that pawn/building.
+- Mouse wheel, `+`, and `-` zoom. `WASD`/arrows pan continuously while held.
+  `F` toggles a follow camera on the selected pawn (any manual pan hands the
+  camera back).
 - Clicking a pawn, or pressing `Tab`, updates the pawn sheet with status,
-  assignment, needs, skills, and traits, plus a "Why this job" trace: the winning
-  decision lane, the reason, and the top job the pawn passed over.
-- The HUD shows an `Idle N` count (pawns with no work the arbiter could give)
-  and storage fullness plus stockpile chips including Bread and Water; idle
-  pawns also get a small overhead `!` badge after the arbiter marks them idle.
-- Hovering a pawn shows a lighter world outline than selection; selected pawns
-  keep a double outline, and break/stress danger rings draw above selection.
-- Active construction sites render as translucent building ghosts with a
-  footprint outline and progress bar.
-- Pressing `L` connects to or disconnects from LM Studio/Ollama while the game is running.
-- The HUD shows local model state: disabled, idle, thinking, offline, or invalid.
-- The right column lists active governor exceptions by severity, then shows the
-  selected pawn/building inspector with needs, skills, and job rationale.
-- The inspector tabs are clickable: `Log` shows the last work decision and
-  rejected jobs, `Gear` states the current inventory gap, `Social` shows traits
-  and wants, `Bio` shows schedule/position/skills, `Needs` shows need bars and
-  thoughts, and `Health` shows status/risk.
-- The bottom strip is navigation only. `Architect`, `Work`, `Assign`,
-  `Research`, `History`, and `Menu` each open a real docked panel. Clicking the
-  same button closes it; opening another panel closes the previous one. `Esc`
-  closes an open panel before quitting.
-- The map remains reserved for the town, selection labels, construction
-  progress, and critical badges; persistent explanation text lives in panels.
+  assignment, needs, skills, traits, and a "Why this job" trace. Clicking a
+  building (when no pawn is under the cursor) opens a derived building card:
+  staffing, recipe I/O, banked cycle progress, production targets, the
+  building's located source state (field growth/hours-to-ripe, node amounts,
+  regrow status), and active exceptions.
+- Pressing `L` connects to or disconnects from LM Studio/Ollama while the game
+  is running; the HUD shows local model state (disabled/idle/thinking/offline/
+  invalid).
+- The right column lists active governor exceptions by severity and age (a
+  chronic 5-day warning reads differently from a fresh one), then shows the
+  selected pawn/building inspector.
+- Every bottom command (`Architect`, `Work`, `Assign`, `Research`, `History`,
+  `Menu`) opens a real docked panel; clicking the same button closes it, and
+  opening another closes the previous one. `Esc` closes an open panel before
+  quitting.
+- The civilization autosaves daily and on exit to `saves/autosave.json`
+  (git-ignored) and resumes on boot; pass `--new-world` to start fresh.
 
-Work-priority arbiter manual check (build-2 step 1):
+## Test And Build
 
-- Click the bottom-strip `Work` button (or press `Esc` to close it). A docked
-  command panel opens with a grid of pawns (rows) by work types (columns), each
-  cell showing the effective priority `1`-`4` (blank = disabled), brightest at
-  `1`. The map and right inspector remain visible above it.
-- Click a cell to cycle its priority (`1` highest .. `4` lowest .. blank off).
-  Within a second or two the pawn re-routes: disable a baker's `Bake` and set its
-  `Farm` to `1`, and watch it leave the Bakery and walk to a Farm.
-- Confirm no two pawns occupy the same single-slot building, and that the `Idle`
-  count rises if you disable a work type that leaves a pawn with nothing legal.
-- Select that pawn and read the inspector's "Why this job" trace to see the lane
-  it won under and the job it rejected (e.g. `Passed over Bakery: reserved/full`).
-- `Research` appears as a work type once Laboratory work exists; the bottom-strip
-  `Research` button is still a placeholder until a research panel is built.
+Windows:
 
-Research spine manual check (truth-loop slice):
+```powershell
+.\.venv\Scripts\python.exe -m unittest discover -s tests
+.\.venv\Scripts\python.exe -m agent_town --smoke-test
+.\scripts\validate-workbench.ps1
+```
 
-- A `Laboratory` is buildable after the essential build order. The fallback
-  Governor then selects the first tech, `efficient_baking`.
-- A staffed Laboratory advances `research_points`; when the tech completes,
-  Bakery output rises from 4 bread per cycle to 5.
-- For a headless proof, run
-  `.\.venv\Scripts\python.exe -m unittest tests.test_research_spine`.
+macOS/Linux:
 
-UI navigation manual check:
+```bash
+SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy PYTHONPATH=src .venv/bin/python -m unittest discover -s tests
+PYTHONPATH=src .venv/bin/python -m agent_town --smoke-test
+pwsh -NoProfile -File scripts/validate-workbench.ps1
+```
 
-- Click `Architect`: confirm build options show counts, slots, cost, missing
-  materials, and active construction blockers without covering the map.
-- Click `Assign`: confirm the left column selects pawns and the right column
-  lists job slots. Open/current rows pin the selected pawn as a forced override;
-  occupied rows select the worker holding the slot for inspection.
-- Click `Research`: confirm current research plus disabled future entries with
-  reason text.
-- Click `History`: confirm recent decisions and events appear, any alert chip is
-  acknowledged, and clicking a Governor decision opens proposed/applied/rejected
-  policy details with after-state goods/needs.
-- Click `Menu`: confirm run controls, local model status, proof path, overlay
-  status, and `1x`/`8x`/`20x` watch-speed buttons appear. Click `20x`, reopen
-  `History`, and confirm the History title includes `(20x)`.
-- Click each button twice and confirm the second click closes the panel. Press
-  `Esc` with a panel open and confirm the app stays open with the panel closed.
+Expected result:
 
-Water essential manual check (build-2 water slice):
+- Core tests pass (385 as of this adoption, 2026-07-03; the count grows with
+  new slices - do not hardcode a stale number in a claim, re-run and confirm).
+- Smoke test exits without import or display errors.
+- Workbench validation passes. `validate-workbench.ps1` requires `pwsh`; if
+  unavailable, treat the check as skipped and record that in the proof row.
+- Asset checks prove the civilization runtime sprites and provenance notes
+  exist.
 
-- Start the viewer and confirm the default civilization has a Water Well,
-  Water in the top macro stockpile chips, and Water visible in the selected-pawn
-  needs inspector.
-- Open the `Work` grid and confirm `Water` is a work type. A water-skilled pawn
-  should staff the Water Well under the arbiter.
-- For a headless proof, run `.\.venv\Scripts\python.exe -m unittest tests.test_water`.
-  It covers Water Well production, drinking, days of cover, and the `low_water`
-  governor exception.
+### Test Coverage Policy
+
+Treat tests as the project specification, not as a comfort signal. The suite
+should be strong enough that if someone accidentally deletes a meaningful line,
+branch, route, data contract, workflow step, validation rule, or bug fix, at
+least one test or documented manual check fails.
+
+Coverage rules:
+
+- Prefer red/green TDD: write or update the failing test first, confirm the
+  expected failure, then implement the smallest fix.
+- Run every relevant existing test before judging the suite.
+- Keep tests that prove behavior a user, API consumer, operator, or future
+  maintainer depends on.
+- Improve tests that assert the wrong level, hide real failures, rely on stale
+  fixtures, overuse snapshots, or pass without checking meaningful behavior.
+- Remove tests that are stale, duplicated without adding a boundary, or pure
+  bloat.
+- If behavior cannot be tested in the current harness, record the exact reason
+  and use the strongest concrete manual check available.
+
+Watchable proof (required for any behavior slice with a visible consequence):
+
+- A green suite is not proof the slice is watchable. Render a real frame of the
+  new behavior and inspect it before calling it done (see `AGENTS.md`
+  "Watchability Is Part Of Done"). Save proof frames under `docs\proof\<slice>\`.
+- Headless render recipe: `SDL_VIDEODRIVER=dummy`, build the state, call
+  `render_civilization(...)`, `pygame.image.save(...)`, then open the PNG.
+- If the slice touches the local model, confirm the model path actually ran (a
+  model loaded in LM Studio, a non-fallback outcome). A fallback-only run uses
+  no model and no GPU and proves nothing about the LLM behavior.
+- For viewer navigation or placement work, render at least a default-state
+  proof plus one panel proof per changed command panel, and refresh
+  `docs\screenshots\current-state.png` when the default screen changes.
+
+## Manual Checks (per shipped slice)
+
+Run the viewer and confirm:
+
+- **Work arbiter:** open the `Work` grid, click a cell to cycle a pawn's
+  priority (`1` highest .. `4` lowest .. blank off); the pawn re-routes within
+  a step or two. No two pawns occupy the same single-slot building; the
+  `Idle N` KPI rises when a work type is disabled that leaves a pawn with
+  nothing legal. Select that pawn and read the inspector's "Why this job"
+  trace. Headless proof: `unittest tests.test_work`.
+- **Research spine:** a staffed Laboratory advances `research_points`; when
+  `efficient_baking` completes, Bakery output rises from 4 to 5 bread/cycle.
+  Headless proof: `unittest tests.test_research_spine`.
+- **UI navigation:** `Architect` shows build options, counts, slots, cost,
+  missing materials, and construction blockers. `Assign` selects a pawn on the
+  left and job slots on the right; open/current rows pin a forced override,
+  occupied rows select the worker holding the slot. `Research` shows current
+  research plus disabled future entries with reasons. `History` shows recent
+  decisions and events; clicking a Governor decision opens
+  proposed/applied/rejected policy details with after-state goods/needs and a
+  causality map. `Menu` shows run controls, local model status, and
+  `1x`/`8x`/`20x` watch-speed buttons (the `History` title reflects the active
+  speed). Clicking a button twice closes its panel; `Esc` with a panel open
+  closes it without quitting.
+- **Water essential:** the default civilization has a Water Well, Water in the
+  KPI/goods panel, and Water in the selected-pawn needs inspector; `Water` is
+  a Work grid type. Headless proof: `unittest tests.test_water`.
+- **Storage caps:** the goods panel/Storehouse badge turn amber at >=80% full,
+  red at >=95%. Headless proof: `unittest tests.test_storage_caps`.
+- **Money loop:** day rollover pays assigned pawns from treasury; a staffed
+  Market sells bread to pawn wallets above reserve, records sales tax, and
+  exports only the remaining surplus; unmet buyers surface as
+  `market_service_pressure`. Headless proof: `unittest tests.test_money_loop`.
+- **Physical sourcing:** a Farm's field visibly cycles bare -> growing % ->
+  ripe; a Quarry/Forester node depletes (Forester regrows, Quarry does not);
+  clicking a building shows its located source state. Headless proof:
+  `unittest tests.test_sourcing` (15 tests, incl. "grain cannot outrun the
+  season"). Proof frames: `docs/proof/physical_sourcing/`.
+- **Save/load:** quit and relaunch; the civilization resumes from
+  `saves/autosave.json` instead of resetting. Headless proof:
+  `unittest tests.test_save` (10 tests, incl. the determinism oracle: a
+  saved-then-reloaded civ steps 48h identically to one that never stopped).
+  `--new-world` starts fresh.
+- **Conservation ledger:** `health.check_invariants` reports zero violations
+  across a 10-day run; a direct-mutation tamper test surfaces a CRITICAL
+  `invariant_violation` event. Headless proof: `unittest tests.test_conservation`.
+- **Model safety guard:** a model-origin `assign_pawn` or a survival-good
+  production cap (grain/flour/bread/water = 0) is rejected with a reason
+  visible in the History decision audit. Headless proof:
+  `unittest tests.test_llm_governor.ModelGuardTests`.
+- **Analyzer honesty:** a healthy-pipeline run with zero model-origin actions
+  applied reports AMBER ("pipeline-only"), never GREEN. Headless proof:
+  `unittest tests.test_analyzer_honesty`.
 
 Starvation-escapability manual check (crisis/response Slice 0):
 
-- The default civilization must now *sustain* under the fallback governor: step it
-  many days (or run `.\.venv\Scripts\python.exe -m unittest tests.test_food`) and
-  confirm bread stays on hand and pawns stay fed - the old frozen death spiral
-  (production stuck at zero once food hit 0) is gone.
-- A fail state must stay reachable: with the bakeries removed no bread can be made
-  and the civ still starves toward empty (later slices turn this into an actual
-  death + documented run-end).
-- For a headless proof, run `.\.venv\Scripts\python.exe -m unittest tests.test_food`.
-  It covers fractional production carry-over, the hunger work floor,
-  `food_days_of_cover`, the `low_food` governor exception, and both boundary runs
-  (default civ sustains, bakery-less civ starves).
-- Storage-cap interaction: the default civ seeds surplus-producer ceilings (water,
-  logs, planks, stone) so an uncapped producer cannot flood the finite stockpile
-  and crowd the food chain out; `.\.venv\Scripts\python.exe -m unittest tests.test_dig_out`
-  proves the healthy civ never over-builds and a marginal civ digs out and recovers.
-
-Storage-cap manual check (Paper 4 storage slice):
-
-- Start the viewer and confirm the HUD stat row includes `Storage N%`.
-- With a Storehouse present and storage >=80% full, confirm the HUD storage chip
-  turns amber; at >=95%, confirm it turns red and Storehouse buildings show the
-  matching world badge.
-- For a headless proof, run
-  `.\.venv\Scripts\python.exe -m unittest tests.test_storage_caps`.
-  It covers finite stockpile capacity, storage-full blocked production, net
-  shrinking transforms, Storehouse capacity upgrades, overflow invariants, and
-  telemetry fullness.
-- Per-district storage pressure and hauling pressure are still deferred; do not
-  fake those before the systems exist.
-
-Money-loop manual check (Paper 4 Market slice):
-
-- Run `.\.venv\Scripts\python.exe -m unittest tests.test_money_loop`.
-- Confirm day rollover pays assigned pawns from treasury, then a staffed Market
-  sells bread to pawn wallets above reserve, records household spending and
-  sales tax, and exports only the remaining bread surplus.
-- Confirm unmet bread buyers above the reserve show as `unmet_market_demand`
-  in telemetry and `market_service_pressure` in the governor exception queue.
-- Full district market queues, Tavern comfort spending, repair debt, and
-  reserve-aware imports/exports are intentionally not active yet.
-
-Map readability manual check (Paper 5 current-systems slice):
-
-- Move the mouse across pawns and confirm hover uses a thin amber outline while
-  the selected pawn keeps the stronger double outline.
-- Temporarily remove or disable one work slot in a test state, step one hour,
-  and confirm the idle pawn has an overhead `!` badge matching the HUD `Idle N`.
-- Create or observe an active construction site and confirm it shows a ghost,
-  footprint outline, and progress bar before completion.
-- Storage pressure badges are now valid for the finite global cap and built
-  Storehouses. District/slot behavior is still deferred; do not fake per-district
-  warnings from the single global cap alone.
+- The default civilization must sustain under the fallback governor: step it
+  many days (or run `unittest tests.test_food`) and confirm bread stays on
+  hand and pawns stay fed - the old frozen death spiral is gone.
+- A fail state must stay reachable: with the bakeries removed no bread can be
+  made and the civ still starves toward empty.
+- Storage-cap interaction: the default civ seeds surplus-producer ceilings
+  (water, logs, planks, stone) so an uncapped producer cannot flood the finite
+  stockpile and crowd the food chain out; `unittest tests.test_dig_out` proves
+  the healthy civ never over-builds and a marginal civ digs out and recovers.
 
 ## Monitoring A Run
 
 Live viewer monitoring:
 
-- Run the app and click `History` in the bottom strip (or press `Esc` to close).
-  The panel shows recent structured decisions and events newest-first from an
-  in-memory ring. Click a Governor decision to inspect source/model state,
-  proposed policy payloads, applied payloads, rejected payloads, completed
-  buildings, after-state goods/needs, and the compact causality map for goods,
-  jobs, and bottlenecks.
-- Event rows still include completed buildings, the food staple depleting,
-  sustained supply stalls, pawn breaks, mass idle, mood dips/collapse, LLM
-  dropped decisions, and invariant violations.
-- Use `Menu` to switch between `1x`, `8x`, and `20x` watch speed. A crisis proof
-  at 20x should still show the selected Governor decision audit in `History`.
-- When warn/critical events occur the HUD shows a coloured alert chip with a
+- Run the app and click `History` in the bottom strip (or press `Esc` to
+  close). The panel shows recent structured decisions and events newest-first.
+  Click a Governor decision to inspect source/model state, proposed/applied/
+  rejected payloads, completed buildings, after-state goods/needs, and the
+  causality map.
+- Event rows include completed buildings, staple depletion, sustained supply
+  stalls, pawn breaks, mass idle, mood dips/collapse, LLM dropped decisions,
+  and invariant violations.
+- Use `Menu` to switch between `1x`, `8x`, and `20x` watch speed.
+- When warn/critical events occur the KPI strip's News chip lights up with a
   count and the `History` button glows; opening the feed acknowledges them.
-- The macro Governor summary and right-side exception stack are live observer
-  surfaces, not command editors; use them to diagnose whether the current
-  bottleneck is supply, staffing, mood, model availability, or construction.
+- The macro Governor summary and right-side exception stack are observer
+  surfaces, not command editors.
 - Live viewer runs also write a JSONL log under `logs\`; these are local proof
   artifacts and are git-ignored.
 
@@ -270,55 +306,14 @@ Expected result:
 - The analyzer prints run metadata (with `run_id`), the health summary, flagged
   events, and `RESULT: GREEN|AMBER|RED`.
 - The analyzer exits non-zero on a red condition (invariant violation, food
-  staple depletion, mood collapse, or a high dropped-decision rate). An
-  interrupted log with no `run_end` is summarized over completed hours and noted
-  as incomplete rather than failing.
-- A run with no local model loaded logs cleanly as deterministic fallback and is
-  **not** counted as dropped LLM decisions.
+  staple depletion, mood collapse, or a high dropped-decision rate).
+- A healthy-pipeline run with zero model-origin actions applied is AMBER
+  ("pipeline-only"), never GREEN (analyzer honesty; see Fable review Slice D in
+  `BLUEPRINT.md`).
+- A run with no local model loaded logs cleanly as deterministic fallback and
+  is **not** counted as dropped LLM decisions.
 
-## Test And Build
-
-Workbench validation:
-
-```powershell
-.\scripts\validate-workbench.ps1
-```
-
-Fast check:
-
-```powershell
-.\.venv\Scripts\python.exe -m unittest discover -s tests
-```
-
-Full verification:
-
-```powershell
-.\.venv\Scripts\python.exe -m unittest discover -s tests
-.\.venv\Scripts\python.exe -m agent_town --smoke-test
-.\scripts\validate-workbench.ps1
-```
-
-Expected result:
-
-- Core tests pass.
-- Smoke test exits without import or display errors.
-- Workbench validation passes.
-- Asset checks prove the civilization runtime sprites and provenance notes exist.
-
-Watchable proof (required for any behavior slice with a visible consequence):
-
-- A green suite is not proof the slice is watchable. Render a real frame of the
-  new behavior and inspect it before calling it done (see AGENTS.md "Watchability
-  Is Part Of Done"). Save proof frames under `docs\proof\<slice>\`.
-- Headless render recipe: `SDL_VIDEODRIVER=dummy`, build the state, call
-  `render_civilization(...)`, `pygame.image.save(...)`, then open the PNG.
-- If the slice touches the local model, confirm the model path actually ran (model
-  loaded in LM Studio, a non-fallback outcome). A fallback-only run uses no model
-  and no GPU and proves nothing about the LLM behavior.
-- For viewer navigation or placement work, render at least
-  `docs\proof\ui_navigation\default.png` plus one panel proof per changed command
-  panel, and refresh `docs\screenshots\current-state.png` when the default screen
-  changes.
+## Evaluation And Benchmarking
 
 Scaling benchmark:
 
@@ -326,26 +321,21 @@ Scaling benchmark:
 .\.venv\Scripts\python.exe .\scripts\benchmark_scaling.py --agents 100 500 1000
 ```
 
-Expected result:
+Expected result: a CSV-style table reports engine step time, governor
+context-build time, dummy draw time, final applied action count, and
+completed-building count. Use this before increasing default population size
+or deciding whether Pygame is the scaling blocker. Scale interpretation lives
+in `BLUEPRINT.md` -> Scale architecture and
+`research_papers/7.scalable-sim-report.md`.
 
-- A CSV-style table reports engine step time, governor context build time, dummy draw time, final applied action count, and completed-building count.
-- Use this before increasing default population size or deciding whether Pygame is the scaling blocker.
-
-Scale interpretation from `research_papers/7.scalable-sim-report.md`:
-
-- At about 12 pawns, keep player-visible truth exact.
-- Before raising default population, add reachability-region rejection and
-  deterministic update phases.
-- Around 16 to 64 pawns, add job candidate indexes and cadence buckets.
-- Around 64 to 150 pawns, add long-route abstraction or shared routes for common
-  sinks before relying on exact per-pawn paths.
-- Around 150 to 400 pawns, use district work packets and path budgets.
-- Around 400 to 1000 pawns, use offscreen ETA movement, far-needs cadence, and
-  strong visual/overlay LOD.
-
-If a pawn is selected, visible, in conflict, touching scarce resources, or
-transferring ownership of a good/building/job, force it into exact simulation.
-Only approximate opportunity search and offscreen movement.
+Mac/hosted LM acceptance gate (main end-to-end evaluation before a slice is
+"ready to merge"): install, smoke, full unit discovery, `validate-workbench.ps1`,
+an LM Studio ping, a booted `CivilizationViewer` with a blocking `LLMGovernor`,
+~96 simulated viewer hours, and `analyze_run.py` returning `RESULT: GREEN`, with
+the run report saved under `docs/run_reports/`. AMBER/RED are not GREEN. Real
+hosted-provider runs spend budget; record model, conditions, hours, cost, and
+the result path before making claims (see `docs/run_reports/` for the existing
+pattern).
 
 ## Research Intake
 
@@ -359,9 +349,9 @@ When adding or using a paper:
 2. Read the relevant paper before editing active docs or code.
 3. Extract only the project rule, affected files, tests, risks, and deferrals.
 4. If the paper conflicts with current implementation, record the conflict in
-   `ROADMAP.md` instead of silently changing the design.
-5. If exact constants affect code behavior, verify the cited source or mark the
-   value as research-derived in the test/doc note.
+   `TASKBOARD.md` instead of silently changing the design.
+5. If exact constants affect code behavior, verify the cited source or mark
+   the value as research-derived in the test/doc note.
 
 Workbench-only research integration check:
 
@@ -375,40 +365,98 @@ code, tests, assets, or viewer behavior.
 
 ## Data Operations
 
-There is no civilization save/load UI or persistence model yet.
+The civilization persists via `save.py`: a versioned JSON round-trip of the
+full `FactionState` (pawns with thoughts/priorities, buildings with banked
+cycles and owned fields, the conservation journal, nodes mid-growth, research,
+clock). Static recipe data is rebuilt from the building catalogue on load so
+rebalances apply to old saves. The viewer autosaves daily and on exit to
+`saves/autosave.json` (git-ignored) and resumes on boot; `--new-world` starts
+fresh.
 
 Safety rules:
 
-- Do not wire persistent local databases into automatic viewer behavior without updating `BLUEPRINT.md`, `RUNBOOK.md`, and tests.
-- Do not store real private data in future pawn or governor memory unless the user explicitly approves that use.
+- Do not wire a second persistent local database into automatic viewer
+  behavior without updating `BLUEPRINT.md`, `RUNBOOK.md`, and tests.
+- Do not store real private data in future pawn or governor memory unless the
+  user explicitly approves that use.
+- Never commit `saves/` contents; they are git-ignored local run state.
 
 ## Deployment Or Startup
 
-There is no deployment target. The project runs locally through PowerShell.
+There is no deployment target. The project runs locally through PowerShell
+(Windows) or the venv entry point (macOS/Linux).
+
+## Version Control
+
+This repo uses a three-tier branch model; full rules live in `BRANCHING.md`
+(kept as a project-local reference, not folded away by this harness):
+
+- Branch **from `integration`**, and open pull requests **into `integration`**,
+  never into `main` directly. Branch names: `codex/<task>`, `claude/<task>`,
+  `feat/<slice>`, `fix/<thing>`, `docs/<thing>` - short, kebab-case, specific.
+- `integration` is the shared root every agent forks from and merges back
+  into. `main` is human-owned; only Kayden promotes `integration -> main`, and
+  only for states that have been watched running.
+- Commit messages: imperative subject <= 72 chars, the why in the body; one
+  logical change per commit. Run `git status` before committing.
+- Merge feature branches into `integration` with a merge commit (do not
+  squash); delete the feature branch after it merges.
+- Never commit secrets, `.env` files, local databases, `logs/`, `saves/`,
+  build output, or generated artifacts.
+- Open a pull request with `gh` when the task is verified; the PR states what
+  changed, why, risks, and how it was verified.
+- Do not rewrite published history or force-push shared branches unless the
+  user explicitly approves.
+
+## Upgrading The Harness
+
+These control docs were generated from a specific LLM Workbench version,
+recorded in the `Generated from LLM Workbench v2.1` stamp at the top of each
+doc. That stamp lets you tell when the project is running an older harness
+than the current one.
+
+To upgrade:
+
+1. Check the LLM Workbench repo's releases/changelog for what changed since
+   v2.1.
+2. Re-copy only the changed template sections; keep this project's filled-in
+   specifics. Never let unfilled template placeholder tokens leak back into
+   filled docs.
+3. Update each doc's version stamp to the new version.
+4. Re-run the full verification suite (above) and record the upgrade as a
+   proof-log row in `TASKBOARD.md`.
+
+Treat a harness upgrade like any other change: smallest correct diff, verified,
+with proof. If a downstream lesson should flow back to the harness, capture it
+in `HARNESS_FEEDBACK.md`.
 
 ## Troubleshooting
 
 | Symptom | Likely cause | Check | Fix |
 |---|---|---|---|
 | `ModuleNotFoundError: pygame` | Setup was not run or wrong Python is being used | `.\.venv\Scripts\python.exe -c "import pygame"` | Run `.\setup.ps1` |
-| Double-click does nothing visible | Windows did not execute the PowerShell script directly | Open `Launch Local Agent Town.cmd` | Use the `.cmd` launcher, which calls the PowerShell launcher with the right policy |
+| Double-click does nothing visible | Windows did not execute the PowerShell script directly | Open `Launch Local Agent Town.cmd` | Use the `.cmd` launcher |
 | Window does not open | Display or Pygame issue | `.\.venv\Scripts\python.exe -m agent_town --smoke-test` | Reinstall through `.\setup.ps1`; check local graphics environment |
-| Local model shows disabled | The in-game toggle is off, no local chat model was found, or `AGENT_TOWN_LLM_AUTO_DISCOVER=0` | Inspect the HUD governor row | Start LM Studio/Ollama, load a model, then press `L`; or set `AGENT_TOWN_LLM_MODEL` exactly as the local server expects it |
+| macOS picks Python 3.9 | System Python selected | `python3 --version` | Use `python3.12` explicitly for the venv |
+| Local model shows disabled | Toggle is off, no local chat model was found, or `AGENT_TOWN_LLM_AUTO_DISCOVER=0` | Inspect the HUD governor row | Start LM Studio/Ollama, load a model, then press `L`; or set `AGENT_TOWN_LLM_MODEL` |
 | Local model shows offline | LM Studio/Ollama server is not running or URL is wrong | Check `AGENT_TOWN_LLM_BASE_URL` | Start the local server or change the URL |
-| Local model shows invalid reply | Model returned malformed JSON, unknown action, or the server rejected the request payload | Inspect the HUD governor row | Use a smaller/faster instruct model and keep max tokens low |
-| Workbench validation fails | Required docs missing headings or unresolved placeholders | `.\scripts\validate-workbench.ps1` | Update the named doc and rerun validation |
+| Local model shows invalid reply | Model returned malformed JSON or an unknown action | Inspect the HUD governor row | Use a smaller/faster instruct model and keep max tokens low |
+| `validate-workbench.ps1` fails | Required doc missing a heading, unresolved placeholder, or `pwsh` unavailable | `pwsh -File scripts/validate-workbench.ps1` | Update the named doc; install PowerShell or record the check as skipped |
 
 ## Recovery And Rollback
 
 If a change fails:
 
-1. Identify the touched files and the failing command.
+1. Identify the touched files and failing command.
 2. Revert only the smallest change needed, preserving user work.
 3. Rerun the failing verification command.
-4. Append the result to `ROADMAP.md` if durable state changed.
+4. Update `TASKBOARD.md` with the result and remaining gap.
 
-Do not delete data, reset repositories, rewrite history, or rotate secrets unless the user explicitly approves that action.
+Do not delete data, reset repositories, rewrite history, or rotate secrets
+unless the user explicitly approves that action.
 
 ## Operational Proof
 
-If a command in this runbook changed durable project state, append a row to the `ROADMAP.md` Verification Log. For routine local runs that do not change state, a final response note is enough.
+If a command in this runbook changed durable project state, append a row to
+the `TASKBOARD.md` proof log. For routine local runs that do not change state,
+a final response note is enough.

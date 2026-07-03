@@ -1,43 +1,52 @@
 # Local Agent Town - Blueprint
 
-**Last reviewed:** 2026-06-29
+> Generated from LLM Workbench v2.1. See `RUNBOOK.md` -> Upgrading The Harness.
+
+**Last reviewed:** 2026-07-03
 **Status:** active
 **Source root:** `E:\GPTCode\local-agent-town`
 
+This is the stable reference for what the project is. The live work queue,
+blockers, and proof history live in `TASKBOARD.md`; setup and verification
+commands live in `RUNBOOK.md`.
+
+Authoritative build plan for the refactor: `Local_little_world_refactor1.md`
+(frozen historical artifact). This blueprint is the stable summary. Local visual
+baseline: `VISUAL_DESIGN.md` (project-local reference; the harness defers visual
+style to it). Branch/merge conventions: `BRANCHING.md`.
+
 ## What This Project Is
 
-Local Agent Town is being refactored from an AI-Town social wander-sim into a
-single-faction, LLM-governed civilization builder: a Townsmen-style town economy
-staffed by about a dozen RimWorld-style pawns, run by one Governor agent that
-sets policy and never micro-controls pawns.
+Local Agent Town is a local desktop prototype for watching one LLM-governed
+civilization run on autopilot. It is being refactored from an AI-Town social
+wander-sim into a single-faction, LLM-governed civilization builder: a
+Townsmen-style town economy staffed by about a dozen RimWorld-style pawns, run
+by one Governor agent that sets policy and never micro-controls pawns.
 
-One sentence:
+Core promise:
 
 > One Agent governs one town of about 12 Pawns by setting policy (assign,
 > schedule, build, research) while a deterministic engine runs the pawns and
-> economy.
+> economy. The operator watches; they do not play.
 
 Primary users:
 
 - Kayden, as the local operator and designer of the civilization.
 - Future coding agents extending the engine, governor, and viewer.
 
-Authoritative build plan: `Local_little_world_refactor1.md`. This blueprint is
-the stable summary; the refactor plan is the milestone-by-milestone spec.
-
 ### In scope (build 1)
 
 - Single faction, one town, one map. No enemy, no PvP.
 - About 12 Pawns with skills, traits, wants, needs, mood, schedule, and mental
   breaks.
-- A real economy: 2 to 3 production chains, construction, distribution, and a
+- A real economy: 2-3 production chains, construction, distribution, and a
   happiness-to-tax loop.
 - One Governor: a deterministic rule-based fallback first, a local LLM
   (Gemma 4 E4B) as a drop-in second.
 - The Governor reads summaries plus an exception queue, never raw pawn state.
-- The Pygame viewer renders the civilization state and remains a smoke-test surface.
+- The Pygame viewer renders civilization state and remains a smoke-test surface.
 
-### Non-Goals
+## Non-Goals
 
 This project is not trying to:
 
@@ -48,107 +57,91 @@ This project is not trying to:
 - add spatial indexing, benchmarks, or performance optimization at 12 pawns;
 - let the Governor micromanage pawns - it issues policy commands only.
 
-"Multiplayer game" above means human multiplayer. Multiple AI agents each
-running their own civilization on one map (below) is a planned later build, not a
-non-goal.
+"Multiplayer game" means human multiplayer. Multiple AI agents each running their
+own civilization on one map is a planned later build (build 4), not a non-goal.
 
-## Long-term vision (beyond build 1)
+## Current Product Shape
 
-Build 1 is the foundation: one civilization, one Governor, about 12 pawns, headless
-then rendered. The product it grows into:
+When the project is working, the operator can:
 
-- **Pure autopilot, watched not played.** The operator does not play the civilization.
-  One Governor agent per civilization runs it end to end; the operator spectates -
-  opening any civilization and seeing its live state (pawn assignments, work
-  priorities, stockpiles, mood, construction) as if they were the one playing,
-  but only to confirm the agent is managing well. The civilization is hands-off by
-  design.
-- **One voice per civilization.** The Governor agent is the civilization's single voice and
-  mind. Pawns have no voice; they have RimWorld-style free will - each pawn
-  autonomously picks its highest-priority available job from a priority list the
-  Governor tunes. The point of the spectator view is watching how the agent
-  juggles those priorities across a dozen, then hundreds, of autonomous pawns.
-- **Scale arc:** 1 agent / about 12 pawns, then 1 agent / up to about 1000
-  pawns, then two agents each running their own civilization on one shared map,
-  competing for the same finite resources. Rivals do not know the other exists
-  at first; contact is emergent.
-- **Victory is the Space Age.** The primary win is technological: research and
-  build a civilization able to leave the planet (a launch / space-age milestone). The
-  secondary, implied win is to outlast the rival civilization. Research is therefore a
-  core progression spine, not a stretch goal.
-- **A player avatar / "the keep."** Each civilization has a seat of power in the world
-  the agent is identified with, so the agent has visible stake. Revolution
-  targets the keep; losing it is a fail state.
-- **Immortal agents, mortal pawns.** Real time maps to game time at roughly
-  1 real hour = 1 game year. The Governor agent is immortal; pawns age (live to
-  about 80, productive about 16-60; the Space Age extends this to about 120,
-  productive to about 80). The very old and very young are cared for, not worked.
+- launch a Pygame desktop window that renders the civilization map, buildings,
+  resources, and ~12 pawns coloured by mood;
+- pan/zoom the camera, select a pawn, and read its needs, skills, traits, and a
+  "Why this job" decision trace;
+- open a RimWorld-style work-priority grid (the **Work** button) and re-route
+  pawns by changing priorities, watching them re-path on the next step;
+- open **Architect** (build costs/blockers), **Assign** (forced-override
+  browser), **Research** (current spine + honest disabled entries), **History**
+  (decision audit + event feed), and **Menu** (run controls, 1x/8x/20x watch
+  speed, local model status) - every bottom command opens a real docked panel;
+- read a Civ stats panel (Mood, Food, Water, Recreation, Rest), a resource HUD
+  with storage fullness, a Governor observer card, and a right-edge exception
+  stack;
+- press `L` to hand policy to a local LLM (LM Studio/Ollama), with a hard
+  fallback to the deterministic governor on any error;
+- click any building to open a derived inspector card (staffing, recipe I/O,
+  cycle progress, targets, source state, active exceptions);
+- watch fields grow (bare -> growing % -> ripe), tree stands deplete/regrow, and
+  a Storehouse render real held stock instead of an abstract fullness ring;
+- quit and relaunch without losing the run: the civilization autosaves daily and
+  on exit and resumes on boot (`save.py`).
 
-These are marked direction. Build 1 stays single-civilization, single-map, no rival,
-no military; the roadmap sequences the rest, governed by the law below.
+The most important quality bar is **correctness/determinism**: same seed plus
+same policy equals same outcome, with the LLM as the only nondeterministic layer,
+always swappable for the deterministic fallback.
 
-## Design north star: conservation ("nothing from nothing")
+## Design North Star: Conservation ("nothing from nothing")
 
 Stated as a law because it governs every system: nothing is created from
 nothing; everything traces to a source.
 
 - Goods come from chains: bread is baked from flour milled from grain grown on a
   farm.
-- Soldiers come from people: a soldier is a pawn who was born from two parent
-  pawns, grew up, walked to a barracks, and trained. The barracks never spawns a
-  unit from nothing.
-- Coin comes from circulation: taxes are collected from wages the civilization already
-  paid out (see the money loop). The only external coin source is trade.
+- Soldiers come from people: a soldier is a pawn who was born, grew up, walked to
+  a barracks, and trained. The barracks never spawns a unit from nothing.
+- Coin comes from circulation: taxes are collected from wages already paid out.
+  The only external coin source/sink is trade.
 
 When a new system is proposed, the test is: where does each thing come from, and
 where does it go? If the answer is "nowhere," the design is wrong.
 
-This is also an executable contract. Each shipped economy or staffing slice must
-state the ledger it relies on and add a test or invariant that catches duplication,
-negative stock, phantom staff, or one pawn being counted in two jobs. Primary
-producer faucets such as farms, wells, and quarries are allowed only when they are
-named as external natural sources; downstream chains still need traceable inputs
-and outputs.
+This is also an executable contract, not only prose. `Stockpile` journals every
+inflow/outflow (`flow_in`/`flow_out`, seed stock included), `health.check_invariants`
+asserts `stock == inflow - outflow` for every good on every telemetry hour, and
+any code path that mints or vanishes goods around `Stockpile.add`/`remove`
+surfaces as a CRITICAL `invariant_violation` event in the viewer feed and the
+analyzer. `tests/test_conservation.py` pins the law across a 10-day engine run at
+every hour and proves the oracle can fail (tamper tests). Primary-producer
+faucets (empty-input recipes) journal their output as inflow - they are the named
+external sources, and the ledger guarantees everything downstream is conserved.
 
-Since review Slice C the goods half of this law is *literally* executable, not
-prose: `Stockpile` journals every inflow/outflow (`flow_in`/`flow_out`, seed
-stock included), `health.check_invariants` asserts `stock == inflow - outflow`
-for every good on every telemetry hour, and any code path that mints or vanishes
-goods around `Stockpile.add`/`remove` surfaces as a CRITICAL
-`invariant_violation` event in the viewer feed and the analyzer.
-`tests/test_conservation.py` pins the law across a 10-day engine run at every
-hour and proves the oracle can fail (tamper tests). Primary-producer faucets
-(empty-input recipes) journal their output as inflow - they are the named
-external sources, and the ledger guarantees everything downstream of them is
-conserved.
+### Physical sourcing (2026-07-02, SHIPPED)
 
-### Physical sourcing (2026-07-02 refinement, SHIPPED 2026-07-02)
+The conservation ledger proves goods balance in *count*; physical sourcing makes
+them exist in *place* and *time* as well. Before this shipped, every Tier 0
+faucet (Farm, Forester, Quarry, Water Well) had an empty-input recipe: a staffed
+pawn's `effective_work` minted the output the instant
+`Building.production_progress` crossed `recipe.work_units`, with no reference to
+the `ResourceNode` map data - the field/tree/outcrop sprite the player saw was
+decorative. "Labour in, resource out" with no located source violated the
+conservation law's spirit even while the ledger's numbers balanced (review
+finding E-9).
 
-The Slice C ledger proves goods balance in *count*; this refinement makes them
-exist in *place* and *time* as well. Before it, every Tier 0 faucet (Farm,
-Forester, Quarry, Water Well) had an empty-input recipe: a staffed pawn's
-`effective_work` minted the output the instant `Building.production_progress`
-crossed `recipe.work_units`, with no reference to the `ResourceNode` map data -
-the field/tree/outcrop sprite the player saw was decorative. "Labour in,
-resource out" with no located source violated the "nothing from nothing" law's
-spirit even while the ledger's numbers balanced (review finding E-9).
+The refined law, enforced by `economy.production_tick`: **a faucet's output must
+be tied to a located, finite- or time-gated source**, not a labor-only spigot.
+Three mechanics cover every Tier 0 producer:
 
-The refined law, now enforced by `economy.production_tick`: **a faucet's
-output must be tied to a located, finite- or time-gated source**, not a
-labor-only spigot. Three mechanics cover every Tier 0 producer:
-
-- **Cultivated** (Farm -> grain): the source is empty until planted, then
-  needs elapsed growth time before it can be harvested. Grain cannot appear
-  faster than a growing season, regardless of headcount.
+- **Cultivated** (Farm -> grain): the source is empty until planted, then needs
+  elapsed growth time before it can be harvested. Grain cannot appear faster than
+  a growing season, regardless of headcount.
 - **Extracted** (Forester -> logs, Quarry -> stone): the source is a
-  `ResourceNode` with a finite `amount`; harvesting depletes it.
-  Logs additionally regrow over time (a tree is a renewable but
-  slow-growing extracted resource); stone does not regrow (a quarry face is
-  mined out - the building eventually relocates or goes idle).
+  `ResourceNode` with a finite `amount`; harvesting depletes it. Logs regrow over
+  time (a tree is a renewable but slow-growing extracted resource); stone does
+  not regrow (a quarry face is mined out - the building eventually relocates or
+  goes idle).
 - **Replenished** (Water Well): the source is effectively inexhaustible at
   colony scale (an aquifer/water table) - modeled as an always-available
-  extracted node with no depletion, so the well keeps the "physical location,
-  not a spigot" property without inventing an artificial water shortage.
+  extracted node with no depletion.
 
 #### The field/node lifecycle
 
@@ -175,54 +168,114 @@ work "farming" at Farm, targeting the Farm's owned field (a ResourceNode on TILE
 ```
 
 Growth does not require the pawn's continuous attention - only planting and
-harvesting are labor. A farmer can be reassigned mid-growth and reassigned
-back for harvest; the work arbiter (`work.py`) needs a "field ready to
-plant/harvest" signal distinct from "field growing, nothing to do here" so it
-does not chain a farmer to an empty wait.
+harvesting are labor. The work arbiter (`work.py`) frees a farmer while the field
+is growing (nothing to do there) and upgrades them back on strict priority once
+the field is ready to plant/harvest.
 
 Forester/logs follow the same shape without an explicit plant step (a felled
 stand regrows on its own at `world.TREE_REGROW_PER_HOUR`). Quarry/stone uses
-extracted-node depletion only; extractors harvest shared nodes nearest-first
-via `world.harvest_from_nodes`. Implementation notes as shipped: fields ripen
-to `world.FIELD_YIELD` (24 grain) after `world.FIELD_GROWTH_HOURS` (24h);
-planting costs `economy.PLANT_SEED_COST` (2) from `FactionState.seed_grain`;
-each harvest tops the reserve back up to `economy.SEED_RESERVE_TARGET` (8)
-before grain reaches the stockpile; and the work arbiter's strict-priority
-upgrade release walks a farmer back from stop-gap work when the field ripens.
+extracted-node depletion only; extractors harvest shared nodes nearest-first via
+`world.harvest_from_nodes`. As shipped: fields ripen to `world.FIELD_YIELD` (24
+grain) after `world.FIELD_GROWTH_HOURS` (24h); planting costs
+`economy.PLANT_SEED_COST` (2) from `FactionState.seed_grain`; each harvest tops
+the reserve back up to `economy.SEED_RESERVE_TARGET` (8) before grain reaches the
+stockpile. A fresh colony starts with a small bootstrap seed grain reserve
+(brought from the old country, not purchased) so the first Farm is never
+seed-locked.
 
-Bootstrap: a fresh colony starts with a small seed grain reserve (brought from
-the old country, not purchased) so the first Farm is never seed-locked. This
-mirrors how the default civ's bread reserve is already hand-seeded at
-colony creation.
-
-Exception codes (shipped): `no_seed_grain` (field empty, nothing to plant),
-`field_growing` (informational, not a warning - genuinely waiting on time; it
-also suppresses the unstaffed alarm on that farm, since the arbiter frees the
-farmer by design), and `node_depleted` (Quarry/Forester's nodes are exhausted;
-the building needs relocation or is dead weight). These feed the existing
-`!`-badge system (`building_exception_badges`, Slice E) so a field waiting to
-grow does not misread as broken the way an unstaffed building does.
+Exception codes: `no_seed_grain` (field empty, nothing to plant), `field_growing`
+(informational, not a warning - genuinely waiting on time; suppresses the
+unstaffed alarm on that farm since the arbiter frees the farmer by design), and
+`node_depleted` (Quarry/Forester's nodes are exhausted; the building needs
+relocation or is dead weight). These feed the `!`-badge system
+(`building_exception_badges`) so a field waiting to grow does not misread as
+broken.
 
 #### Visible storage (SHIPPED 2026-07-02)
 
-`Stockpile` stays faction-wide for now - per-building storage (pawns walking
-to a specific granary to eat) is a materially bigger change touching engine,
+`Stockpile` stays faction-wide for now - per-building storage (pawns walking to
+a specific granary to eat) is a materially bigger change touching engine,
 economy, governor, health, and telemetry, and is deferred as its own later
-slice rather than bundled here. The near-term honesty fix shipped: the
-Storehouse renders what is actually held - crates scale with fullness and the
-largest stacks are named (`storehouse_stock_lines`), so "how much bread
-exists" is answerable by looking at the map, not only from the macro strip's
-numeric chip. The map also draws the field lifecycle (bare / growing % /
-ripe), faded depleted tree stands, crossed-out mined-out stone, a `Seed` chip
-for the planting reserve, and source-state building sublabels; clicking any
-building opens a derived inspector card (staffing, recipe I/O, cycle
-progress, targets, source state, active exceptions).
+slice. The near-term honesty fix shipped: the Storehouse renders what is
+actually held - crates scale with fullness and the largest stacks are named
+(`storehouse_stock_lines`), so "how much bread exists" is answerable by looking
+at the map. The map also draws the field lifecycle (bare / growing % / ripe),
+faded depleted tree stands, crossed-out mined-out stone, a `Seed` chip for the
+planting reserve, and source-state building sublabels; clicking any building
+opens a derived inspector card (staffing, recipe I/O, cycle progress, targets,
+source state, active exceptions).
+
+## Direction And Build Order
+
+Stable product direction and sequencing. The current executable task queue lives
+in `TASKBOARD.md`, not here.
+
+**Current phase:** prototype, finishing build 1 and deep into build 2. Build 1's
+engine, both governors, the viewer, mood/hunger, work-priority arbiter, water,
+storage caps, the first wage/market money loop, physical resource sourcing (real
+fields/nodes with growth time and depletion), visible storage, save/load, and
+the UI navigation/spectator baseline are shipped. A 2026-07-01 peer review
+(Fable 5) found P0/P1 harness gaps; all five confirmed findings (one-pawn-one-job,
+default-deny model safety, executable conservation, analyzer honesty, watchability
+refresh) are fixed. The next code task is **the trader** (crisis-line Slice 3),
+now genuinely unblocked since grain has a real growing season to price against;
+repair debt and the Paper 7 scale foundations follow.
+
+Build arc (each gated on the prior; conservation governs every system):
+
+1. **Build 1 - one civilization works (current).** ~12 pawns, 3 chains (wood,
+   food, stone), construction, needs/mood/breaks, happiness-to-tax, deterministic
+   fallback Governor then the LLM Governor, viewer renders civilization state.
+2. **Build 2 - depth and the spectator (in progress).** Water (done), physical
+   sourcing (done), save/load (done), spectator navigation/day-night/KPI strip
+   (done); clothes/beauty chain remains; full needs set; building quality to
+   happiness; decay + repair as a material/coin sink (next); the wage money loop
+   (started) and Storehouse/storage caps (done); RimWorld work priorities (done)
+   and the per-civilization spectator view (done); skill-based healthcare; the
+   Church; operator-triggered disasters; the revolution meter + keep + fail
+   state; pets; the trader (next); an era ladder (stone -> farming (current) ->
+   castle -> city-state -> full civilization, gated by upgrading old buildings,
+   not just unlocking new ones - owner is researching the specifics before this
+   is scoped).
+3. **Build 3 - the people are real.** Pawn lifecycle (aging, productivity bands,
+   death, including the deferred lethal-starvation slice); birth with lineage;
+   the home -> barracks -> soldier pipeline; Watch Tower, Police, Firehouse; the
+   ore -> metal -> tools/parts chain; cooking/meat.
+4. **Build 4 - competition and the Space Age.** Two Governor agents, one shared
+   map, finite contested resources. The research spine to industrial components
+   and the space-program launch victory. Scale target ~1000 pawns per
+   civilization via the Paper 7 path.
+
+### Long-term vision (marked direction, beyond build 1)
+
+- **Pure autopilot, watched not played.** One Governor agent per civilization
+  runs it end to end; the operator spectates to confirm the agent is managing
+  well. Hands-off by design.
+- **One voice per civilization.** The Governor is the civilization's single mind.
+  Pawns have RimWorld-style free will; each autonomously picks its highest
+  priority available job from a list the Governor tunes.
+- **Scale arc:** 1 agent / ~12 pawns, then 1 agent / ~1000 pawns, then two agents
+  each running their own civilization on one shared map, competing for finite
+  resources. Contact is emergent.
+- **Victory is the Space Age.** The primary win is technological (research and
+  build a civilization able to leave the planet); outlasting the rival is the
+  implied secondary win. Research is a core spine, not a stretch goal.
+- **A player avatar / "the keep."** Each civilization has a seat of power; losing
+  it is a fail state.
+- **Immortal agents, mortal pawns.** ~1 real hour = 1 game year. The Governor is
+  immortal; pawns age. The very old and very young are cared for, not worked.
+- **Log-as-source-of-truth narration.** Keep the JSONL run log rich and answer
+  "what happened while I was away" by writing the story *from* the log on
+  request, rather than building an always-on digest UI. No auto-summary feature
+  should be added without revisiting this framing first.
+- **No ambient/compact desktop-pet mode until packaging.** Simulation depth beats
+  presentation modes until the project is ready to package.
 
 ## Architecture
 
-Three layers, built bottom-up. The engine and pawns work and pass tests
-headless before the Governor is wired on top. The fallback Governor is built
-before the LLM Governor.
+Three layers, built bottom-up. The engine and pawns work and pass tests headless
+before the Governor is wired on top. The fallback Governor is built before the
+LLM Governor.
 
 ```text
 Governor agent (LLM or rule-based fallback)
@@ -237,179 +290,119 @@ Policy layer  ->  Deterministic simulation engine
 Pawns (autonomous, need-driven) on a tile map
 ```
 
-| Layer | Choice | Source or notes |
+| Layer | Choice | Source / Notes |
 |---|---|---|
-| Runtime | Python 3.11 or newer | Verified locally with Python 3.11.6 |
-| Simulation core | Deterministic, Pygame-free dataclasses and pure functions | `src\agent_town` civilization modules |
-| Frontend | Pygame desktop window | Smoke test today; renders civilization state at integration milestone I3 |
-| Optional local AI | OpenAI-compatible chat completions adapter | Governor backend; falls back to the rule-based governor on any error |
-| Testing | Standard library `unittest`, headless | Per-module tests, no Pygame for the core |
+| Runtime | Python 3.11+ | `pyproject.toml` `requires-python = ">=3.11"` |
+| Simulation core | Deterministic, Pygame-free dataclasses and pure functions | `src/agent_town` civilization modules |
+| Frontend | Pygame desktop window | `civilization_view.py`; renders civilization state and is the smoke-test surface |
+| Optional local AI | OpenAI-compatible chat completions adapter | `llm.py` + `LLMGovernor`; falls back to the rule-based governor on any error |
+| Persistence | JSON save/load, autosave on day-rollover and exit | `save.py` |
+| Testing | Standard library `unittest`, headless | Per-module tests; core is testable without Pygame |
+| Packaging | setuptools, editable install; console entry `agent-town` | `pyproject.toml` |
 
 Architecture constraints (hard):
 
-- Local-only. No web server, no browser UI, no hosted AI.
+- Local-only. No web server, no browser UI, no hosted AI by default.
 - The simulation core runs and is fully testable without Pygame.
-- The LLM never blocks the sim loop. Reuse the existing non-blocking scheduler
-  in `llm.py`.
+- The LLM never blocks the sim loop (non-blocking `CivilizationDecisionScheduler`
+  in the viewer).
 - The Governor sets policy only; it does not act for individual pawns tick by
   tick.
-- Determinism: same seed plus same policy equals same outcome. The LLM is the
-  only nondeterministic layer and must be swappable for the deterministic
-  fallback. Mood and mental-break timing use a seeded PRNG keyed to the civilization
-  seed, which is still deterministic per seed.
+- Determinism: same seed + same policy = same outcome. Mood and mental-break
+  timing use a seeded PRNG keyed to the civilization seed.
 
 Operator interaction principles:
 
-- User-facing features should be reachable through visible UI controls first:
-  buttons, toggles, segmented controls, sliders, or panel actions as fits the
-  feature. Keyboard shortcuts may exist, but they are secondary accelerators,
-  not the only way to discover or use the feature.
-- Important state changes need visible status treatment: use compact icons,
-  color indicators, borders, or badges so the operator can tell at a glance
-  whether a feature is on, off, pending, blocked, or degraded.
-- Be creative but practical. Prefer small, game-readable controls that match
-  the desktop settlement UI over plain text instructions buried in a footer.
-- Persistent UI is for scanability, not completeness. Keep the Civ strip, pawn
-  roster, alert stack, and governor status short; put causes, full thought
-  ledgers, decision traces, and stockpile detail in the inspector or drill-downs.
-- Screen regions are exclusive by default: top macro strip, pawn roster, central
-  map, right inspector/alert column, docked command panel, and bottom command
-  strip. Persistent text boxes should not float over the map except for
-  hover/selection labels, construction progress, and critical world badges.
-- Do not rely on color alone. Critical states need at least two channels such as
-  color plus icon, shape, position, or brief motion. Text belongs on dark
-  back-plates, not directly on terrain.
+- Reach features through visible UI controls first; keyboard shortcuts are
+  secondary accelerators.
+- Important state changes get visible status treatment (icons, colour, borders,
+  badges) so the operator can tell at a glance whether a feature is on, off,
+  pending, blocked, or degraded.
+- Persistent UI is for scanability; full detail lives in inspectors/drill-downs.
+  Screen regions are exclusive by default: top macro strip, pawn roster, central
+  map, right inspector/exception column, docked command panel, and bottom
+  command strip.
+- Do not rely on colour alone; critical states need at least two channels.
 
-## Research-backed design inputs
+Full readability/UI rules live in `VISUAL_DESIGN.md`.
 
-The `research_papers` folder is now the source-input shelf for external game
-reference work. These papers guide future implementation, but active code and
-tests remain the source of truth until a research finding is implemented and
-verified.
-
-Current research inputs, in implementation order:
-
-1. `research_papers/1.rimworld_mood-system-report.md` - keep the mood ledger,
-   target/current mood split, asymmetric drift, break thresholds, Catharsis, and
-   expectations as the future baseline correction. Treat generic mood-to-work
-   speed as a deliberate non-vanilla choice if retained.
-2. `research_papers/2.rimworld_hunger-system-report.md` - pawns eat from a
-   threshold-driven self-care job, not meal schedules. Bread is a custom Local
-   Agent Town staple; the paper recommends 0.25 nutrition per bread and up to
-   four bread per eat job before starvation is made lethal.
-3. `research_papers/3.rimworld_autonomous-pawn-report.md` - Build 2 work
-   priorities should use a visible lane-based arbiter: forced/manual, hard
-   state, medical rest, self-care, emergencies, normal work, idle.
-4. `research_papers/4.townsmen_economy-loop-report.md` - Build 2 economy depth
-   should use district-aware logistics, essentials before comfort, storage caps,
-   repair debt, wages -> spending -> taxes, and reserve-aware external trade.
-5. `research_papers/5.aoe_civ-readability-report.md` - viewer readability should
-   prioritize silhouettes, stable anchors, explicit draw layers, hover/selection
-   separation, threshold badges, and accessibility contrast.
-6. `research_papers/6.ui-report.md` - the observer UI should combine an
-   Age-style Civ strip with a RimWorld-style pawn roster/inspector and an
-   always-visible local Governor status card.
-7. `research_papers/7.scalable-sim-report.md` - scale comes from indexed and
-   tiered work, not smarter global agents: exact truth near the player,
-   reachability prefilters, deterministic command phases, job packets, path
-   abstraction, cadence tiers, and visual/update LOD outside the active bubble.
-8. `research_papers/8.little-local-world-research-synthesis.md` - the project
-   synthesis and the sequencing authority over Papers 1-7. It collapses them into
-   one product rule, *make autonomous causality visible*, and one strict build
-   order: food (done) -> work priorities + reservations (done) -> water (done)
-   -> map readability (done) -> governor card (done) -> *close the 12-pawn truth
-   loop* -> scale foundations -> deeper economy. A 2026-06-30 audit found the
-   12-pawn loop is not yet truthful (governor levers that apply but change
-   nothing, an autopilot that halts, a one-way economy), so the next code task is
-   closing that loop, not Paper 7 scale work - this honors Paper 8's own rule that
-   population must not scale before the 12-pawn loop is satisfying. See
-   `ROADMAP.md` "Truth-loop gaps (close before scale)". Lethal starvation and the
-   deeper economy remain deferred behind the visible autonomy loop.
-
-When these papers conflict with current implementation, the conflict becomes a
-roadmap task instead of being silently folded into docs. Paper 8 sets the order
-in which the others are implemented; see `ROADMAP.md`'s Research Paper
-Implementation Queue.
-
-## Scale architecture
-
-Paper 7 turns the 1000-pawn goal into a staged architecture instead of a late
-optimization project. At 12 pawns, keep visible truth exact: reservations,
-inventory transfers, short-range movement, health/death, scarce-resource
-ownership, construction completion, and deterministic event order. Even at that
-scale, build two low-cost foundations early:
-
-- **Reachability regions.** Every walkable tile eventually gets a `region_id`,
-  with dirty-region recomputation when topology changes, so impossible jobs can
-  be rejected before pathfinding.
-- **Deterministic phases.** Job claims, reservations, path requests, movement,
-  interactions, production, needs, and tax advance in stable ordered phases so
-  later batching does not break replayability.
-
-Scale thresholds are design guidance, not source claims:
-
-| Scale | Keep exact | Start abstracting |
-|---|---|---|
-| Up to about 16 active pawns | Almost everything | Optional render cadence only |
-| About 16 to 64 | Inventory, reservations, local interaction truth | Candidate indexes and deterministic update buckets |
-| About 64 to 150 | Near-goal movement and active-bubble behavior | Chunk/HPA-style long paths, shared routes to common sinks, animation LOD |
-| About 150 to 400 | Selected/near/conflict pawns | District work packets, path budgets, offscreen corridor ETAs |
-| About 400 to 1000 | Player-near truth and state transfers | Far-needs cadence, simplified local avoidance, strong visual and overlay LOD |
-
-The hard trust rule: if a pawn is selected, visible, in conflict, carrying or
-touching a scarce object, or about to transfer ownership of a good/building/job,
-force it back into exact simulation. Approximation is allowed for opportunity
-search and offscreen movement, not for player-readable truth.
-
-## Module Layout
+## Directory Map
 
 ```text
-src\agent_town\
-  core.py            <- shared dataclasses + the frozen contract (Phase 0)
-  world.py           <- map, tiles, resource nodes              (Track A)
-  economy.py         <- stockpile, recipes, production, tax     (Track A)
-  buildings.py       <- building types, job slots               (Track A)
-  construction.py    <- build sites, hauling to site            (Track A)
-  pawns.py           <- pawn schema, needs, breaks              (Track B)
-  mood.py            <- mood + effective-work formula           (Track B)
-  schedule.py        <- schedule templates, day clock           (Track B)
-  governor.py        <- context builder + fallback governor     (Track B)
-  llm.py             <- adapter, extended for the governor       (Track B)
-  civilization_view.py    <- Pygame viewer for civilization state            (integration)
-tests\               <- unittest, headless, per module
+local-agent-town/
+├── src/agent_town/          <- deterministic engine + governor + viewer (real tree below)
+├── tests/                   <- unittest, headless, per module
+├── scripts/                 <- run analysis, scaling benchmark, LLM run, PS launchers, validator
+├── research_papers/         <- design inputs (Papers 1-8); source leads, not code truth
+├── docs/                    <- screenshots, proof/<slice>, run_reports, reviews (proof artifacts)
+├── logs/                    <- generated JSONL run logs (git-ignored)
+├── AGENTS.md                <- agent behavior and read/edit scope
+├── BLUEPRINT.md             <- this file: stable project definition and direction
+├── TASKBOARD.md             <- live task queue, blockers, proof log
+├── RUNBOOK.md                <- setup, operation, verification, recovery
+├── README.md                <- public entry point
+├── HARNESS_FEEDBACK.md      <- return channel to the LLM Workbench harness
+├── VISUAL_DESIGN.md         <- local visual baseline (kept, project-local)
+├── BRANCHING.md             <- three-tier branch model (kept, project-local)
+├── Local_little_world_refactor1.md  <- frozen refactor plan (historical)
+└── archive/legacy-harness/  <- retired pre-v2 harness docs (ROADMAP, policy, checklist)
 ```
 
-Transition note: the legacy social-sim (`Agent`, `Simulation`, `Location`,
-`app.py`, `persistence.py`, and `spatial.py`) was retired after I3 reached
-civilization-viewer parity. Current runtime code is the civilization contract, engine,
-governor, local LLM client, and `civilization_view.py`.
+Real `src/agent_town/` modules:
 
-## Frozen contract
+```text
+src/agent_town/
+  core.py              <- shared dataclasses + the frozen contract
+  world.py             <- map, tiles, resource nodes, field/node lifecycle
+  economy.py           <- stockpile, recipes, production, tax, wages/market, averages
+  buildings.py         <- building types, job slots
+  construction.py      <- build sites, hauling to site
+  pawns.py             <- pawn schema, needs, nutrition, breaks
+  mood.py              <- mood ledger + effective-work seam
+  schedule.py          <- schedule templates, day clock
+  work.py              <- lane-based work-priority arbiter + reservations
+  governor.py          <- context builder, FallbackGovernor, LLMGovernor
+  llm.py               <- OpenAI-compatible adapter (LocalLLMClient)
+  engine.py            <- deterministic stepper (step_hour / run / run_days)
+  health.py            <- invariant checks / health verdict
+  telemetry.py         <- run logging + snapshots
+  save.py              <- JSON save/load round-trip, autosave/resume
+  civilization.py      <- default civilization construction (FactionState)
+  civilization_view.py <- Pygame viewer (default `python -m agent_town`)
+  __main__.py          <- entry point (viewer + --smoke-test)
+  assets/              <- CC0/provenance-tracked sprites (colony/, kenney/) + source zips
+```
 
-These shapes live in `core.py`, were written first, and are frozen. Both build
-tracks build against them. Any change after the freeze is a small one-file PR
-that both tracks rebase on, never a unilateral edit.
+Note: the legacy social-sim (`Agent`, `Simulation`, `Location`, `app.py`,
+`persistence.py`, `spatial.py`, `colony*.py`) was retired after integration
+milestone I3 reached civilization-viewer parity.
+
+## Main Contracts
+
+### Frozen contract (`core.py`)
+
+Written first and frozen; both build tracks build against it. Any change is a
+small one-file PR that both tracks rebase on, never a unilateral edit.
 
 | Entity | Key fields |
 |---|---|
 | `Good` (enum) | logs, planks, grain, flour, bread, water, stone |
 | `GridMap` | width, height, tiles; `in_bounds`, `tile_at` |
-| `ResourceNode` | kind (a Good), amount, x, y |
-| `Stockpile` | counts (Good to int); `add`, `remove`, `has` |
+| `ResourceNode` | kind (a Good), amount, x, y, plus field-lifecycle state (planted/growing/ready) |
+| `Stockpile` | counts (Good -> int), capacity; `add`, `remove`, `has`; journals `flow_in`/`flow_out` |
 | `Recipe` | inputs, outputs, work_units, skill |
 | `JobRef` | building_id, role |
-| `Building` | id, kind, x, y, recipe or None, job_slots, staffed_by, built |
+| `Building` | id, kind, x, y, recipe or None, job_slots, staffed_by, built, production_progress, production_target |
 | `ConstructionSite` | id, building_kind, x, y, required, delivered, work_remaining |
-| `Pawn` | id, name, skills, traits, wants, needs, mood, schedule, assignment, x, y, state |
+| `Pawn` | id, name, skills, traits, wants, needs, mood, mood_target, thoughts, schedule, assignment, coin, x, y, state |
 | `ScheduleTemplate` | name, blocks (24 long); `block_at` |
-| `FactionState` | stockpile, coin, pawns, buildings, construction_sites, research, research_target, research_points, season, tax_rate, day, time_of_day, grid, resource_nodes |
+| `FactionState` | stockpile, coin, pawns, buildings, construction_sites, research, research_target, research_points, season, tax_rate, day, time_of_day, grid, resource_nodes, seed, seed_grain |
 | `CivilizationException` | kind, pawn_id or None, building_id or None, detail |
-| `GovernorAction` | kind plus the fields for that action (see Governor interface) |
+| `GovernorAction` | kind plus the fields for that action |
 
-Naming decision: the refactor plan calls the exception-queue entity
-"Exception". It is implemented as `CivilizationException` so it never shadows the
-builtin `Exception`; the LLM governor's hard fallback relies on a broad
-`except Exception`.
+Naming decision: the exception-queue entity is `CivilizationException` so it
+never shadows the builtin `Exception` (the LLM governor's hard fallback relies on
+a broad `except Exception`).
 
 ### The one cross-track seam
 
@@ -420,488 +413,239 @@ in the stockpile produces output at:
 building_output_rate = base_rate * sum(pawn.effective_work for staffed pawns)
 
 pawn.effective_work = skill_factor(skill in recipe.skill)
-                    * mood_factor(pawn.mood)
+                    * mood_factor(pawn.mood)      # neutral hook; hunger/break cut work directly
                     * trait_factor(pawn.traits, recipe)
                     * schedule_factor(pawn.schedule, time_of_day)   # 0 off-shift
 ```
 
-Track A owns the production side. Track B owns `effective_work`. Both depend
-only on the signature `effective_work(pawn, recipe, time_of_day) -> float`,
-defined in `mood.py`. In Phase 0 it returns a neutral placeholder of 1.0 so
-Track A can integrate before Track B lands the real formula in milestone B2.
-This is the only place the two tracks meet.
+`effective_work(pawn, recipe, time_of_day) -> float` is defined in `mood.py` and
+is the only place Track A (town/goods) and Track B (people/sovereign) meet. For
+Tier 0 faucets this rate now also gates on the field/node's physical state (see
+Physical sourcing above): a farm with no ripe field or a depleted quarry produces
+nothing regardless of `effective_work`.
 
-## Build 1 content scope
-
-Production chains:
-
-| Chain | Buildings | Flow |
-|---|---|---|
-| Wood | Forester, Sawmill | tree node to logs to planks |
-| Food | Farm, Mill, Bakery | grain to flour to bread |
-| Stone | Quarry | stone node to stone |
-| Research | Laboratory | staffed research work to research points |
-
-Construction consumes planks plus stone. Bread is the consumable that feeds the
-food need.
-
-The current research spine is deliberately minimal: the Governor can select the
-first tech (`efficient_baking`), staffed Laboratory work completes it, and the
-completed tech increases Bakery bread output. The full Space-Age victory spine
-remains a later build target.
-
-Pawn needs currently tracked: rest, food, water, recreation. Rest and recreation
-are 0.0-1.0 satisfaction values that decay over time and are restored by the
-matching schedule block. Food is a RimWorld-style **nutrition/saturation
-reserve** (0.0-1.0 nutrition, max 1.0) refilled only by eating bread portions
-(0.25 nutrition each, up to four per eat job). Water is the first Build-2
-essential reserve: it decays over time, is refilled only by consuming stockpiled
-water, and creates thirst mood pressure plus a governor `low_water` exception
-when supply or need is low. No schedule block or idle hour grants food or water
-for free (conservation law); full design in "Mood: the RimWorld model" below.
-
-Trait subset: industrious or lazy (work speed), tough or frail (mood floor now,
-combat later), optimist or pessimist (mood floor), loner (solo jobs lift mood),
-night owl (better on the night schedule).
-
-Wants subset: wants_outdoor_work, wants_own_house, wants_soldier (flagged,
-unused until build 2). A met want is a mood boost; an ignored one is a slow mood
-drag.
-
-Mood and breaks use the RimWorld model on a **0-100 scale**: `mood_target = base +
-sum(thoughts)` and the displayed mood drifts toward it. Below the break bands a
-pawn slacks (effective_work drops), then wanders off the job. The break, surfaced
-as a `CivilizationException`, is the Governor's early-warning signal. Full design in
-"Mood: the RimWorld model (build 1 foundation)" below.
-
-### Mood: the RimWorld model (build 1 foundation)
-
-We adopt RimWorld's mood model as closely as the engine allows, including its
-**0-100 mood scale** (replacing the earlier 0-1 mood, so thoughts and break bands
-use RimWorld's own point values directly). Mood is a story-generating system, not
-a cosmetic meter: logistics (food, rest, recreation, later clothes/death/etc.)
-become emotion, and emotion feeds back into work, breaks, and tax. Shape:
-
-> mood_target = base mood + expectations + sum of active thoughts
-> actual mood drifts toward the target over time
-> low actual mood risks a mental break; high mood (later) enables inspirations
-
-Build 1 builds the foundation; the deferred pieces below slot into the same
-architecture rather than replacing it.
-
-- **Two layers (target vs actual).** Each tick we compute `mood_target` from the
-  ledger; the displayed `pawn.mood` (actual) drifts toward it at +12 per hour
-  rising and -8 per hour falling (on the 0-100 scale), and is frozen while the
-  pawn sleeps. The
-  buffer means one bad event does not instabreak a pawn, but sustained misery
-  does - and fixing a problem lifts the target at once while the pawn recovers
-  gradually. `Pawn.mood_target` is added to the frozen contract for the readout.
-- **Thoughts are the ledger.** Mood is the sum of named moodlets - `Thought
-  {kind, label, value, age, stack}`, in a `Pawn.thoughts` list (contract change)
-  - sourced from needs, traits, wants, and later events. Many small negatives
-  stack into a crisis. The pawn inspector shows the list, RimWorld-style. Values
-  are RimWorld points on the 0-100 mood scale (e.g. Hungry = -6).
-- **Base mood from difficulty.** The base is a storyteller/difficulty setting
-  (RimWorld uses ~42 down to ~22); build 1 ships one default and exposes the
-  knob later.
-- **Food is a nutrition reserve, and hunger is the first real thought.** The food
-  need becomes a RimWorld-style saturation reserve (0-1 nutrition, max 1.0)
-  drained by hunger and refilled only by eating: a pawn opportunistically eats
-  one or more bread when it drops to ~30% saturation, capping at 1.0 with excess
-  wasted. There is no meal schedule block (RimWorld has none) and no free
-  off-shift restoration. Bread is a 0.25 nutrition portion and pawns eat a
-  rounded portion count, up to four bread per eat job. The Bakery outputs four
-  bread portions per cycle so the production chain stays balanced after the
-  smaller food unit.
-  Saturation drives one hunger thought: Fed (>=24%) none; Hungry (24-12%) -6;
-  Ravenously hungry (12-0%) -12; Malnourished/Starving (0%) -20 until the
-  starvation system lands. Food is pulled out of the blended needs term so hunger
-  hits mood exactly once. The deeper malnutrition bands and lethal starvation
-  arrive with starvation death (below, step 4). This is the primary near-term
-  incentive to keep pawns fed.
-- **Breaks are band + roll.** Three bands replace the old single threshold:
-  minor < 35%, major around 20%, extreme around 5%. A break fires on a mean-time-between
-  roll that is faster in lower bands, off a seeded PRNG keyed to a civilization seed -
-  so the engine stays reproducible (same seed + same policy = same outcome) while
-  still feeling unpredictable, the way RimWorld's "story generator" does. Traits
-  shift a pawn's break thresholds (iron-willed vs volatile). After a break ends
-  the pawn gets a large Catharsis thought, so colonies are not trapped in endless
-  consecutive breaks. Breaks remain the Governor's early-warning exceptions and
-  still cut `effective_work`.
-- **Civ stats bar.** "Civ" (Civilization, the renamed civilization) mood is the average
-  of all pawns; a Civ stats bar shows five Civ-wide averages - Mood, Food,
-  Water, Recreation, Rest - as coloured percentages. Food and water now have
-  direct mood consequences; recreation and rest remain readouts until their
-  richer thought slices.
-
-Deferred to build 2, in the same architecture: **expectations** (a wealth-driven
-mood treadmill, +30 early to 0 when rich - needs wealth valuation; stubbed
-"extremely low" until then); **richer thoughts** (meal quality, recreation
-variety, slept-outside, darkness, social fights, death/corpse); and
-**inspirations** (the positive mirror of breaks, mood > ~49%, once there are
-systems - craft / recruit / trade - for them to boost). Rooms/beauty and
-prisoners are out of build-1 scope.
-
-Note: adopting base + expectations + thoughts changes absolute mood numbers, and
-mood feeds `daily_tax_income`, so the tax constant is rebalanced in the same pass,
-not silently.
-
-Productivity note from the mood research: vanilla RimWorld does not use a simple
-generic mood-to-work-speed multiplier. Local Agent Town follows that: the legacy
-`mood_factor` hook is neutral, while `effective_work` is reduced directly by
-hunger and break state. High-mood upside remains deferred to explicit inspiration
-events once there are systems worth boosting.
-
-### Starvation and pawn loss (build 1)
-
-Food is the first need with a lethal failure mode and the build-1 reason to keep
-the supply chain fed - but it is sequenced *after* the mood foundation above (the
-hunger thought is the primary near-term incentive). Rules:
-
-- Food is restored only by eating bread (a `Good`). No schedule block, building,
-  or idle hour grants food for free - this is the conservation law applied to
-  hunger ("nothing from nothing"). The free off-shift food restoration is removed
-  with the nutrition reserve in the mood foundation (step 2); this section then
-  adds the lethal failure mode on top. At step 4 the flat "72h since last meal"
-  rule may be replaced by a RimWorld-style malnutrition ailment (severity accrues
-  while at zero nutrition, death ~6 days after) - finalised when step 4 lands.
-- Each pawn tracks `hours_since_meal`, reset to 0 when it eats and incremented
-  every hour otherwise. A pawn that goes 72 hours (three game-days) without a
-  meal dies and is removed from the civilization; the engine scrubs it from every
-  building's `staffed_by`. (Optional follow-on: a witnessed-death civilization-wide
-  mood debuff, RimWorld-style.)
-- The Governor gets an early-warning `starving_pawn` exception well before the
-  72-hour mark plus a civilization food readout (bread on hand / days of food /
-  starving count), so policy - build and staff Farm -> Mill -> Bakery - can
-  respond before anyone dies. The deterministic fallback prioritises the food
-  chain under starvation, keeping it a valid winnability oracle.
-- The viewer surfaces hunger as visible status: a starvation badge on the pawn,
-  a "starving / Nd since food" line and death countdown in the inspector, a
-  civilization food/starving readout in the HUD, and a death line in the event log.
-
-This pulls a narrow slice of the build-3 pawn lifecycle (death) forward into
-build 1: starvation death only. Aging, productivity bands, and birth stay in
-build 3. Adding `Pawn.hours_since_meal` is a deliberate post-freeze change to the
-frozen contract in `core.py`, made via the documented one-file-PR process, not a
-silent edit.
-
-## Target content design (full game)
-
-Build 1 ships only the first rows; `ROADMAP.md` sequences the rest. This table
-is the design target the chains converge on, not the build-1 cut. Every "from /
-to" obeys the conservation law above. The `Build` column is the earliest build
-that ships the row.
-
-Build-2 economy direction from the Townsmen research:
-
-- Model essentials before comfort: water, food, shelter/warmth, and repair stay
-  ahead of clothing, beauty, taverns, and luxury services.
-- Make logistics district-aware before making them large. District storage,
-  market stalls, and travel-share readouts are more useful than global stock
-  totals alone.
-- Add storage caps as real blockers with visible pressure: warning at about 80%
-  full and critical at about 95% full.
-- Add repair debt as a material and labour sink. Building condition should
-  degrade into output/service penalties before catastrophic failure.
-- Keep the money loop legible: treasury pays wages, households buy essentials
-  and comfort goods, taxes and building revenue return coin, and reserve-aware
-  trade is the main net-new coin source.
-
-### Production chains
-
-Tier 0 is extraction from map resource nodes. Each later tier needs the prior
-tier's output and, past tier 1, a research unlock - so an advanced building can
-only exist once its supplier and its tech do. Build 1's shipped Tier 0 faucets
-(Farm, Forester, Quarry, Water Well) now use the **Mechanic** column's
-physical-sourcing behaviour (see the design law refinement above); the build-2+
-rows adopt the same mechanics when they land.
-
-| Tier | Building | Consumes | Produces | Skill | Build | Mechanic |
-|---|---|---|---|---|---|---|
-| 0 | Forester | tree node | logs | forestry | 1 | extracted + regrows |
-| 0 | Quarry | stone node | stone | mining | 1 | extracted, no regrow |
-| 0 | Farm (crops) | field node | grain, vegetables | farming | 1 | cultivated (plant/grow/harvest) |
-| 0 | Water Well | water table | water | water | 2 | replenished (no depletion) |
-| 0 | Mine | ore node | ore | mining | 3 | extracted, no regrow |
-| 0 | Pasture / Animal Farm | feed (grain) | raw meat, hide, wool | herding | 3 | cultivated (feed-gated) |
-| 0 | Hunter's Hut | wild game node | raw meat, hide | hunting | 3 | extracted + regrows |
-| 1 | Sawmill | logs | planks | woodworking | 1 |
-| 1 | Mill | grain | flour | milling | 1 |
-| 1 | Bakery | flour, water | bread | baking | 1 |
-| 1 | Brewery | grain, water | beer | brewing | 2 |
-| 1 | Tailor | wool / hide | cloth, clothes | tailoring | 2 |
-| 1 | Kitchen / Butcher | raw meat | meat (cooked) | cooking | 3 |
-| 1 | Smelter | ore | metal | smithing | 3 |
-| 2 | Carpenter / Workshop | planks, parts | furniture | crafting | 2 |
-| 2 | Apothecary | herbs, cloth | medicine | medicine | 2 |
-| 2 | Blacksmith / Forge | metal | tools, parts | smithing | 3 |
-| 2 | Laboratory | researcher labour | research points | research | 2 |
-| 3 | Foundry / Machine shop | metal, parts | components | engineering | 4 |
-| 3 | Space program | components, research | launch readiness | engineering | 4 |
-
-Tools and furniture are quality boosters: tools raise pawn work speed; furniture
-raises building quality, which raises mood (see needs).
-
-### Pawn needs (full set)
-
-Each need is 0.0 to 1.0, decays over time, and is restored by the matching
-good/building or schedule block. The current runtime ships rest, food, water,
-and recreation; the rest follow.
-
-| Need | Restored by | Build |
-|---|---|---|
-| Rest | House / bed; quality raises the cap | 1 |
-| Food | Bread, later meat/vegetables for variety | 1 |
-| Recreation | Tavern, Church | 1 |
-| Water | Well water | 2 |
-| Shelter | An assigned House; quality raises mood | 2 |
-| Clothes | Clothing from the Tailor; warmth matters in cold | 2 |
-| Beauty ("pretty things") | Furniture, building quality, decorations | 2 |
-| Protection | Watch Tower / soldier coverage, Firehouse, Police | 3 |
-
-### Service and civic buildings (satisfy needs / logistics, no output good)
-
-| Building | Role | Build |
-|---|---|---|
-| House | Shelter + rest; quality raises mood | 1 |
-| Tavern | Recreation + mood; sells beer/bread to pawns (money loop); soldiers want beer + meat | 2 |
-| Church | Recreation and mood-boost center; one worker slot | 2 |
-| Storehouse | Raises stockpile capacity (see storage) | 2 |
-| Market | Trade with off-map caravans (coin in/out); pawns spend wages here | 2 |
-| Infirmary | Treat injured/sick; skill-based healthcare | 2 |
-| Watch Tower | Protection; one slot, must be staffed by a soldier pawn | 3 |
-| Firehouse | Cuts fire-disaster spread and damage | 3 |
-| Police House | Suppresses crime/unrest, lowers revolution risk | 3 |
-| Barracks | Trains a grown pawn into a soldier (needs a real pawn) | 3 |
-
-### The money loop
-
-**Status (2026-06-30): designed, not implemented.** Today coin only enters via
-tax (`economy.daily_tax_income`) and only leaves via the finite build order;
-pawns are never paid, so "tax" recirculates nothing. The wage loop below is the
-first economy coupling in the truth-loop work (see `ROADMAP.md` "Truth-loop
-gaps"), because without it only the upstream-shortage bottleneck can occur.
-
-Coin is conserved internally and only enters or leaves through trade.
-
-- Wages: treasury to pawn purse each day. Unpaid pawns lose mood.
-- Spending + tax: pawn purse back to treasury, via purchases at the
-  Market/Tavern and via tax on wages.
-- Trade: the Market sells surplus goods to off-map caravans for net new coin, or
-  buys scarce goods for coin. This is the only external source and sink.
-- Current runtime slice: daily wages move treasury coin into assigned pawn
-  wallets; a staffed Market sells bread to pawn wallets above reserve, collects
-  whole-coin sales tax, reports unmet bread buyers as the first Market service
-  pressure signal, then exports remaining bread surplus above reserve. Taverns,
-  comfort spending, reserve-aware imports/exports, and full district market
-  queues remain later Build-2 work.
-
-So "where do taxes come from if you don't pay your people" resolves cleanly: you
-tax the wages you paid, and net civilization wealth comes from selling what the pawns
-produced. No wages means nothing to tax, plus a mood penalty.
-
-### Healthcare (skill, not a punishing chain)
-
-Treatment is a labour + skill task, not a deep supply chain. A pawn with a
-doctoring priority tends a patient (at the Infirmary or in a bed); care quality
-scales with the doctor's skill, and every treatment raises that skill. Medicine
-(one cheap Apothecary good) is an optional booster that improves outcomes but is
-never required - you can run healthcare with a willing, improving pawn and
-nothing else, RimWorld-style.
-
-### Research and the Space Age
-
-Research points from staffed Laboratory work buy techs along a spine that ends
-in space flight. The current runtime ships only the first truthful slice:
-`efficient_baking` raises Bakery bread output, proving that `set_research`
-causes measurable simulation change. Later techs unlock building tiers, raise
-pawn lifespan/productivity, and eventually complete the space-age milestone.
-Reaching that milestone is the primary victory.
-
-### Storage
-
-Stockpile capacity is finite and raised by the Storehouse; a "storage full %"
-readout surfaces it (see `ROADMAP.md`). The current Build-2 slice gives the
-default civilization a conservative global stockpile cap, blocks production
-that would grow storage past the cap, and logs storage fullness. Built
-Storehouses raise the cap, and 80/95% storage pressure is shown in the HUD and
-on Storehouse buildings. Per-district storage and hauling pressure remain later
-Build-2 work.
-
-### Disasters (operator as storyteller)
-
-Disasters (fire, lightning, cold snaps that freeze crops or kill unsheltered
-pawns) are operator-triggered, not random: the operator is the storyteller, via
-a deliberate UI action or a separate prompting model - never the Governor agent
-that is playing the civilization.
-
-### Pets
-
-Decoration in build 1 (dogs/cats appear once population passes a threshold).
-Later, dogs gain a guard role: protecting the civilization area alongside pawns.
-
-## Governor interface
-
-Actions the Governor may emit (validated against state before they mutate it):
+### Governor interface
 
 | Category | Actions |
 |---|---|
-| Pawns | `assign_pawn(pawn_id, building_id, role)`, `set_schedule(pawn_id_or_group, template)`, `set_work_priority(pawn_id_or_group, work_type, level)` |
+| Pawns | `assign_pawn(pawn_id, building_id, role)` (forced override), `set_schedule(pawn_id_or_group, template)`, `set_work_priority(pawn_id_or_group, work_type, level)` |
 | Town | `place_building(kind, x, y)`, `set_production_target(building_id, good, amount)` |
 | Progression | `set_research(tech)` |
 
-Pawns have RimWorld-style free will: each picks its highest-priority available
-job from its priority list. The Governor's main lever is tuning priorities and
-schedules, not hand-placing pawns in slots - `assign_pawn` is an override for
-the rare case. Watching how the agent balances priorities across the roster is
-the substance of the spectator view. (`set_work_priority` is a build-2 addition.)
-`set_research` now selects an active tech target; Laboratory work completes it,
-and completed techs must change simulation behavior. The full Space-Age victory
-remains a later spine, not a stretch goal.
+Actions are validated against state before they mutate it. Pawns have
+RimWorld-style free will; the Governor's main lever is tuning priorities and
+schedules. `set_research` selects an active tech; staffed Laboratory work
+completes it and completed techs change simulation behavior (`efficient_baking`
+raises Bakery output).
 
-Model-originated Governor actions are narrower than the total action vocabulary.
-The local model is untrusted policy input, so every model-allowed action kind
-needs an explicit allowlist rule. Unknown or unreviewed kinds default-deny and
-fall back to the deterministic governor. Prompt instructions may guide the model,
-but only validation and the model safety filter enforce the boundary.
+Two governors share one `decide(context)` interface returning a list of
+`GovernorAction`:
 
-Build-2 autonomy direction from the RimWorld work-priority research:
+- `FallbackGovernor`: deterministic greedy matcher; also the winnability oracle
+  (if a town survives N days under the fallback, the economy is winnable). On a
+  `low_food` exception it grows food capacity front-of-chain first
+  (`governor.food_expansion_action`: Farm -> Mill -> Bakery toward a 4:2:1
+  ratio), one building at a time.
+- `LLMGovernor`: same signature, OpenAI-compatible endpoint via `llm.py` with
+  JSON-schema output and a hard fallback to `FallbackGovernor` on any error.
+  Model-originated actions pass an explicit **default-deny allowlist**: unlisted
+  action kinds are rejected. The model may rest a flagged pawn, raise essential
+  priorities, place known buildings, pick research, and retarget non-essential
+  goods; it may **not** force `assign_pawn` or cap a survival good
+  (grain/flour/bread/water). LLM-origin `set_work_priority` must target named
+  pawns, not `group="all"`, and stay at safe essential levels.
 
-- Do not implement a full RimWorld think tree. Use a compact, inspectable
-  lane-based arbiter.
-- Decision lanes, in order: forced/manual, hard state, medical rest, self-care,
-  emergency, normal work, idle.
-- Normal work sorts by manual priority first, then work-type order, workgiver
-  order, target urgency, path/distance cost, and skill fit. Skill never rescues
-  an illegal, unreachable, reserved, disabled, or lower-lane job.
-- Add reservations before broad autonomy so two pawns do not claim the same
-  target.
-- The spectator UI must show why a job won and why the top rejected candidates
-  lost; otherwise autonomous behavior will look arbitrary.
+What the Governor reads (`governor.build_context`): faction summary, roster
+summary (grouped by assignment, standout skills/traits only), and the exception
+queue (the only per-pawn detail, and only on a problem). It never receives all
+raw pawn records.
 
-What the Governor reads, built by `governor.build_context`:
+### Production chains (build 1 cut)
 
-- Faction summary: population, average mood, stockpile levels, coin, day and
-  season, tax_rate.
-- Roster summary: pawns grouped by current assignment, with standout skills and
-  traits only.
-- Exception queue: the only per-pawn detail, and only on a problem (unhappy
-  pawn plus reason, idle pawn, skill-mismatched assignment, unstaffed building,
-  missing inputs, pawn about to break).
+| Chain | Buildings | Flow | Mechanic |
+|---|---|---|---|
+| Wood | Forester, Sawmill | tree node -> logs -> planks | extracted + regrows |
+| Food | Farm, Mill, Bakery | field -> grain -> flour -> bread | cultivated (plant/grow/harvest) |
+| Stone | Quarry | stone node -> stone | extracted, no regrow |
+| Water | Water Well | water table -> water | replenished (no depletion) |
+| Research | Laboratory | staffed research work -> research points | n/a |
 
-The Governor pulls a full pawn sheet only when an exception names that pawn. It
-never receives all raw pawn records; summaries plus exceptions keep the context
-small.
-
-Two governors share one `decide(context) -> list of GovernorAction` interface:
-
-- `FallbackGovernor`: rule-based greedy matcher that assigns each pawn to its
-  best-skill open slot, sets a sensible schedule, and builds the next missing
-  chain link. This is also the test oracle: if a town survives N days under the
-  fallback, the economy is winnable.
-- `LLMGovernor`: same signature, backed by Gemma 4 E4B via `llm.py` with
-  JSON-schema output, explicit model-action allowlisting, and a hard fallback to
-  `FallbackGovernor` on any error or unsafe policy proposal.
-
-## Two-track division of labor
-
-| | Track A | Track B |
-|---|---|---|
-| Owns | `world.py`, `economy.py`, `buildings.py`, `construction.py` | `pawns.py`, `mood.py`, `schedule.py`, `governor.py`, `llm.py` |
-| Theme | the town and its goods | the people and the sovereign |
-| Depends on | the `effective_work` signature only | `Building.job_slots`, `Stockpile`, recipes only |
-
-The split is by subsystem behind the frozen contract, so the two tracks can work
-in parallel without editing the same files. Integration is done jointly or by
-whoever finishes first.
+Construction consumes planks + stone. Bread (0.25 nutrition/portion, Bakery
+outputs 4-5/cycle) feeds the food need; water feeds thirst. The full target
+content design (tiers 0-3, full needs set, service/civic buildings, money loop,
+healthcare, storage, disasters) is sequenced across builds 2-4; see the build
+arc above and `research_papers/`.
 
 ## Core Logic And Invariants
 
-Core behavior lives in the civilization modules under `src\agent_town`.
+Core behavior lives in the civilization modules under `src/agent_town`.
 
 Rules:
 
-- All economy, pawn, mood, schedule, and governor logic is testable without
-  Pygame.
-- Governor actions are validated against state before they mutate it; model-origin
-  actions also pass a stricter default-deny safety filter.
-- One pawn may count for one staffed job at a time. Forced/manual assignment must
-  release the previous slot, and the arbiter must heal or reject stale staffed
-  entries before production can count them.
-- Conservation checks must cover real run paths. A healthy long-run gate checks
-  invariants during the run, not only on a fresh state or a final snapshot.
-- The viewer may read civilization state but must not duplicate engine logic or block
-  on model output.
-- The deterministic core and the fallback governor must pass tests before the
-  LLM layer is built.
+- All economy, pawn, mood, schedule, work, and governor logic is testable
+  without Pygame.
+- Governor actions are validated against state before they mutate it;
+  model-origin actions also pass the stricter default-deny safety filter.
+- One pawn may count for one staffed job at a time. Forced/manual assignment
+  must release the previous slot, and the arbiter must heal or reject stale
+  staffed entries before production can count them.
+- The viewer may read civilization state but must not duplicate engine logic or
+  block on model output.
+- The deterministic core and the fallback governor must pass tests before the LLM
+  layer is trusted.
 - The Governor is never fed raw pawn state; summaries plus exceptions only.
+- Conservation: no good, coin, or pawn is created from nothing, and every Tier 0
+  faucet's output is tied to a located, finite- or time-gated source (see North
+  Star and Physical sourcing above). Conservation is executable:
+  `health.check_invariants` asserts the ledger holds every telemetry hour, not
+  only on a fresh state or a final snapshot.
+
+### Mood and hunger (RimWorld model, build-1 foundation)
+
+- **0-100 mood scale.** `mood_target = base + sum(active thoughts)`; displayed
+  `pawn.mood` drifts toward it at +12/hour rising, -8/hour falling, frozen while
+  asleep.
+- **Thoughts are the ledger.** `Pawn.thoughts` is a list of `Thought
+  {kind, label, value, age, stack}`; many small negatives stack into a crisis.
+- **Food is a nutrition reserve** (0-1, max 1.0), drained by hunger and refilled
+  only by opportunistically eating bread (~30% trigger, up to 4 portions, excess
+  wasted). No meal schedule block, no free off-shift restoration (conservation).
+- **Breaks are band + roll:** minor <35, major ~20, extreme ~5, on a seeded
+  mean-time-between roll; Catharsis thought after a break ends. Breaks are the
+  Governor's early-warning exceptions and cut `effective_work`.
+- `mood_factor` is a neutral hook; `effective_work` is reduced directly by hunger
+  and break state (RimWorld does not use a generic mood-to-work multiplier).
+
+Lethal starvation (72h-since-meal death) is designed but **deferred** behind the
+visible autonomy/readability work; build 1 ships hunger mood pressure as its
+stakes. A starving-work floor (`mood.HUNGER_STARVING_FLOOR`) plus continuous
+production (`Building.production_progress` banks fractional work) keep the death
+spiral escapable with good governance and fatal without it. See `TASKBOARD.md`
+Deferred.
+
+### Crisis, response, consequence
+
+When a civ hits a food crisis the Governor tries to fix it (re-tasking pawns to
+grow more wheat -> flour -> bread, and eventually buying from a trader); if it
+cannot, the design intends the civ to die, the run to end, and the failure to be
+documented (starvation death itself is deferred - see above). Escape design: a
+starving-productivity floor *plus* an early governor response - death loops must
+be escapable with good governance, fatal without. The trader (not yet built) is
+a second, external escape valve (coin -> food) reusing the **local**
+`LocalLLMClient`, not a cloud API, behind a deterministic trade core.
+
+A 2026-06-30 audit found the 12-pawn loop was not yet truthful (dead governor
+levers, an autopilot that halted, a one-way economy); the truth-loop chain
+closed those gaps (`set_production_target` caps output, `set_research` drives a
+real tech effect, finite storage capacity is a real bottleneck, the first
+wage/market money loop runs). A 2026-07-01 peer review (Fable 5,
+`docs/reviews/2026-07-01-fable5-critical-review.md`) found further P0/P1 gaps,
+all now fixed:
+
+- **One pawn, one job.** Forced `assign_pawn` releases the pawn's previous
+  `staffed_by` slot; the arbiter prunes stale duplicate staffed entries.
+- **Default-deny model guard.** Model-origin action safety
+  (`_model_action_reason`) is an explicit per-kind allowlist; unlisted kinds
+  default-deny (see Governor interface above).
+- **Executable conservation.** `health.check_invariants` asserts the ledger
+  every telemetry hour, not just at a snapshot (see Core Logic above).
+- **Analyzer honesty.** Decision records carry a per-hour `origin`
+  ("model"/"fallback"); `health.model_efficacy` separates pipeline availability
+  from applied model-origin actions, so a healthy-pipeline run with zero
+  model-origin actions is AMBER ("pipeline-only"), never an unearned GREEN.
+- **Watchability refresh.** Exception age tags (chronic vs. fresh), a rolling
+  goods-flow readout, a Mood chip, attribution-first Governor text, and
+  truthful `!` building badges replaced five named visibility gaps.
+
+Unifying the crisis line with the truth-loop's finite storage exposed a latent
+starvation: uncapped surplus producers (water, logs, planks, stone) flood the
+storage cap and crowd out food. The default civ now seeds each surplus producer
+a starting `production_target` (water 48, logs 24, planks 40, stone 40), leaving
+food headroom, and research is unavailable while bread cover is under a day so a
+farmer never idles on the Laboratory during a shortage.
+
+### Scale architecture (Paper 7)
+
+At ~12 pawns, keep visible truth exact. Two low-cost foundations come first:
+reachability regions (reject impossible jobs before pathfinding) and
+deterministic phases (stable ordered job claims/reservations/movement/production/
+needs/tax). Hard trust rule: any pawn that is selected, visible, in conflict,
+carrying a scarce object, or transferring ownership is forced back into exact
+simulation; approximation is only for opportunity search and offscreen movement.
+Population growth (build 3) is what makes the real scale need appear; there is
+no in-play way to reach large populations yet.
 
 ## Trust, Privacy, And Safety Boundaries
 
-- Keep the project local-only. No hosted LLM providers, telemetry, or external
-  persistence without explicit user approval.
+Sensitive data / boundaries:
+
+- Keep the project local-only by default. No hosted LLM providers, telemetry, or
+  external persistence without explicit user approval.
 - Do not commit `.venv`, logs, databases, private exports, tokens, or generated
-  dumps.
-- Local LLM use stays local-only. `AGENT_TOWN_LLM_MODEL` overrides discovery,
-  and `AGENT_TOWN_LLM_AUTO_DISCOVER=0` disables startup discovery for
-  deterministic non-LLM runs.
+  dumps (enforced by `.gitignore`).
+- Local LLM use stays local-only. `AGENT_TOWN_LLM_MODEL` overrides discovery;
+  `AGENT_TOWN_LLM_AUTO_DISCOVER=0` disables startup discovery for deterministic
+  non-LLM runs.
+
+## Known Risks
+
+Immediate blockers belong in `TASKBOARD.md` -> Blocked. Stable risks:
+
+| Risk | Impact | Mitigation / owner |
+|---|---|---|
+| LLM governor can starve the town with bad policy | A model run empties stockpiles / drops mood | Deterministic fallback is the oracle; LLM-origin work-priority guardrails (named pawns, no `group="all"`); default-deny model-action allowlist |
+| Pygame as the viewer may cap scale | Rendering could block the 1000-pawn goal | Keep the engine testable/benchmarkable headless; migrate engines only on benchmark evidence, not taste |
+| Determinism regressions | Break the winnability oracle and replayability | Seeded PRNG keyed to `FactionState.seed`; determinism tests; the LLM is the only nondeterministic layer |
+| Frozen-contract drift | Two-track collisions / silent breakage | `core.py` changes go through the one-file-PR process, not unilateral edits |
+| Research papers treated as code truth | Silent design drift | Papers are inputs; conflicts become `TASKBOARD.md` tasks, not doc edits |
+| Trader economics not yet balanced against real grain lead time | Physical sourcing gave grain a 24h growing season; trader pricing (coin -> bread) must account for that lead time or the crisis line's "escapable" claim could silently stop being true | Land the trader (crisis-line Slice 3) with the real growth-time delay already in play, not against the old instant-mint assumption |
+| The sim can still starve even with the money loop live | Balance is not fully proven under all governor/crisis combinations | Tracked in `docs/run_reports/` observation notes; governor/balance tuning is prioritized over new surface area |
 
 ## Design Decisions
 
-| Decision | Rationale | Date or source |
+Decisions future agents must preserve (most recent last). Older per-slice
+decisions and the full pre-v2 verification history are preserved in
+`archive/legacy-harness/ROADMAP.md` and git history.
+
+| Decision | Rationale | Date / Source |
 |---|---|---|
 | Refactor the social-sim into an LLM-governed civilization builder | New product direction; supersedes the social-sim blueprint | 2026-06-27 `Local_little_world_refactor1.md` |
-| Freeze a shared contract in `core.py` first | Lets two tracks build in parallel without colliding | 2026-06-27 Phase 0 |
-| `effective_work` is the only cross-track seam | Keeps the parallel split clean and the integration point small | 2026-06-27 Phase 0 |
+| Freeze a shared contract in `core.py`; `effective_work` is the only cross-track seam | Lets two tracks build in parallel without colliding; keeps the integration point small | 2026-06-27 Phase 0 |
 | Name the exception entity `CivilizationException` | Avoids shadowing the builtin `Exception` the LLM fallback relies on | 2026-06-27 Phase 0 |
-| Keep the legacy social-sim importable during the refactor | Keeps the existing viewer and tests green until milestone I3 | 2026-06-27 Phase 0 |
-| Deterministic fallback governor before the LLM governor | The fallback is the winnability oracle and the safety net | 2026-06-27 refactor plan |
-| Retire the legacy social-sim after I3 parity | Removes obsolete viewer/runtime code once the civilization viewer, LLM governor, smoke test, and benchmarks cover the current product | 2026-06-28 I3 cleanup |
-| Pull starvation death into build 1 (72h since last meal -> pawn dies) | Food had no lethal consequence, so the food economy carried no stakes; death by starvation is the build-1 incentive to keep pawns fed. Aging/birth stay in build 3 | 2026-06-28 user request |
-| Hunger as an explicit -5/-10/-15 mood modifier; death deferred behind it | Makes the mood hit the near-term feed-your-pawns incentive; food is pulled out of the blended needs term so hunger is one clean RimWorld-style modifier, not a double drag | 2026-06-28 user request |
-| Rename "civilization" -> "Civilization (Civ)" everywhere | One consistent player-facing and code vocabulary; done as an isolated behaviour-preserving commit (~327 refs / 32 files) before the mood work | 2026-06-28 user request |
-| Adopt RimWorld's mood model (two-layer target/actual, thoughts ledger, break bands), foundation-first | Mood is the game's story engine; building it RimWorld-shaped now means later thoughts/expectations/inspirations slot in without rework. Break timing uses a seeded PRNG so runs stay reproducible per seed | 2026-06-28 user request |
-| Food is a nutrition/saturation reserve (max 1.0, bread unit = 0.25), eaten opportunistically below 30% with rounded portions up to four bread and overeating waste | Authentic RimWorld hunger; makes the bread chain conservation-real instead of an abstract satisfaction bar; Bakery output is four bread portions per cycle so the smaller unit does not break Build-1 food balance | 2026-06-28 user decision, updated 2026-06-29 research retune |
-| Pawns eat opportunistically when hungry, not on a meal schedule block; the free off-shift food restoration is removed | RimWorld has no meal block - pawns eat when they drop to ~30%; closes the "food from nothing" conservation gap | 2026-06-28 user decision |
-| Mood moves to a 0-100 scale (RimWorld 1:1); thoughts use RimWorld point values (Hungry -6 etc.); `daily_tax_income` recalibrated in the same pass | Hunger, break, and thought numbers match RimWorld exactly with no 0-1 translation; supersedes the earlier "-5/-10/-15 on 0-1" hunger sketch | 2026-06-28 user decision |
-| Research papers are implementation inputs, not automatic code truth | Papers in `research_papers` are converted into explicit tasks, tests, and deferrals; source-level constants are verified or marked research-derived before exact implementation | 2026-06-29 research intake |
-| Reconcile Build-1 hunger with the hunger paper before lethal starvation | Bread is now 0.25 nutrition with up to four units per eat job; starvation death remains deferred until malnutrition/death timing is implemented deliberately | 2026-06-29 research retune |
-| Build-2 pawn autonomy uses a lane-based arbiter, not full RimWorld think-tree parity | Forced/manual, hard-state, self-care, emergency, and normal-work lanes preserve the feel while keeping decisions inspectable and testable | 2026-06-29 research intake |
-| Build-2 economy starts with district logistics and essentials before comfort | Water, food, storage, repair, wages, spending, taxes, and trade should surface bottlenecks through days-of-cover, blocked time, travel share, queue wait, and reserve-aware export rules | 2026-06-29 research intake |
-| Viewer readability follows AoE-style silhouette/layer/status rules and observer UI density budgets | Identity should read through silhouette and anchor consistency first; state/cause/actionability stay visually separated; persistent UI stays compact while detail lives in inspectors | 2026-06-29 research intake |
-| Scale work starts with reachability regions and deterministic phases, not a new engine | Paper 7 says exactness should stay near player-visible truth while job search, long movement, update cadence, and overlays become indexed, batched, or approximate as population grows | 2026-06-29 research intake |
-| Adopt the Paper 8 synthesis build order as sequencing authority | The seven source papers collapse into one rule - make autonomous causality visible - and one build order. Food, work priorities, and water are now implemented in that order; lethal starvation and deeper economy stay deferred behind the visible autonomy loop | 2026-06-29 research synthesis + user direction |
-| Build-2 step 1 shipped: pawns self-select work via `work.py`; the governor stops routine `assign_pawn` | A deterministic lane arbiter (forced -> hard-state -> self-care -> normal work -> idle; medical/emergency are ordered stubs) does staffing by manual priority -> work-type order -> distance -> skill, with `job_slots`-aware reservations (no double-claim), no-thrash job retention, and a `work.explain` decision trace. `set_work_priority` is the governor/LLM lever and the player's clickable Work grid; `assign_pawn` becomes the forced override. Self-care is a lane label only (eating/drinking stays instant); job-candidate indexes (Paper 7) and emergency/medical content are deferred. Both survival oracles (I1 3-day, LLM==fallback) stay green | 2026-06-29 build-2 step 1 |
-| Build-2 water slice shipped as the first essential economy extension | `Good.WATER`, `NEED_WATER`, Water Well production, one-unit drinking, thirst thoughts, Civ Water readout, HUD stockpile chip, water work priority, days-of-cover summary, and `low_water` governor exception make the first Townsmen essential conserved and visible. District buffers, service queues, seasonal demand, markets, wages, and storage caps remain deferred | 2026-06-29 build-2 water slice |
-| Paper 5 current-systems readability shipped before the governor card | The viewer now separates hover from selection, draws danger rings above selection, shows `work.LANE_IDLE` pawns with an overhead `!`, and renders construction sites as ghosts with footprint outlines and two-stage material/work progress. Storage 80/95% badges remain deferred until stockpile capacity exists, because uncapped totals cannot produce truthful pressure | 2026-06-29 Paper 5 current-systems slice |
-| Paper 6 governor observer shell shipped, with decision audit drilldown | The viewer derives a read-only Governor card from current exceptions, scheduler status, and recent policy actions: plan, phase, bottleneck, confidence, last reallocation, and top exception. A right-edge exception stack sorts active governor exceptions by severity and actionability. History now adds a selectable decision audit showing proposed/applied/rejected policy payloads plus after-state goods/needs and the compact goods/jobs/bottleneck causality map. It is diagnosis-first UI, not a micromanagement surface; policy editors remain deferred | 2026-06-29 Paper 6 observer UI slice, updated 2026-07-01 |
-| Close the 12-pawn truth loop before Paper 7 scale work | A 2026-06-30 audit found dead governor levers (`set_production_target`, `set_research` applied but changed nothing), an autopilot that halted after a 7-item build order, and a one-way economy where only the upstream-shortage bottleneck can occur. Paper 8 itself says not to scale before the 12-pawn loop is satisfying, so scale (PR #21) was re-sequenced behind these fixes. PRs #23-#29 closed them | 2026-06-30 audit + user direction |
-| No Potemkin governor actions: an applied action must change sim state or be rejected | A validated-and-"applied" action that mutates nothing makes the Governor card report changes that did not happen, which breaks the Paper 5/6 truth contract that the UI must let the player verify the sim is honest. `set_production_target` must cap production or be rejected; `set_research` must accrue/spend toward a real tech effect | 2026-06-30 audit |
-| The autopilot needs a goal function; a minimal research/Space-Age spine is the first one | "Watch a town grow over time" fails when the fallback halts at a fixed build order. The stated primary victory (Space Age via research) did not exist in code, so a minimal Laboratory -> research-points -> linear tech spine with at least one real effect is the autopilot's first end-game and the minimum thing worth spectating | 2026-06-30 audit |
-| Household spending starts as a treasury-run Market loop | Build-2 money circulation remains inspectable and conservative: daily wages fund one bread purchase per pawn from a staffed Market above reserve, whole-coin sales tax is collected from buyer wallets, and off-map export only gets the remaining surplus. Full private firms, comfort services, and district market queues stay deferred | 2026-06-30 Paper 4 truth-loop slice |
-| Market service pressure starts as unmet bread demand | The first service-pressure signal stays narrow and truthful: a staffed Market counts pawn wallets that wanted bread but could not buy above the reserve, reports that count in telemetry, and raises `market_service_pressure` for the Governor card/exception stack. Full district hubs, queues, Tavern comfort spending, and reserve-aware trade remain deferred | 2026-06-30 Paper 4 service-pressure slice |
-| Minimal research spine shipped before scale work | `set_research` is no longer a dead lever: it selects an active tech target, staffed Laboratory work produces research points through the existing `effective_work` seam, and `efficient_baking` raises Bakery output. This proves the progression lever before the larger Space-Age spine, deeper economy, and victory condition land | 2026-06-30 truth-loop cleanup |
-| Finite storage capacity shipped before wages/markets | Storage saturation is now a real bottleneck: `Stockpile.capacity` blocks net-growing production before inputs are consumed, telemetry records storage used/capacity/fullness, and the HUD shows storage percent. Storehouse upgrades and pressure badges are now live; district storage, hauling pressure, repair, and trade stay deferred | 2026-06-30 Paper 4 storage slice |
-| First wage/market money loop shipped | Pawns now have personal coin, assigned pawns receive deterministic daily wages from the treasury, and a staffed Market can export a small bread surplus above reserve into treasury coin. This starts the money loop without replacing the legacy abstract tax floor; richer household spending, service spending, reserve-aware trade, and Storehouse capacity upgrades followed or remain future Build-2 slices | 2026-06-30 wage/market slice |
-| Storehouse capacity and pressure badges shipped | Built Storehouses add deterministic global storage capacity, while the HUD and Storehouse world badge shift from normal to amber at 80% and critical red at 95%. This keeps storage pressure truthful without faking district storage or hauling pressure before those systems exist | 2026-06-30 Storehouse slice |
-| Critical review findings become harness inputs before feature work | Confirmed P0/P1 findings from `docs/reviews/` block new roadmap features until reproduced and fixed or explicitly downgraded with source-backed evidence. The immediate contract fixes are one-pawn-one-job, default-deny model safety, executable conservation checks, and model-efficacy gates | 2026-07-01 Fable 5 peer review |
-| Model-origin actions pass an explicit default-deny allowlist (grow-safe) | Both P0s are fixed: forced `assign_pawn` releases prior staffing (Slice A) and the model-safety guard is now an explicit per-kind allowlist - unlisted kinds default-deny. The model may grow the economy (rest a flagged pawn, raise essential priorities, place known buildings, pick research, retarget non-essential goods) but may not force per-pawn assignment (the E-1 trigger) or cap a survival good (grain/flour/bread/water). Rejections carry a reason to the decision audit. Prompt wording is guidance only; the allowlist is the boundary | 2026-07-01 Fable 5 review Slices A+B |
-| Physical sourcing shipped: every Tier 0 faucet draws from a located, gated node | Farms plant/grow/harvest owned field nodes (24h season, seed reserve), Foresters deplete regrowing tree stands, Quarries mine finite outcrops, the Well stays a named aquifer. The arbiter frees pawns from sourceless work and upgrades them back on strict priority; the crisis line was re-verified (marginal civ recovers by day 4; fail state proven under an inert governor). Closes review E-9 | 2026-07-02 physical sourcing |
-| Viewer P2 batch: derived attention label, shared idle definition, decodable mood dots, per-decision pressures, visible storage, building inspection | The Governor card/macro/menu drop the invented confidence %; pawn sheets say "off shift" vs "idle (no job)" to match the Idle chip; hovering decodes the mood dot; decision records carry live exception kinds so the audit panel derives its context; the Storehouse names real held stock; clicking a building opens a derived "why is this (not) producing" card | 2026-07-02 review P-5/P-8/P-9/P-10 + Slice 5 |
-| Surplus producers get a starting production ceiling so food survives the storage cap | Unifying the crisis line (sustain floor) with the truth loop (finite storage) exposed a latent starvation: uncapped water/logs/planks/stone flood the 240-cap stockpile and crowd out grain/flour/bread. The default civ now seeds each surplus producer a `production_target` (water 48, logs 24, planks 40, stone 40) leaving ~90 units of food headroom, and research is unavailable while bread cover is under a day so a farmer never idles on the Laboratory during a shortage | 2026-07-01 crisis+truth-loop merge |
+| Deterministic fallback governor before the LLM governor; retire the legacy social-sim after I3 | The fallback is the winnability oracle and safety net; removes obsolete runtime once the civilization viewer covers the product | 2026-06-27 / 2026-06-28 |
+| Rename colony -> Civilization (Civ) everywhere | One consistent player-facing and code vocabulary; isolated behaviour-preserving commit | 2026-06-28 user request |
+| Adopt RimWorld's mood model (0-100, two-layer target/actual, thought ledger, break bands), foundation-first; food is a nutrition reserve; pawns eat opportunistically | Mood is the story engine; building it RimWorld-shaped now lets later thoughts/expectations/inspirations slot in; closes the "food from nothing" conservation gap | 2026-06-28 / retuned 2026-06-29 |
+| Research papers are implementation inputs, not automatic code truth; adopt Paper 8 synthesis build order | Papers become explicit tasks/tests/deferrals; "make autonomous causality visible" with a strict build order (food -> work priorities -> water -> readability -> governor card -> scale -> deeper economy) | 2026-06-29 research intake |
+| Build-2 step 1: pawns self-select work via `work.py`; governor stops routine `assign_pawn` | Lane-based arbiter (forced -> hard-state -> self-care -> normal work -> idle) with reservations; `set_work_priority` is the lever, `assign_pawn` the forced override | 2026-06-29 build-2 step 1 |
+| Water shipped as the first essential economy extension | `Good.WATER`, Water Well, drinking, thirst thoughts, Civ Water readout, `low_water` exception make the first Townsmen essential conserved and visible | 2026-06-29 water slice |
+| Paper 5 readability, Paper 6 governor observer card + exception stack shipped | Diagnosis-first observer UI; hover/selection separated, danger rings, idle badges, construction ghosts; Governor card + severity-sorted exception stack | 2026-06-29 Paper 5/6 slices |
+| Truth-loop cleanup: `set_production_target` honored; minimal research spine; finite storage capacity; first wage/market money loop; Storehouse capacity + pressure badges; household spending + sales tax; Market service-pressure signal | Make each governor lever cause real, visible simulation change without faking systems that do not exist yet | 2026-06-30 truth-loop slices |
+| LLM-origin `set_work_priority` must target named pawns; `group=all` edits fall back | All-town priority edits flattened the seeded town's specialization and starved it under the Mac LM gate; named-pawn constraint preserves the fallback oracle | 2026-06-30 PR #23 fix |
+| Escape design for the crisis line: a starving-productivity floor plus an early governor response, not one or the other | Death loops must be escapable with good governance, fatal without; the fallback grows food capacity front-of-chain on `low_food` | 2026-07-01 owner direction |
+| Critical review findings become harness inputs before feature work; all five confirmed P0/P1s fixed (one-pawn-one-job, default-deny model safety, executable conservation, analyzer honesty, watchability refresh) | Confirmed findings from `docs/reviews/` block new roadmap features until reproduced and fixed or explicitly downgraded with evidence | 2026-07-01 Fable 5 peer review |
+| Physical sourcing shipped: every Tier 0 faucet draws from a located, gated node | Farms plant/grow/harvest owned field nodes (24h season, seed reserve), Foresters deplete regrowing tree stands, Quarries mine finite outcrops, the Well stays a named aquifer. The crisis line was re-verified after (marginal civ recovers by day 4; fail state proven under an inert governor). Closes review E-9 | 2026-07-02 physical sourcing |
+| Surplus producers get a starting production ceiling so food survives the storage cap | Unifying the crisis line (sustain floor) with the truth loop (finite storage) exposed a latent starvation: uncapped water/logs/planks/stone flood the 240-cap stockpile and crowd out grain/flour/bread | 2026-07-01 crisis+truth-loop merge |
+| Viewer P2 batch: derived attention label, shared idle definition, decodable mood dots, per-decision pressures, visible storage, building inspection | The Governor card/macro/menu drop the invented confidence %; pawn sheets say "off shift" vs "idle (no job)"; hovering decodes the mood dot; decision records carry live exception kinds; the Storehouse names real held stock; clicking a building opens a derived "why is this (not) producing" card | 2026-07-02 review P-5/P-8/P-9/P-10 + Slice 5 |
+| Save/load shipped: the civilization persists across sessions | `save.py` round-trips the full `FactionState` as JSON; the viewer autosaves daily and on exit and resumes on boot. Supersedes the earlier "wake the dormant SQLite scaffold" plan | 2026-07-02 owner direction |
+| Spectator navigation + day/night + KPI strip shipped | Held-key WASD pan, clickable roster + alerts, a follow camera, a day/night light overlay, and a top KPI strip make the civilization watchable as a spectator experience, not only a debug view | 2026-07-02 spectator UI batch |
+| Adopt LLM Workbench v2.1 harness (four control docs) via the Adoption protocol | Replace the pre-v2 doc set (AGENTS/ROADMAP/BOOTSTRAP_CHECKLIST/UNATTENDED_WORK_POLICY) with AGENTS/BLUEPRINT/TASKBOARD/RUNBOOK; retire old docs to `archive/`; preserve all content; `BRANCHING.md` and `VISUAL_DESIGN.md` stay as project-local "keep" docs | 2026-07-03 harness adoption (redone against current `integration`, superseding the stale PR #40 draft forked before physical sourcing shipped) |
 
 ## Health Criteria
 
 The project is healthy when:
 
-- `.\.venv\Scripts\python.exe -m unittest discover -s tests` passes headless;
+- the headless unittest suite passes (`unittest discover -s tests`);
 - the frozen contract in `core.py` imports and instantiates;
-- `.\.venv\Scripts\python.exe -m agent_town --smoke-test` exits successfully;
-- `.\scripts\validate-workbench.ps1` passes;
+- `python -m agent_town --smoke-test` exits successfully;
+- `scripts/validate-workbench.ps1` passes (control-doc structure check);
 - `health.check_invariants` or its run-level companion catches double-staffing,
   phantom staff, negative stock, and any executable conservation ledger breach;
 - model-originated actions are explicit-allowlist only, with unsafe proposals
   rejected or falling back visibly;
 - local-model proof distinguishes pipeline availability from useful, applied
   non-fallback model policy;
+- the primary viewer workflow renders and steps without crashing;
 - secrets and local data are not exposed in committed or built output.
+
+Exact verification commands live in `RUNBOOK.md`. Current task status and proof
+history live in `TASKBOARD.md`.
