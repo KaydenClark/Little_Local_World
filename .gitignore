@@ -23,3 +23,4 @@ HANDOFF*.md
 logs/
 docs/run_reports/*.jsonl
 saves/
+docs/lmstudio_logs/
