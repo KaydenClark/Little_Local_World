@@ -22,3 +22,4 @@ HANDOFF*.md
 # Generated run logs are local proof artifacts, not source.
 logs/
 docs/run_reports/*.jsonl
+saves/

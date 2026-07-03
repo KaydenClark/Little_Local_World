@@ -1,4 +1,5 @@
 import os
+import tempfile
 import unittest
 
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
@@ -688,17 +689,20 @@ class HistoryFeedTests(unittest.TestCase):
         self.assertEqual(viewer.speed_multiplier, 20)
 
     def test_twenty_x_speed_advances_twenty_hours_per_normal_interval(self):
-        viewer = CivilizationViewer(smoke_test=False, governor=FallbackGovernor())
-        try:
-            viewer.speed_multiplier = 20
-            before = viewer.state.day * 24 + viewer.state.time_of_day
+        # A temp save_dir keeps this live-mode viewer from writing (or
+        # resuming) the real saves/autosave.json during a test run.
+        with tempfile.TemporaryDirectory() as tmp:
+            viewer = CivilizationViewer(smoke_test=False, governor=FallbackGovernor(), save_dir=tmp)
+            try:
+                viewer.speed_multiplier = 20
+                before = viewer.state.day * 24 + viewer.state.time_of_day
 
-            viewer._advance(0.6)
+                viewer._advance(0.6)
 
-            after = viewer.state.day * 24 + viewer.state.time_of_day
-            self.assertEqual(after - before, 20)
-        finally:
-            viewer._shutdown_governor()
+                after = viewer.state.day * 24 + viewer.state.time_of_day
+                self.assertEqual(after - before, 20)
+            finally:
+                viewer._shutdown_governor()
 
 
 class BuildingInspectionTests(unittest.TestCase):

@@ -24,9 +24,11 @@ from agent_town.civilization_view import (
     MARGIN,
     building_exception_badges,
     building_sublabel,
+    day_night_alpha,
     exception_age_text,
     exception_stack_items,
     exception_signature,
+    goods_panel_rows,
     governor_card_summary,
     governor_macro_text,
     load_civilization_assets,
@@ -46,18 +48,35 @@ class MacroStripChipTests(unittest.TestCase):
         chips = macro_strip_chips(state)
         self.assertTrue(any(chip.startswith("Mood ") for chip in chips), chips)
 
-    def test_goods_chips_show_flow_when_producing(self):
+    def test_strip_stays_inside_the_kpi_budget(self):
+        # Paper 6 / owner direction: the strip is 8-10 stable KPIs, not the
+        # inventory. No time-of-day chip (the map's light carries it) and no
+        # per-good chips (they moved to the Goods drill-down panel).
         state = civilization.create_default_civilization()
-        chips = macro_strip_chips(state, flows_today={Good.BREAD: 12, Good.GRAIN: 38})
-        self.assertIn(f"Bread {state.stockpile.counts.get(Good.BREAD, 0)} +12", chips)
-        # The P-2 case: zero standing grain stock still shows the chain flowing.
-        self.assertIn("Grain 0 +38", chips)
+        chips = macro_strip_chips(state, alert=("warn", 3))
+        self.assertLessEqual(len(chips), 10, chips)
+        self.assertFalse(any(":" in chip for chip in chips), chips)  # no clock
+        self.assertFalse(any(chip.startswith("Bread") for chip in chips), chips)
+        self.assertIn("News 3", chips)
+        self.assertTrue(any(chip.startswith("Food ") and chip.endswith("d") for chip in chips), chips)
 
-    def test_goods_chips_plain_when_no_flow(self):
+    def test_goods_panel_carries_stock_flow_and_cover(self):
+        # The P-2 case lives here now: zero standing grain stock still reads
+        # as a flowing chain inside the Goods drill-down.
         state = civilization.create_default_civilization()
-        chips = macro_strip_chips(state, flows_today={})
-        self.assertIn(f"Bread {state.stockpile.counts.get(Good.BREAD, 0)}", chips)
-        self.assertFalse(any("+" in chip and chip.startswith("Bread") for chip in chips))
+        rows = goods_panel_rows(state, flows_today={Good.BREAD: 12, Good.GRAIN: 38})
+        by_label = {label: value for label, value, _color in rows}
+        self.assertIn("(+12/day)", by_label["Bread"])
+        self.assertIn("days of cover", by_label["Bread"])
+        self.assertIn("(+38/day)", by_label["Grain"])
+        self.assertIn("planting reserve", by_label["Seed grain"])
+        self.assertIn("Storage", by_label)
+
+    def test_goods_panel_plain_when_no_flow(self):
+        state = civilization.create_default_civilization()
+        rows = goods_panel_rows(state, flows_today={})
+        by_label = {label: value for label, value, _color in rows}
+        self.assertNotIn("+", by_label["Bread"].split("·")[0])
 
     def test_flow_tracker_reports_last_day_production(self):
         state = civilization.create_default_civilization()
@@ -279,10 +298,19 @@ class SourcingVisibilityTests(unittest.TestCase):
         self.assertTrue(lines)
         self.assertTrue(lines[0].startswith("Bread"), lines)
 
-    def test_seed_chip_present_in_macro_strip(self):
+    def test_seed_reserve_readable_from_goods_panel(self):
         state = civilization.create_default_civilization()
-        chips = macro_strip_chips(state)
-        self.assertIn(f"Seed {state.seed_grain}", chips)
+        rows = goods_panel_rows(state)
+        seed_row = next(value for label, value, _c in rows if label == "Seed grain")
+        self.assertIn(str(state.seed_grain), seed_row)
+
+    def test_day_night_alpha_curve(self):
+        # Time of day is carried by the world's light, not a clock chip:
+        # full daylight midday, ramps at dawn/dusk, dark night.
+        self.assertEqual(day_night_alpha(12), 0)
+        self.assertGreater(day_night_alpha(19), day_night_alpha(17))
+        self.assertGreater(day_night_alpha(23), day_night_alpha(19))
+        self.assertEqual(day_night_alpha(2), day_night_alpha(26))  # wraps
 
 
 if __name__ == "__main__":

@@ -487,7 +487,10 @@ content design"; this is the sequencing.
   "storage full %" readout; RimWorld work priorities (`set_work_priority`) and
   the per-civilization spectator view; skill-based healthcare (Infirmary + optional
   medicine); the Church as recreation/mood; operator-triggered disasters; the
-  revolution meter plus the keep and fail state; pets as decor; save state.
+  revolution meter plus the keep and fail state; pets as decor; save state
+  (**shipped early 2026-07-02**: `save.py` round-trips the full FactionState;
+  the viewer autosaves daily and on exit and resumes on boot - the pocket
+  universe persists between sessions, per owner direction).
 - **Build 3 - the people are real.** Pawn lifecycle: aging, productivity bands,
   death; birth from two parent pawns with lineage; the home -> barracks ->
   trained -> deployable soldier pipeline; Watch Tower soldier slots; Police and

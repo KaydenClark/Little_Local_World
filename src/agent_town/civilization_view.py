@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 
 import pygame
 
-from . import buildings, economy, engine, health, mood, telemetry, work, world
+from . import buildings, economy, engine, health, mood, save, telemetry, work, world
 from .assets import CivilizationAssetManifest, load_civilization_manifest
 from .core import (
     ACTION_ASSIGN_PAWN,
@@ -194,7 +194,7 @@ LANE_LABEL = {
 }
 
 # Bottom-strip command buttons. Each opens one mutually-exclusive command panel.
-HUD_BUTTONS = ("Architect", "Work", "Assign", "Research", "History", "Menu")
+HUD_BUTTONS = ("Architect", "Work", "Assign", "Goods", "Research", "History", "Menu")
 HUD_BUTTON_W = 104
 HUD_BUTTON_H = 28
 INSPECTOR_TABS = ("Log", "Gear", "Social", "Bio", "Needs", "Health")
@@ -202,6 +202,7 @@ PANEL_BY_BUTTON = {
     "Architect": "architect",
     "Work": "work",
     "Assign": "assign",
+    "Goods": "goods",
     "Research": "research",
     "History": "history",
     "Menu": "menu",
@@ -714,6 +715,27 @@ def load_civilization_assets(manifest: CivilizationAssetManifest | None = None) 
     return assets
 
 
+# Night-tint strength per hour (0 = full daylight, 130 = deep night). A table,
+# not a formula, so the curve is trivially tunable and testable: dawn breaks
+# over 5-7, full day 8-16, dusk falls over 17-20, night 21-4.
+DAY_NIGHT_ALPHA_BY_HOUR = {
+    0: 130, 1: 130, 2: 130, 3: 130, 4: 130,
+    5: 100, 6: 60, 7: 25,
+    17: 25, 18: 55, 19: 85, 20: 110,
+    21: 130, 22: 130, 23: 130,
+}
+
+
+def day_night_alpha(hour: int) -> int:
+    """How dark the world overlay is at ``hour`` (pure - unit-testable).
+
+    Time of day is carried by the world's light, RimWorld-style, instead of a
+    clock chip in the macro strip - you can tell it is evening because it IS
+    evening, and because the pawns are walking home.
+    """
+    return DAY_NIGHT_ALPHA_BY_HOUR.get(hour % 24, 0)
+
+
 def _mood_color(mood: float) -> tuple[int, int, int]:
     """Red (low) -> yellow -> green (high) for a 0..1 mood."""
     mood = max(0.0, min(1.0, mood))
@@ -875,6 +897,15 @@ def render_civilization(
             ),
         )
 
+    # Day/night light: time of day is read from the world, not a clock chip -
+    # dawn brightens, dusk falls, night is dark. Drawn over the whole map (and
+    # its inhabitants) before the HUD so panels stay readable.
+    night_alpha = day_night_alpha(state.time_of_day)
+    if night_alpha > 0:
+        night = pygame.Surface(map_rect.size, pygame.SRCALPHA)
+        night.fill((14, 18, 44, night_alpha))
+        surface.blit(night, map_rect.topleft)
+
     surface.set_clip(previous_clip)
     summary = governor_summary or governor_card_summary(state)
     _draw_macro_strip(surface, font, state, status_line, summary, alert, layout.macro, flows_today)
@@ -897,6 +928,7 @@ def render_civilization(
             speed_multiplier,
             status_line,
             summary,
+            flows_today,
         )
     _draw_command_strip(
         surface,
@@ -1516,34 +1548,78 @@ def macro_strip_chips(
     alert: tuple[str, int] | None = None,
     flows_today: dict[Good, int] | None = None,
 ) -> list[str]:
-    """The macro-strip chip texts, in draw order (pure - unit-testable)."""
+    """The macro-strip chip texts, in draw order (pure - unit-testable).
+
+    Paper 6's density budget (8-10 KPIs, AoE-style) plus owner direction: the
+    strip carries the handful of numbers a spectator scans, not the inventory.
+    Time-of-day is deliberately absent - the map's day/night light carries it,
+    the way RimWorld players read dawn from the world, not a clock. Per-good
+    stock/flows moved to the Goods panel (the chips became a drill-down).
+    "News" counts things that *happened* (a death, a depleted stand, a break) -
+    the governor's to-do exceptions stay in its own stack on the right.
+    """
     chips = [
         f"Day {state.day}",
-        f"{state.time_of_day:02d}:00",
         f"Pop {len(state.pawns)}",
         f"Idle {idle_pawn_count(state)}",
         f"Mood {round(economy.average_mood(state))}",
         f"Coin {state.coin}",
     ]
-    # Storage fullness readout (integration truth-loop): only when storage is
-    # capped. Pressure colour is carried by the storehouse building badges on the
-    # map; the strip keeps the plain number.
+    food_cover = economy.food_days_of_cover(state)
+    if food_cover != float("inf"):
+        chips.append(f"Food {food_cover:.1f}d")
     storage = economy.storage_fullness(state)
     if storage is not None:
         chips.append(f"Storage {round(storage * 100)}%")
-    # Seed grain is the planting reserve, not stockpile grain - without this
-    # chip a "no seed" field would be unexplainable from the HUD.
-    chips.append(f"Seed {state.seed_grain}")
-    for label, good in HUD_GOODS:
-        chip = f"{label} {state.stockpile.counts.get(good, 0)}"
-        produced = (flows_today or {}).get(good, 0)
-        if produced > 0:
-            chip = f"{chip} +{produced}"
-        chips.append(chip)
     alert_severity, alert_count = alert if alert else (None, 0)
     if alert_count:
-        chips.append(f"Alerts {alert_count}")
+        chips.append(f"News {alert_count}")
     return chips
+
+
+def goods_panel_rows(
+    state: FactionState, flows_today: dict[Good, int] | None = None
+) -> list[tuple[str, str, tuple[int, int, int] | None]]:
+    """The Goods drill-down content (pure - unit-testable).
+
+    Everything the old macro-strip goods chips carried, with room to breathe:
+    standing stock, last-day production flow (review P-2 stays honest here),
+    days of cover for the consumables, and the seed reserve.
+    """
+    rows: list[tuple[str, str, tuple[int, int, int] | None]] = []
+    for label, good in HUD_GOODS:
+        stock = state.stockpile.counts.get(good, 0)
+        value = str(stock)
+        produced = (flows_today or {}).get(good, 0)
+        if produced > 0:
+            value += f"  (+{produced}/day)"
+        if good is Good.BREAD:
+            cover = economy.food_days_of_cover(state)
+            if cover != float("inf"):
+                value += f"  ·  {cover:.1f} days of cover"
+        elif good is Good.WATER:
+            cover = economy.water_days_of_cover(state)
+            if cover != float("inf"):
+                value += f"  ·  {cover:.1f} days of cover"
+        rows.append((label, value, INSPECTOR_TEXT))
+    rows.append(("Seed grain", f"{state.seed_grain}  (planting reserve, refilled by harvests)", HUD_MUTED))
+    used = state.stockpile.used_capacity()
+    capacity = state.stockpile.capacity
+    if capacity is not None:
+        rows.append(("Storage", f"{used}/{capacity} units", HUD_MUTED))
+    return rows
+
+
+def _draw_goods_panel(
+    surface: pygame.Surface,
+    state: FactionState,
+    font: pygame.font.Font,
+    rect: pygame.Rect,
+    flows_today: dict[Good, int] | None = None,
+) -> None:
+    _draw_panel_lines(
+        surface, font, rect, "Goods - standing stock and last-day flow", goods_panel_rows(state, flows_today)
+    )
 
 
 def governor_macro_text(
@@ -2778,6 +2854,7 @@ def _draw_menu_panel(
         ("", "", None),
         ("Keyboard", "Esc closes panels then quits, Tab next pawn, F follow pawn, L toggles model", INSPECTOR_TEXT),
         ("Camera", "Hold WASD/arrows to pan, wheel or +/- zoom; click a portrait or alert to jump (Q/E reserved for rotation)", INSPECTOR_TEXT),
+        ("Save", "Autosaves daily and on exit to saves/autosave.json; --new-world starts fresh", INSPECTOR_TEXT),
         ("Proof", "UI screenshots are saved under docs/proof/ui_navigation/", HUD_MUTED),
         ("Overlays", "Map badges: '!' blocked/unstaffed buildings, idle tags, danger rings, storage pressure", HUD_MUTED),
         ("Mood dot", "Above each pawn: green content, amber strained, red near breaking - hover a pawn to read the number", HUD_MUTED),
@@ -2806,6 +2883,7 @@ def _draw_command_panel(
     speed_multiplier: int,
     status_line: tuple[str, tuple[int, int, int]] | None,
     summary: GovernorCardSummary,
+    flows_today: dict[Good, int] | None = None,
 ) -> None:
     pygame.draw.rect(surface, HUD_BG, rect)
     pygame.draw.line(surface, PANEL_BORDER, rect.topleft, rect.topright, 1)
@@ -2817,6 +2895,8 @@ def _draw_command_panel(
         _draw_architect_panel(surface, state, font, rect)
     elif active_panel == "assign":
         _draw_assign_panel(surface, state, font, selected_pawn_id, rect)
+    elif active_panel == "goods":
+        _draw_goods_panel(surface, state, font, rect, flows_today)
     elif active_panel == "research":
         _draw_research_panel(surface, state, font, rect)
     elif active_panel == "menu":
@@ -2874,10 +2954,23 @@ class CivilizationViewer:
         *,
         smoke_test: bool = False,
         governor: Governor | None = None,
+        save_dir: str | None = None,
+        resume: bool = True,
     ) -> None:
         pygame.init()
         pygame.font.init()
         self.smoke_test = smoke_test
+        # Persistence: the pawns' reality must not reset when the window
+        # closes. A live run resumes its autosave (if one exists and loads);
+        # smoke tests and injected states never touch the save file.
+        self.save_dir = save_dir if save_dir is not None else str(save.DEFAULT_SAVE_DIR)
+        self._persist = not smoke_test and state is None
+        self.resumed_from_save = False
+        if state is None and self._persist and resume:
+            loaded = save.load_autosave(self.save_dir)
+            if loaded is not None:
+                state = loaded
+                self.resumed_from_save = True
         self.state = state if state is not None else create_default_civilization()
         if governor is None:
             governor = FallbackGovernor() if smoke_test else CivilizationDecisionScheduler.from_env()
@@ -3210,6 +3303,7 @@ class CivilizationViewer:
             toggle()
 
     def _shutdown_governor(self) -> None:
+        self._autosave()
         try:
             self.logger.log_run_end(self.state)
             self.logger.close()
@@ -3229,8 +3323,19 @@ class CivilizationViewer:
             self._step_and_log()
             self._accum -= interval
 
+    def _autosave(self) -> None:
+        if not self._persist:
+            return
+        try:
+            save.save_state(self.state, save.autosave_path(self.save_dir))
+        except Exception:
+            # Saving must never kill the universe it is trying to preserve.
+            pass
+
     def _step_and_log(self) -> None:
         result = engine.step_hour(self.state, self._step_governor)
+        if result.days_rolled:
+            self._autosave()
         _snap, _decision, events = self.logger.log_hour(self.state, result, self._step_governor)
         self.flows_today = self.flow_tracker.observe(self.state)
         self.exception_ages = self.age_tracker.observe(self.state)
@@ -3295,6 +3400,11 @@ def _load_font() -> pygame.font.Font:
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run the Local Agent Town civilization viewer.")
     parser.add_argument("--smoke-test", action="store_true", help="Open briefly, draw a few frames, then exit.")
+    parser.add_argument(
+        "--new-world",
+        action="store_true",
+        help="Start a fresh civilization instead of resuming the autosave.",
+    )
     return parser.parse_args(argv)
 
 
@@ -3302,7 +3412,7 @@ def main(argv: list[str] | None = None) -> None:
     args = parse_args(sys.argv[1:] if argv is None else argv)
     if args.smoke_test:
         os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
-    CivilizationViewer(smoke_test=args.smoke_test).run()
+    CivilizationViewer(smoke_test=args.smoke_test, resume=not args.new_world).run()
 
 
 if __name__ == "__main__":
