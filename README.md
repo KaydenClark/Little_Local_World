@@ -1,153 +1,110 @@
 # Local Agent Town
 
-A local desktop prototype for watching one LLM-governed civilization run on autopilot.
+> Generated from LLM Workbench v2.1. See `RUNBOOK.md` -> Upgrading The Harness.
 
-This is intentionally not web based. The simulation core is deterministic Python;
-Pygame is the local viewer for the civilization state.
+A local desktop prototype for watching one LLM-governed civilization run on
+autopilot. It is intentionally not web based: the simulation core is deterministic
+Python and Pygame is the local viewer for the civilization state. One Governor
+agent sets policy; a deterministic engine runs about a dozen RimWorld-style pawns
+and the economy. You watch; you do not play.
 
 ## Current State Screenshot
 
 ![Current Local Agent Town UI](docs/screenshots/current-state.png)
 
-This is a screenshot of the current local viewer state: a RimWorld-style pawn
-roster, selected-pawn sheet, readable civilization map, resource HUD, and bottom
-command strip. Pawns now self-select their work through the lane-based arbiter,
-the HUD includes water as the first Build-2 essential, the Civ stats panel shows
-Water, and the selected-pawn sheet has a "Why this job" trace (winning lane,
-reason, and the top job it passed over). The map now separates hover from
-selection, shows idle pawns with an overhead badge, and renders construction
-sites as translucent ghosts with progress bars when they exist. A compact
-Governor card and right-edge exception stack now keep the current plan,
-bottleneck, confidence, recent policy change, and top active problem visible.
-
-The **Work** button opens the RimWorld-style work-priority grid below; click a
-cell to cycle a pawn's priority (1 highest .. 4 lowest, blank disables it) and
-watch the pawn re-route on the next step. The **History** button opens the live
-event feed. The other command buttons (Architect, Assign, Research, Menu) are
-still visual placeholders.
+The current local viewer: a RimWorld-style pawn roster, selected-pawn sheet,
+readable civilization map, resource HUD, Civ stats panel, Governor observer card,
+right-edge exception stack, and bottom command strip. Pawns self-select work
+through the lane-based arbiter; the map separates hover from selection, shows idle
+pawns with an overhead badge, and renders construction sites as ghosts. The
+**Work** button opens the work-priority grid; the **History** button opens the
+live event feed. The other command buttons (Architect, Assign, Research, Menu)
+are visual placeholders.
 
 ![Work-priority grid](docs/screenshots/work-grid.png)
 
-## Architecture Stance
+## How This Project Is Run
 
-The current scale decision is: keep Pygame as the prototype viewer, but keep the
-engine testable and measurable without the viewer.
+This repository is governed by a small set of control documents. Read them before
+changing anything:
 
-That means new scale work should start with evidence instead of an engine
-rewrite:
+- [`AGENTS.md`](AGENTS.md) - how agents behave here: authority order, read/edit
+  scope, the task-selection loop, documentation ownership, and proof rules.
+- [`BLUEPRINT.md`](BLUEPRINT.md) - what this project is: identity, direction,
+  architecture, the frozen contract, invariants, and preserved decisions.
+- [`TASKBOARD.md`](TASKBOARD.md) - the live work queue and append-only proof log.
+  Its **Executive Brief** (top of the file) is the one-glance status.
+- [`RUNBOOK.md`](RUNBOOK.md) - how to set up, run, test, and recover the project,
+  plus the verification commands that gate "done".
+- [`HARNESS_FEEDBACK.md`](HARNESS_FEEDBACK.md) - the return channel to the LLM
+  Workbench harness these docs came from.
 
-- benchmark the headless civilization engine, governor context building, and dummy
-  draw loop;
-- keep the Governor as policy only, never a pawn micromanager;
-- migrate engines only if benchmark evidence shows rendering, editor tooling,
-  or Pygame-specific limits are the blocker.
+Local visual baseline: [`VISUAL_DESIGN.md`](VISUAL_DESIGN.md). The one-time
+migration that produced these v2 docs is preserved as a decision in `BLUEPRINT.md`;
+the pre-v2 harness docs are archived under `archive/legacy-harness/`.
 
-Project structure follows the `LLM_Workbench` pattern:
+## Getting Started
 
-- `AGENTS.md` - agent instructions, scope, and verification rules.
-- `BLUEPRINT.md` - stable project definition and architecture.
-- `ROADMAP.md` - active plan, backlog, and verification log.
-- `RUNBOOK.md` - setup, run, test, and troubleshooting commands.
-- `BOOTSTRAP_CHECKLIST.md` - workbench adoption checks.
-- `UNATTENDED_WORK_POLICY.md` - guardrails for longer agent work.
-- `VISUAL_DESIGN.md` - local visual baseline.
-
-## Research Papers
-
-The `research_papers/` folder contains GPT Pro reference papers for the games
-and UI patterns this project is borrowing from. They are used as source leads
-and design inputs, then reduced into `BLUEPRINT.md` decisions and `ROADMAP.md`
-implementation slices.
-
-Current intake order:
-
-1. RimWorld mood/thoughts.
-2. RimWorld hunger/nutrition.
-3. RimWorld autonomous pawn work priorities.
-4. Townsmen-style economy loops.
-5. Age of Empires settlement readability.
-6. Observer-first RimWorld + Age UI.
-7. Scale from 12 pawns to 1000 pawns.
-
-When a paper conflicts with current code, the conflict is tracked as a roadmap
-task instead of being treated as already implemented.
-
-## Run
-
-From this folder:
+Windows:
 
 ```powershell
 .\setup.ps1
 .\run.ps1
 ```
 
-Or double-click:
+macOS/Linux:
 
-```text
-Launch Local Agent Town.cmd
+```bash
+python3.12 -m venv .venv
+.venv/bin/python -m pip install -e .
+.venv/bin/python -m agent_town
 ```
 
-## Controls
+Full setup, environment, testing, and troubleshooting steps live in
+[`RUNBOOK.md`](RUNBOOK.md).
 
-- Pan: `WASD` or arrow keys.
-- Zoom: mouse wheel, `+`, or `-`.
-- Select pawn: click a pawn or press `Tab`.
-- Local model governor: press `L` to connect or disconnect LM Studio/Ollama.
-- Quit: `Esc` or `Q`.
+Controls: pan `WASD`/arrows; zoom mouse wheel / `+` / `-`; select pawn click or
+`Tab`; local model toggle `L`; quit `Esc`/`Q`.
 
-## Optional Local AI
+## Optional AI
 
 The civilization runs without an LLM. To let a local model govern policy, start an
-OpenAI-compatible local server such as LM Studio, then set:
+OpenAI-compatible local server (LM Studio/Ollama) and set `AGENT_TOWN_LLM_MODEL`
+and `AGENT_TOWN_LLM_BASE_URL` (see `RUNBOOK.md`). Hosted OpenAI is opt-in testing
+only; keep `OPENAI_API_KEY` in an ignored local env file.
 
-```powershell
-$env:AGENT_TOWN_LLM_MODEL = "google/gemma-4-e4b"
-$env:AGENT_TOWN_LLM_BASE_URL = "http://localhost:1234/v1"
-.\run.ps1
-```
+## Research Papers
 
-Ollama can use the same adapter with
-`AGENT_TOWN_LLM_BASE_URL=http://localhost:11434/v1`.
+`research_papers/` holds reference papers (RimWorld mood/hunger/autonomy,
+Townsmen economy, Age-of-Empires readability, observer UI, scale to 1000 pawns,
+and a synthesis) that this project borrows from. They are source leads and design
+inputs, reduced into `BLUEPRINT.md` decisions and `TASKBOARD.md` slices. When a
+paper conflicts with current code, the conflict is tracked as a task, not treated
+as already implemented.
 
 ## What Exists Now
 
-- A deterministic build-1 civilization engine.
-- Twelve pawns with skills, traits, needs, mood, schedule, assignments, and
-  break states.
-- Production chains for logs, planks, stone, grain, flour, and bread.
-- Construction, daily tax, and a fallback Governor that keeps the civilization moving.
-- A local LLM Governor behind the same interface, with hard fallback on any
-  error.
-- A Pygame civilization viewer with camera pan/zoom, pawn selection, a top pawn
-  roster, right-side pawn sheet, HUD, local model status, Governor card, and
-  exception stack.
-- A lane-based work-priority arbiter: pawns self-select their best legal job
-  (manual priority -> work-type order -> skill), never double-claim a slot, and
-  expose a decision trace. The Work button opens a clickable priority grid; the
-  rest of the bottom command strip is still placeholder.
-- A conservation-safe water slice: Water Well production, stockpiled water,
-  pawn drinking, thirst mood pressure, Civ Water readout, and a `low_water`
-  governor exception.
-- A live History feed plus Governor observer overlay for current plan,
-  bottleneck, confidence, last policy change, and active exceptions.
-- CC0/provenance-tracked civilization sprites under `src\agent_town\assets\colony`.
-- A repeatable civilization scaling benchmark for 100, 500, and 1,000 pawns.
+- A deterministic build-1 civilization engine (~12 pawns; wood/food/stone/water
+  chains; construction; daily tax).
+- Pawns with skills, traits, needs, RimWorld-style mood/thoughts, schedules,
+  nutrition, and break states.
+- A deterministic `FallbackGovernor` (the winnability oracle) and an `LLMGovernor`
+  behind the same interface with a hard fallback on any error.
+- A Pygame viewer with camera pan/zoom, pawn selection, roster, pawn sheet, HUD,
+  Civ stats, local model status, Governor card, and exception stack.
+- A lane-based work-priority arbiter with reservations and a decision trace, a
+  water essential slice, finite storage caps with pressure badges, and a first
+  wage/market money loop with sales tax and service-pressure signal.
+- A live History event feed, CC0/provenance-tracked sprites, and a repeatable
+  scaling benchmark.
 
-## Next Useful Upgrades
+## Project Status
 
-- Keep lethal starvation deferred until the malnutrition/death timing slice can
-  add status, exceptions, viewer surfacing, and food-chain urgency together.
-- The 12-pawn truth loop is now closed (PRs #23-#29; see `ROADMAP.md` "Truth-loop
-  gaps"): the dead governor levers (`set_production_target`, `set_research`) drive
-  real effects, a minimal research/Space-Age spine gives the autopilot a goal, and
-  the economy couples through wages, a Market, storage caps, and service pressure.
-- Next: repair debt as the first maintenance sink, then the full Space-Age victory
-  condition and population growth. The colony can still starve under the live
-  money loop (see `docs/run_reports/`), so governor/balance tuning comes before
-  more surface area.
-- Then the Paper 7 scale foundations (reachability-region rejection, deterministic
-  update phases) - only after the truth loop, and the real need appears once
-  population growth exists.
-- Add district storage/market pressure before comfort chains.
-- Add save state once the civilization persistence model is designed.
-- Add pathfinding benchmarks before larger maps or blocked terrain.
+See the **Executive Brief** at the top of [`TASKBOARD.md`](TASKBOARD.md) for the
+current shipping state, health, decisions, blockers, and next milestone. In short:
+build 1 is essentially done and build-2 depth is underway; the next code task is
+repair debt, then Paper 7 scale foundations.
+
+## License
+
+No license file yet; see `TASKBOARD.md` -> Pending Decisions (D-001).
