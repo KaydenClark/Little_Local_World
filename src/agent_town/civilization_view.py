@@ -241,6 +241,7 @@ EXCEPTION_SEVERITY = {
     # never a warn badge - by design it must not read as broken (BLUEPRINT).
     "no_seed_grain": health.WARN,
     "node_depleted": health.WARN,
+    "building_damaged": health.WARN,
     "field_growing": health.INFO,
 }
 EXCEPTION_KIND_RANK = {
@@ -250,12 +251,13 @@ EXCEPTION_KIND_RANK = {
     "low_water": 3,
     "no_seed_grain": 4,
     "node_depleted": 5,
-    "missing_inputs": 6,
-    "unstaffed_building": 7,
-    "unhappy_pawn": 8,
-    "skill_mismatch": 9,
-    "idle_pawn": 10,
-    "field_growing": 11,
+    "building_damaged": 6,
+    "missing_inputs": 7,
+    "unstaffed_building": 8,
+    "unhappy_pawn": 9,
+    "skill_mismatch": 10,
+    "idle_pawn": 11,
+    "field_growing": 12,
 }
 GOVERNOR_CARD_WIDTH = 332
 GOVERNOR_CARD_HEIGHT = 146
@@ -424,6 +426,8 @@ def _exception_title_and_cause(state: FactionState, exc: CivilizationException) 
         return (f"No seed: {subject}", f"The field is bare and the seed reserve is short ({exc.detail}).")
     if exc.kind == "node_depleted":
         return (f"Source depleted: {subject}", f"No standing {exc.detail} left to harvest nearby.")
+    if exc.kind == "building_damaged":
+        return (f"Damaged: {subject}", f"Maintenance debt is reducing output ({exc.detail}).")
     if exc.kind == "field_growing":
         return (f"Field growing: {subject}", f"Crop needs time, not labour ({exc.detail}).")
     return (exc.kind.replace("_", " ").title(), exc.detail or "Needs attention.")
@@ -1864,6 +1868,18 @@ def building_card_lines(state: FactionState, building) -> list[tuple[str, str]]:
     rows.append((f"{building.kind}  ({building.id})", "title"))
     if not building.built:
         rows.append(("Under construction", "warn"))
+    condition = economy.building_condition(building)
+    efficiency = economy.building_efficiency(building)
+    tone = "warn" if condition < economy.BUILDING_REPAIR_THRESHOLD else "ok"
+    rows.append((f"Condition {round(condition * 100)}% (efficiency {round(efficiency * 100)}%)", tone))
+    if condition < economy.BUILDING_REPAIR_THRESHOLD:
+        if economy.repair_materials_available(state):
+            rows.append((f"Repair ready: needs {economy.repair_cost_label()} + staffed labour", "warn"))
+        else:
+            rows.append((f"Repair blocked: needs {economy.repair_cost_label()}", "warn"))
+    progress = economy.building_repair_progress(building)
+    if progress > 0:
+        rows.append((f"Repair progress {round(progress * 100)}%", "muted"))
 
     if building.job_slots > 0:
         names = [_pawn_name(state, pid) for pid in building.staffed_by]

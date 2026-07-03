@@ -235,6 +235,11 @@ Run the viewer and confirm:
   a Work grid type. Headless proof: `unittest tests.test_water`.
 - **Storage caps:** the goods panel/Storehouse badge turn amber at >=80% full,
   red at >=95%. Headless proof: `unittest tests.test_storage_caps`.
+- **Repair debt:** damaged buildings show a warning badge and a building-card
+  condition row; below 75% condition they lose efficiency, and a staffed damaged
+  building spends repair labour plus 1 plank + 1 stone before producing again.
+  Storehouse service capacity scales with condition. Headless proof:
+  `unittest tests.test_repair`. Proof frame: `docs/proof/repair_debt/`.
 - **Money loop:** day rollover pays assigned pawns from treasury; a staffed
   Market sells bread to pawn wallets above reserve, records sales tax, and
   exports only the remaining surplus; unmet buyers surface as

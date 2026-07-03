@@ -66,6 +66,7 @@ def build_snapshot(state: FactionState, step_result: Any) -> dict[str, Any]:
         "broken": len(broken_ids),
         "broken_pawn_ids": broken_ids,
         "staffed": dict(sorted(staffed.items())),
+        "building_conditions": _building_condition_records(state),
         "construction": _construction_records(state),
         "tax_collected": int(getattr(step_result, "tax_collected", 0)),
         "wages_paid": int(getattr(step_result, "wages_paid", 0)),
@@ -74,6 +75,18 @@ def build_snapshot(state: FactionState, step_result: Any) -> dict[str, Any]:
         "sales_tax_collected": int(getattr(step_result, "sales_tax_collected", 0)),
         "unmet_market_demand": int(getattr(step_result, "unmet_market_demand", 0)),
         "days_rolled": int(getattr(step_result, "days_rolled", 0)),
+    }
+
+
+def _building_condition_records(state: FactionState) -> dict[str, dict[str, Any]]:
+    return {
+        building.id: {
+            "kind": building.kind,
+            "condition": round(economy.building_condition(building), 3),
+            "efficiency": round(economy.building_efficiency(building), 3),
+            "repair_progress": round(economy.building_repair_progress(building), 3),
+        }
+        for building in sorted(state.buildings.values(), key=lambda b: b.id)
     }
 
 

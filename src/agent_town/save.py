@@ -30,6 +30,7 @@ import json
 from pathlib import Path
 
 from . import buildings as buildings_mod
+from . import economy as economy_mod
 from .core import (
     Building,
     ConstructionSite,
@@ -113,6 +114,8 @@ def to_dict(state: FactionState) -> dict:
                 "production_target": _goods_dict(building.production_target),
                 "production_progress": building.production_progress,
                 "source_node_id": building.source_node_id,
+                "condition": economy_mod.building_condition(building),
+                "repair_progress": economy_mod.building_repair_progress(building),
             }
             for building in state.buildings.values()
         ],
@@ -241,6 +244,8 @@ def from_dict(data: dict) -> FactionState:
         building.production_target = _goods_from(b_data["production_target"])
         building.production_progress = b_data["production_progress"]
         building.source_node_id = b_data.get("source_node_id")
+        economy_mod.set_building_condition(building, b_data.get("condition", 1.0))
+        economy_mod.set_building_repair_progress(building, b_data.get("repair_progress", 0.0))
         state.buildings[building.id] = building
 
     for s_data in data["construction_sites"]:
