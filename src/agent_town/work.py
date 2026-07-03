@@ -424,7 +424,7 @@ def release_staff_references(
     state: FactionState, pawn_id: str, *, keep_building_id: str | None = None
 ) -> None:
     """Remove ``pawn_id`` from every staffed slot except an optional keeper."""
-    for building in state.buildings.values():
+    for building in sorted(state.buildings.values(), key=lambda b: b.id):
         if building.id == keep_building_id:
             continue
         if pawn_id in building.staffed_by:
@@ -435,7 +435,7 @@ def _normalize_staffing(state: FactionState) -> None:
     """Heal stale staff lists before reservations or production can count them."""
     for building in sorted(state.buildings.values(), key=lambda b: b.id):
         kept: list[str] = []
-        for pawn_id in building.staffed_by:
+        for pawn_id in sorted(building.staffed_by):
             pawn = state.pawns.get(pawn_id)
             if pawn is None or pawn_id in kept:
                 continue
@@ -502,7 +502,7 @@ def assign_jobs(state: FactionState) -> dict[str, WorkDecision]:
     _normalize_staffing(state)
 
     # Phase A: release assignments that are illegal now or held by broken pawns.
-    for pawn in state.pawns.values():
+    for pawn in sorted(state.pawns.values(), key=lambda p: p.id):
         if pawn.assignment is None:
             continue
         if _is_broken(pawn):
@@ -520,7 +520,7 @@ def assign_jobs(state: FactionState) -> dict[str, WorkDecision]:
 
     # Phase B: reserve the slots pawns are still holding.
     reserved: dict[str, int] = {}
-    for pawn in state.pawns.values():
+    for pawn in sorted(state.pawns.values(), key=lambda p: p.id):
         if pawn.assignment is not None:
             reserved[pawn.assignment.building_id] = reserved.get(pawn.assignment.building_id, 0) + 1
 
@@ -545,7 +545,7 @@ def assign_jobs(state: FactionState) -> dict[str, WorkDecision]:
             decisions[pawn.id] = WorkDecision(LANE_IDLE, None, None, "No legal job available", rejected)
 
     # Phase D: record the decision trace for pawns kept or broken.
-    for pawn in state.pawns.values():
+    for pawn in sorted(state.pawns.values(), key=lambda p: p.id):
         if pawn.id not in decisions:
             decisions[pawn.id] = _kept_decision(state, pawn, reserved)
 

@@ -575,6 +575,14 @@ simulation; approximation is only for opportunity search and offscreen movement.
 Population growth (build 3) is what makes the real scale need appear; there is
 no in-play way to reach large populations yet.
 
+The deterministic phase foundation is implemented in `engine.STEP_HOUR_PHASES`:
+policy, construction, needs, world, work, movement, production, research, clock,
+and daily economy. Order-sensitive loops now use stable ids for construction
+sites, pawns, staffed slots, research buildings, and the staffed Market choice;
+production uses a stable dependency-aware order (for example Farm -> Mill ->
+Bakery) with building id as its tie-breaker, so equivalent states do not diverge
+because dictionaries were populated in a different order.
+
 ## Trust, Privacy, And Safety Boundaries
 
 Sensitive data / boundaries:
@@ -629,6 +637,7 @@ decisions and the full pre-v2 verification history are preserved in
 | Save/load shipped: the civilization persists across sessions | `save.py` round-trips the full `FactionState` as JSON; the viewer autosaves daily and on exit and resumes on boot. Supersedes the earlier "wake the dormant SQLite scaffold" plan | 2026-07-02 owner direction |
 | Spectator navigation + day/night + KPI strip shipped | Held-key WASD pan, clickable roster + alerts, a follow camera, a day/night light overlay, and a top KPI strip make the civilization watchable as a spectator experience, not only a debug view | 2026-07-02 spectator UI batch |
 | Adopt LLM Workbench v2.1 harness (four control docs) via the Adoption protocol | Replace the pre-v2 doc set (AGENTS/ROADMAP/BOOTSTRAP_CHECKLIST/UNATTENDED_WORK_POLICY) with AGENTS/BLUEPRINT/TASKBOARD/RUNBOOK; retire old docs to `archive/`; preserve all content; `BRANCHING.md` and `VISUAL_DESIGN.md` stay as project-local "keep" docs | 2026-07-03 harness adoption (redone against current `integration`, superseding the stale PR #40 draft forked before physical sourcing shipped) |
+| Paper 7 deterministic phase contract ships before population growth | `engine.STEP_HOUR_PHASES` names the per-hour command/update order, and order-sensitive mutation loops use stable ids or dependency-aware production ordering so construction, pawn needs/movement, work reservations, production, research, and market selection do not depend on dictionary insertion order | 2026-07-03 T-104 deterministic phases |
 
 ## Health Criteria
 
