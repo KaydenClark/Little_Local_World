@@ -44,6 +44,7 @@ from .core import (
 )
 from .civilization import create_default_civilization
 from .governor import (
+    ACTION_BUY_GOOD,
     GOV_DISABLED,
     GOV_IDLE,
     GOV_INVALID,
@@ -522,6 +523,7 @@ def _last_reallocation_text(gov: Governor | None, last_actions: list[GovernorAct
         ACTION_PLACE_BUILDING: "Queued construction",
         ACTION_SET_PRODUCTION_TARGET: "Changed production targets",
         ACTION_SET_RESEARCH: "Changed research",
+        ACTION_BUY_GOOD: "Bought from the trader",
     }
     primary = labels.get(kinds[-1], kinds[-1].replace("_", " ").title())
     if len(kinds) == 1:
@@ -2473,6 +2475,8 @@ def _format_action(action: dict) -> str:
         return f"target {action.get('building_id', '?')}: {action.get('good', '?')} {action.get('amount', '?')}"
     if kind == ACTION_SET_RESEARCH:
         return f"research {action.get('tech', '?')}"
+    if kind == ACTION_BUY_GOOD:
+        return f"buy {action.get('good', '?')} x{action.get('amount', '?')} from the trader"
     return kind
 
 
@@ -2831,7 +2835,7 @@ def _draw_research_panel(surface: pygame.Surface, state: FactionState, font: pyg
         ("Current", current, INSPECTOR_TEXT),
         ("Available action", "set_research(tech) is wired; research effects are minimal", NEED_GOOD),
         ("Storage caps", "Not implemented yet; needed before storage-pressure badges", HUD_MUTED),
-        ("Trade", "Not implemented yet; planned after UI baseline", HUD_MUTED),
+        ("Trade", "Live: buy_good (coin -> bread) from the external trader", NEED_GOOD),
         ("Space Age", "Long-road victory spine; no active tree yet", HUD_MUTED),
     ]
     _draw_panel_lines(surface, font, rect, "Research - current spine and honest gaps", rows)

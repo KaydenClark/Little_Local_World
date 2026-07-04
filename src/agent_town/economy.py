@@ -45,6 +45,16 @@ TECH_EFFICIENT_BAKING = "efficient_baking"
 RESEARCH_COSTS = {TECH_EFFICIENT_BAKING: 4}
 LABORATORY_KIND = "Laboratory"
 
+# --- External trade (crisis-line Slice 3: the trader) ------------------------
+# "The only external coin source/sink is trade" (BLUEPRINT "Design North
+# Star"): coin leaves circulation and a good enters the stockpile as a located
+# external source, the same conservation shape as a Farm's harvest. Buildingless
+# by design (no trade depot/caravan yet - research paper 4's richer vision is a
+# documented future slice, see BLUEPRINT) so a struggling civ can always reach
+# this relief valve without first having to afford and build a trade post.
+TRADER_PRICES: dict[Good, int] = {Good.BREAD: 2}  # coin/unit; a premium over the internal Market price (1)
+TRADER_MAX_PURCHASE = 8  # hard per-transaction cap so one buy_good cannot drain the treasury in one shot
+
 # --- Physical sourcing (BLUEPRINT "Physical sourcing" refinement) -------------
 # Tier 0 faucets that must draw from a located map node instead of minting their
 # output from labor alone. The Water Well is deliberately absent: its source is
@@ -105,6 +115,15 @@ class MarketBreadDemand:
     buyers: int = 0
     sellable_bread: int = 0
     unmet_buyers: int = 0
+
+
+@dataclass(frozen=True)
+class TradeResult:
+    """What :func:`buy_good` actually did (the requested amount may be clamped)."""
+
+    good: Good | None = None
+    units: int = 0
+    coin_spent: int = 0
 
 
 def stockpile_add(stockpile: Stockpile, good: Good, amount: int) -> None:
@@ -627,6 +646,31 @@ def market_bread_demand(state: FactionState) -> MarketBreadDemand:
         sellable_bread=sellable,
         unmet_buyers=max(0, buyers - sellable),
     )
+
+
+def buy_good(state: FactionState, good: Good, amount: int) -> TradeResult:
+    """Spend treasury coin to import ``good`` from the external trader.
+
+    ``amount`` is a request, clamped by price affordability, a hard per-
+    transaction cap (:data:`TRADER_MAX_PURCHASE`), and stockpile headroom -
+    never negative coin, never an over-capacity stockpile. Returns a zero
+    :class:`TradeResult` for an untradeable good, a non-positive amount, or
+    when nothing can be afforded/held (a no-op, not an error - mirrors how a
+    production tick silently does nothing when a limit binds at zero).
+    """
+    price = TRADER_PRICES.get(good)
+    if price is None or amount <= 0:
+        return TradeResult()
+    units = min(amount, TRADER_MAX_PURCHASE, state.coin // price)
+    available = state.stockpile.available_capacity()
+    if available is not None:
+        units = min(units, available)
+    if units <= 0:
+        return TradeResult()
+    cost = units * price
+    state.coin -= cost
+    state.stockpile.add(good, units)
+    return TradeResult(good=good, units=units, coin_spent=cost)
 
 
 def apply_daily_tax(state: FactionState) -> int:

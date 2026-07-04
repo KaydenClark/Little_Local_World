@@ -90,6 +90,18 @@ BUILD_ORDER: tuple[tuple[str, int, int], ...] = (
     ("Quarry", 4, 1),
 )
 
+# buy_good (crisis-line Slice 3: the trader). Deliberately NOT added to
+# core.py's ACTION_* block: GovernorAction's existing generic `good`/`amount`
+# fields already carry this action's payload, so no change to the frozen
+# contract is needed - this stays out of the one-file-PR process entirely by
+# never touching core.py (see AGENTS.md "Edit Scope").
+ACTION_BUY_GOOD = "buy_good"
+
+
+def buy_good_action(good: Good, amount: int) -> GovernorAction:
+    """Construct a buy_good policy action (coin -> ``good``, from the trader)."""
+    return GovernorAction(kind=ACTION_BUY_GOOD, good=good, amount=amount)
+
 
 class Governor(Protocol):
     """Anything that turns a context dict into a list of policy actions."""
@@ -370,6 +382,12 @@ def validate_action(state: FactionState, action: GovernorAction) -> bool:
             return False
         return action.amount is not None and action.amount >= 0
 
+    if action.kind == ACTION_BUY_GOOD:
+        if not isinstance(action.good, Good) or action.amount is None or action.amount <= 0:
+            return False
+        price = economy.TRADER_PRICES.get(action.good)
+        return price is not None and state.coin >= price
+
     if action.kind == ACTION_PLACE_BUILDING:
         if not action.building_kind or action.x is None or action.y is None:
             return False
@@ -426,6 +444,10 @@ def apply_actions(state: FactionState, actions: list[GovernorAction]) -> list[Go
         elif action.kind == ACTION_SET_PRODUCTION_TARGET:
             state.buildings[action.building_id].production_target[action.good] = action.amount
             applied.append(action)
+        elif action.kind == ACTION_BUY_GOOD:
+            result = economy.buy_good(state, action.good, action.amount)
+            if result.units > 0:
+                applied.append(action)
         elif action.kind == ACTION_SET_RESEARCH:
             state.research_target = action.tech
             applied.append(action)
@@ -473,6 +495,32 @@ def food_expansion_action(
     return GovernorAction.place_building(kind, x, y)
 
 
+def trader_relief_action(context: dict[str, Any]) -> GovernorAction | None:
+    """The trader's relief lever (crisis-line Slice 3): buy bread for coin, today.
+
+    Growing more wheat (:func:`food_expansion_action`) takes a full season
+    (BLUEPRINT "Physical sourcing"); buying from the trader is immediate, so the
+    fallback proposes both during a shortage - the trade covers today, the new
+    farm covers next week. Self-limiting by design: it only tops bread up to
+    ``LOW_FOOD_COVER_DAYS`` of cover, recomputed fresh from current state each
+    hour, so it never buys more than the live shortfall and stops the moment
+    the shortage clears - no persistent "daily limit" counter needed.
+    """
+    faction = context.get("faction", {})
+    population = faction.get("population", 0)
+    if population <= 0:
+        return None
+    price = economy.TRADER_PRICES.get(Good.BREAD)
+    if price is None or faction.get("coin", 0) < price:
+        return None
+    cover = faction.get("food_days_of_cover", 0.0)
+    if cover >= LOW_FOOD_COVER_DAYS:
+        return None
+    bread_needed = (LOW_FOOD_COVER_DAYS - cover) * population * economy.BREAD_UNITS_PER_PAWN_DAY
+    amount = min(economy.TRADER_MAX_PURCHASE, max(1, round(bread_needed)))
+    return buy_good_action(Good.BREAD, amount)
+
+
 class FallbackGovernor:
     """Deterministic policy governor: restorative reschedule, next-building.
 
@@ -506,11 +554,15 @@ class FallbackGovernor:
                     actions.append(GovernorAction.set_schedule(pawn_id, RESTORATIVE_SCHEDULE))
                     rescheduled.add(pawn_id)
 
-        # 2) The dig-out: on a food shortage, grow more food capacity (plant more
-        # wheat) before anything else. Food is the survival staple, so it outranks
-        # water and the generic build order. The engine/Track A owns the cost check
-        # and construction realization.
+        # 2) On a food shortage, fix it on two fronts: buy today's bread from the
+        # trader (immediate, coin-limited) while queuing more wheat (the dig-out,
+        # slow but free) - "the Governor tries to fix it" (BLUEPRINT "Crisis,
+        # response, consequence") means both, not either/or. Food outranks water
+        # and the generic build order.
         if low_food:
+            relief = trader_relief_action(context)
+            if relief is not None:
+                actions.append(relief)
             expansion = food_expansion_action(buildings, construction)
             if expansion is not None:
                 actions.append(expansion)
@@ -567,6 +619,7 @@ CIVILIZATION_ACTION_KINDS = (
     ACTION_PLACE_BUILDING,
     ACTION_SET_PRODUCTION_TARGET,
     ACTION_SET_RESEARCH,
+    ACTION_BUY_GOOD,
 )
 
 CIVILIZATION_ACTION_SCHEMA: dict[str, Any] = {
@@ -623,6 +676,9 @@ GOVERNOR_SYSTEM_PROMPT = (
     "building.\n"
     "- set_production_target {building_id, good, amount}.\n"
     "- set_research {tech}: select a known research target; Laboratory work completes it.\n"
+    "- buy_good {good, amount}: buy bread from the external trader with treasury "
+    "coin (coin -> bread) for immediate relief when food is short - faster than "
+    "farming, but bounded by the coin you have. Bread only, modest amounts.\n"
     "Prefer tuning work priorities and resting unhappy pawns over forcing "
     "assignments. Return at most 6 highest-impact actions per turn. Reply with "
     "valid JSON only - no prose, no markdown, no chain of thought."
@@ -764,6 +820,16 @@ def _model_action_reason(context: dict[str, Any], action: GovernorAction) -> str
         if not action.tech:
             return "research: missing tech"
         return None
+    if kind == ACTION_BUY_GOOD:
+        # Grow-safe: spends treasury coin for more food, never idles an
+        # essential or seizes pawn control - always pro-survival, like
+        # place_building. Bounded by TRADER_MAX_PURCHASE and coin affordability
+        # in validate_action/economy.buy_good regardless of what is proposed.
+        if action.good != Good.BREAD:
+            return "buy_good: model may only buy bread"
+        if action.amount is None or action.amount <= 0:
+            return "buy_good: missing amount"
+        return None
     if kind == ACTION_ASSIGN_PAWN:
         # Forced override is the arbiter's top lane and the demonstrated
         # labor-conservation trigger (review E-1); it is an operator/fallback
@@ -857,6 +923,50 @@ class LLMGovernor:
             schema=CIVILIZATION_ACTION_SCHEMA,
             name="civilization_actions",
         )
+
+
+# ---------------------------------------------------------------------------
+# Trader personality (optional; crisis-line Slice 3)
+#
+# Cosmetic flavor text for a completed buy_good trade, reusing the same local
+# LocalLLMClient the governor uses. NEVER affects the deterministic trade math
+# in economy.buy_good - any client error/timeout/bad-JSON hard-falls back to a
+# default line, the same shape as LLMGovernor's hard fallback. Not wired into
+# the live blocking viewer loop: BLUEPRINT's architecture constraint is "the
+# LLM never blocks the sim loop", and a live version would need its own
+# non-blocking scheduler like CivilizationDecisionScheduler - disproportionate
+# machinery for a cosmetic flourish, so it stays an available, tested function
+# rather than a wired-in feature for this slice.
+# ---------------------------------------------------------------------------
+
+DEFAULT_TRADER_QUIP = "The trader nods and counts your coin."
+TRADER_QUIP_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {"quip": {"type": "string"}},
+    "required": ["quip"],
+}
+TRADER_QUIP_SYSTEM_PROMPT = (
+    "You are a traveling merchant who just sold grain-town bread for coin. Reply "
+    "with a JSON object {\"quip\": \"...\"} containing one short, in-character "
+    "line (under 100 characters). No prose, no markdown, no chain of thought."
+)
+
+
+def trader_quip(client: LocalLLMClient | None, *, good: Good, units: int, coin_spent: int) -> str:
+    """A short in-character merchant line for a completed trade; hard-fallback safe."""
+    if client is None or not client.enabled:
+        return DEFAULT_TRADER_QUIP
+    try:
+        payload = client.complete_json(
+            TRADER_QUIP_SYSTEM_PROMPT,
+            {"good": good.value, "units": units, "coin_spent": coin_spent},
+            schema=TRADER_QUIP_SCHEMA,
+            name="trader_quip",
+        )
+        quip = str(payload.get("quip", "")).strip()
+        return quip[:120] if quip else DEFAULT_TRADER_QUIP
+    except Exception:
+        return DEFAULT_TRADER_QUIP
 
 
 # ---------------------------------------------------------------------------
