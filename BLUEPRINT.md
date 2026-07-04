@@ -600,6 +600,7 @@ Immediate blockers belong in `TASKBOARD.md` -> Blocked. Stable risks:
 | Research papers treated as code truth | Silent design drift | Papers are inputs; conflicts become `TASKBOARD.md` tasks, not doc edits |
 | Trader economics not yet balanced against real grain lead time | Physical sourcing gave grain a 24h growing season; trader pricing (coin -> bread) must account for that lead time or the crisis line's "escapable" claim could silently stop being true | Land the trader (crisis-line Slice 3) with the real growth-time delay already in play, not against the old instant-mint assumption |
 | The sim can still starve even with the money loop live | Balance is not fully proven under all governor/crisis combinations | Tracked in `docs/run_reports/` observation notes; governor/balance tuning is prioritized over new surface area |
+| Pawn roster strip has no scroll/paging past a full population | `roster_chip_rects` (`civilization_view.py`) lays out chips left to right and stops once the next one would overflow the rect's pixel width; pawns past that point get no chip at all, so they are neither visible nor clickable in the roster. The "clickable roster" spectator-UI decision below (2026-07-02) does not hold once population outgrows one screen width at the player's window size | Tracked as `TASKBOARD.md` T-106; fix is a scroll/paging/overflow affordance, not a rendering tweak |
 
 ## Design Decisions
 
