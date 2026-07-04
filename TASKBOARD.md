@@ -2,9 +2,9 @@
 
 > Generated from LLM Workbench v2.1. See `RUNBOOK.md` -> Upgrading The Harness.
 
-**Current focus:** Paper 7 scale foundations - reachability-region rejection
-and deterministic command/update phases. The trader (crisis-line Slice 3) and
-repair debt shipped 2026-07-03.
+**Current focus:** Paper 7 deterministic command/update phases. The trader
+(crisis-line Slice 3), repair debt, and reachability-region precheck shipped
+2026-07-03.
 **Owner:** Kayden and local coding agents
 **Last updated:** 2026-07-03
 
@@ -19,16 +19,17 @@ commands and verification procedures in `RUNBOOK.md`.
   storage caps, the first wage/market money loop, physical resource sourcing
   (real fields/nodes with growth time and depletion), visible storage,
   save/load persistence, a spectator navigation/day-night/KPI-strip pass, the
-  trader (coin -> bread crisis relief, `buy_good`), and repair debt. All five
-  confirmed Fable 5 peer-review findings are fixed.
-- **Health:** green - full suite (416 tests as of the repair-debt integration,
+  trader (coin -> bread crisis relief, `buy_good`), repair debt, and
+  reachability-region work prechecks. All five confirmed Fable 5 peer-review
+  findings are fixed.
+- **Health:** green - full suite (426 tests as of the reachability integration,
   2026-07-03;
   growing, do not hardcode a stale number) + smoke pass.
 - **Decision needed:** none blocking (see Pending Decisions for the open,
   non-blocking LICENSE question).
 - **Blocked on:** nothing (hosted AI, multiplayer, engine migration are
   intentionally gated, not blocked).
-- **Next milestone:** Paper 7 scale foundations.
+- **Next milestone:** deterministic command/update phases.
 
 ## Pending Decisions
 
@@ -70,7 +71,6 @@ reclaimed per `AGENTS.md` -> Long Session Control.
 
 | ID | Priority | Task | Source / why now | Touches | Proof required | Docs impact | Owner | Status | Last update |
 |---|---:|---|---|---|---|---|---|---|---|
-| T-103 | 3 | Paper 7 scale foundation: reachability-region rejection (`region_id` per walkable tile, dirty recompute) so impossible jobs are rejected before pathfinding | Paper 7/8 build order; first scale foundation after the truth loop and crisis line | `src/agent_town/world.py`, `work.py`, `engine.py`, `tests/` | red/green tests for region assignment + impossible-job rejection; determinism preserved; full suite | `BLUEPRINT.md` (Scale architecture) | agent | gated | 2026-07-03 - PR #44 open |
 | T-104 | 3 | Paper 7 scale foundation: deterministic command/update phases (stable ordered job claims, reservations, path requests, movement, production, needs, tax) | Paper 7; pairs with T-103 before raising population | `src/agent_town/engine.py`, `work.py`, `tests/` | determinism + phase-order tests; I1 3-day survival + LLM==fallback oracles stay green | `BLUEPRINT.md` | agent | gated | 2026-07-03 - PR #45 open |
 | T-105 | 4 | Manual LM Studio/Ollama model tuning pass: run Gemma 4 E4B-it, Qwen3.5-4B, Phi-4-mini-instruct locally; record best speed/personality balance | Never completed; operator task carried since the I2 bridge milestone | `docs/run_reports/` | run report per model with analyzer verdict + timing | `RUNBOOK.md` (record chosen default) | Kayden | ready | 2026-07-02 |
 
@@ -159,6 +159,7 @@ heading.
 | 2026-07-03 | T-101 | sonnet | RED: new `tests/test_trader.py` (31 tests) failed with AttributeError against not-yet-implemented `economy.buy_good`/`governor.buy_good_action`/`governor.trader_relief_action`/`governor.trader_quip`. GREEN: same 31 pass; full discover 416 OK (385 + 31, zero regressions incl. `test_dig_out.py`, `test_llm_governor.py`, `test_money_loop.py`, `test_conservation.py`); `python -m agent_town --smoke-test` exit 0; `.\scripts\validate-workbench.ps1` -> passed (via `& scripts\validate-workbench.ps1`; nested `powershell -File` hit an `$PSScriptRoot` quirk in this shell, worked fine invoked directly). `buy_good` is a plain `GovernorAction(kind="buy_good", ...)` reusing the existing generic `good`/`amount` fields - `core.py` untouched, no one-file-PR needed (see BLUEPRINT Design Decisions). Trader is buildingless by design (richer trade-depot/caravan vision deferred, DEF-12) | `docs/proof/trader/01_history_buy_good_applied.png` (decision audit: "buy bread x8 from the trader" applied, coin 30->14) + `02_research_trade_live.png` (Research panel Trade row: "Live" not "Not implemented yet") | pass | BLUEPRINT (crisis line, Governor interface, known risks, design decisions), TASKBOARD (this row + DEF-12), RUNBOOK (trader manual check) | Optional `governor.trader_quip` (local-LLM personality) tested only via an injected fake HTTP client, not against a live loaded model, and not wired into the live viewer loop (would need its own non-blocking scheduler; documented as an explicit scope boundary, not a silent gap). Price/cap constants are a first pass, not playtested |
 | 2026-07-03 | PR-42 Mac LM gate | Mac mini Codex | Apple Silicon gate on `claude/trader-crisis-slice-3` source SHA `476663f9603d2b2377f4eca171cc4cccd66ab01a`: install pass; smoke pass; full discover 416 OK; `pwsh -NoProfile -File scripts/validate-workbench.ps1` pass; LM Studio `/v1/models` confirmed `google/gemma-4-e4b`; blocking `LLMGovernor` injected into `CivilizationViewer` and ran 96 viewer-path simulated hours to day 4 07:00; analyzer saw 96/96 model decisions, 0 dropped, 102 model-origin actions applied, final mood 82.4, no breaks/depletions, but `RESULT: AMBER` due to two `good_stalled` plank warnings. Detailed local log: `/Users/kayden/GPT_OS/Projects/Little_Local_World/logs/run-20260703-081813-pr42.log` | `docs/run_reports/2026-07-03-pr42-mac-lm-gate.md` | not-ready | Docs updated with run report and proof row; no source edits | AMBER is not green, so PR #42 is not ready to merge. Post-run wrapper also hit stale `Stockpile.amounts` evidence extraction after telemetry `run_end`; classified as harness wrapper gap, not game crash. |
 | 2026-07-03 | T-102 | codex | RED: `.\.venv\Scripts\python.exe -m unittest tests.test_repair` failed with missing repair APIs/behavior. GREEN: `tests.test_repair` (8), affected suite `tests.test_repair tests.test_storage_caps tests.test_save tests.test_telemetry tests.test_civilization_view tests.test_civilization_governor` (110), full discover (393), smoke, validate-workbench, and `git diff --check` all passed. T-101 was skipped as already advanced by open PR #42; branch started from `integration` as `codex/repair-debt`. | `docs/proof/repair_debt/01_damaged_building_warning.png` (exception stack + selected Sawmill condition/repair rows visible) | pass | BLUEPRINT (repair debt behavior/risk/design decision), RUNBOOK (manual check), TASKBOARD (this row). Docs checked; README/AGENTS unchanged because setup and agent rules did not change | Repair tuning is first-pass: decay rate, 75% threshold, and 1 plank + 1 stone packet need long-run playtest observation |
+| 2026-07-03 | T-103 | codex | T-101 and T-102 were separately advanced by PR #42 and PR #43. RED: `.\.venv\Scripts\python.exe -m unittest tests.test_reachability` failed on missing `world.reachability_regions` and chose unreachable `bakery1`. GREEN: `tests.test_reachability` (2), affected suite `tests.test_reachability tests.test_work tests.test_movement tests.test_engine tests.test_sourcing` (51), full discover (387), smoke, validate-workbench, `git diff --check`, and `scripts\benchmark_scaling.py --agents 100 500 1000` passed (1000 pawns: engine 76.628 ms/h, context 2.794 ms, draw 14.845 ms). | n/a | pass | BLUEPRINT updated for Paper 7 reachability precheck; RUNBOOK/README/AGENTS checked, no update needed because commands, setup, and agent rules did not change | T-104 deterministic phase scheduler remains ready; exact pathfinding, doors/walls, and offscreen approximation remain deferred |
 | 2026-07-03 | AFK task runner | codex | Selected no new code slice: `gh pr list --state open --json number,title,headRefName,baseRefName,mergeStateStatus,statusCheckRollup` showed T-101/102/103/104 already represented by open CLEAN PRs #42/#43/#44/#45 into `integration`; T-105 remains Kayden-owned manual model tuning. Updated T-101/T-102/T-103/T-104 status cells to `gated` with their PR numbers so the next AFK run does not duplicate live branches. Verification: `.\scripts\validate-workbench.ps1` and `git diff --check`. | n/a | skipped - no safe unclaimed agent-ready item | TASKBOARD updated; Docs checked; no code/runbook/blueprint update needed because this only corrected queue state | Review/merge PRs #42-#45, then choose the next unblocked agent task; Kayden-owned T-105 is still manual |
 | 2026-07-03 | AFK task runner | codex | Selected no new code slice: live PR check showed T-101/102/103/104 still covered by open CLEAN PRs #42/#43/#44/#45 into `integration`, queue-gating PR #46 is open CLEAN, and T-105 remains Kayden-owned manual model tuning. Verification: `.\scripts\validate-workbench.ps1` and `git diff --check`. | n/a | skipped - no unclaimed agent-ready item | TASKBOARD updated with this proof row; Docs checked; no code/runbook/blueprint update needed because no product behavior changed | Review/merge PRs #42-#46, then choose the next unblocked agent task; Kayden-owned T-105 is still manual |
 | 2026-07-03 11:01Z | AFK task runner | codex | Selected no new code slice on branch `codex/taskboard-pr-gates`: live PR check showed T-101/102/103/104 still covered by open CLEAN PRs #42/#43/#44/#45 into `integration`, queue-gating PR #46 is open CLEAN, and T-105 remains Kayden-owned manual model tuning. Verification: `.\scripts\validate-workbench.ps1` and `git diff --check`. Commit/PR: update to PR #46. | n/a | skipped - no safe unclaimed agent-ready item | TASKBOARD updated with this proof row; Docs checked; no code/runbook/blueprint update needed because no product behavior changed | Review/merge PRs #42-#46, then choose the next unblocked agent task; Kayden-owned T-105 is still manual |

@@ -21,6 +21,8 @@ faucet draws from a located node with one of three mechanics
 
 from __future__ import annotations
 
+from collections import deque
+from functools import lru_cache
 import random
 
 from .core import (
@@ -40,6 +42,20 @@ TILE_TREE = "tree"
 TILE_FIELD = "field"
 TILE_STONE = "stone"
 TILE_WATER = "water"
+
+# Eight-way connectivity matches the current cosmetic pawn movement, which can
+# step diagonally. Water is the only build-1 terrain that blocks a route.
+BLOCKING_TILES = frozenset({TILE_WATER})
+_REACHABILITY_NEIGHBORS = (
+    (-1, -1),
+    (0, -1),
+    (1, -1),
+    (-1, 0),
+    (1, 0),
+    (-1, 1),
+    (0, 1),
+    (1, 1),
+)
 
 # --- Physical-sourcing constants ---------------------------------------------
 # One crop takes a full game day to grow. Grain cannot appear faster than a
@@ -103,6 +119,60 @@ def create_world(width: int, height: int, *, seed: int = 0) -> tuple[GridMap, li
     """Convenience: map + nodes for a seed."""
     grid = generate_map(width, height, seed=seed)
     return grid, scatter_resource_nodes(grid, seed=seed)
+
+
+def is_walkable(grid: GridMap, x: int, y: int) -> bool:
+    """Whether a pawn can stand on ``(x, y)`` in the build-1 topology."""
+    return grid.in_bounds(x, y) and grid.tile_at(x, y) not in BLOCKING_TILES
+
+
+@lru_cache(maxsize=32)
+def reachability_regions(grid: GridMap) -> tuple[tuple[int | None, ...], ...]:
+    """Region id per walkable tile; ``None`` marks blocked terrain.
+
+    The current map is immutable, so changing topology means replacing the
+    ``GridMap`` object and naturally misses this cache. That gives the Paper 7
+    dirty-recompute seam without storing derived state in the frozen contract.
+    """
+    regions: list[list[int | None]] = [[None for _x in range(grid.width)] for _y in range(grid.height)]
+    next_region = 1
+    for y in range(grid.height):
+        for x in range(grid.width):
+            if regions[y][x] is not None or not is_walkable(grid, x, y):
+                continue
+            _flood_region(grid, regions, x, y, next_region)
+            next_region += 1
+    return tuple(tuple(row) for row in regions)
+
+
+def region_at(grid: GridMap, x: int, y: int) -> int | None:
+    """The reachability region at ``(x, y)``, or None for blocked/out-of-bounds."""
+    if not grid.in_bounds(x, y):
+        return None
+    return reachability_regions(grid)[y][x]
+
+
+def same_reachability_region(grid: GridMap, a: tuple[int, int], b: tuple[int, int]) -> bool:
+    """Cheap coarse route check before exact pathfinding or job claiming."""
+    a_region = region_at(grid, a[0], a[1])
+    if a_region is None:
+        return False
+    return a_region == region_at(grid, b[0], b[1])
+
+
+def _flood_region(grid: GridMap, regions: list[list[int | None]], x: int, y: int, region_id: int) -> None:
+    queue = deque([(x, y)])
+    regions[y][x] = region_id
+    while queue:
+        cx, cy = queue.popleft()
+        for dx, dy in _REACHABILITY_NEIGHBORS:
+            nx, ny = cx + dx, cy + dy
+            if not grid.in_bounds(nx, ny):
+                continue
+            if regions[ny][nx] is not None or not is_walkable(grid, nx, ny):
+                continue
+            regions[ny][nx] = region_id
+            queue.append((nx, ny))
 
 
 def normalize_nodes(nodes: list[ResourceNode]) -> None:

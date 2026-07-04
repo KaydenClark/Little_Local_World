@@ -612,6 +612,14 @@ simulation; approximation is only for opportunity search and offscreen movement.
 Population growth (build 3) is what makes the real scale need appear; there is
 no in-play way to reach large populations yet.
 
+The first foundation is implemented as a coarse, cached topology layer in
+`world.py`: `reachability_regions(grid)` labels every walkable tile with a
+region id and treats water as blocked terrain. `work.py` uses that derived map
+to reject, release, or skip jobs whose pawn and building are in different
+regions before exact pathfinding exists. This is only a precheck; it does not
+add an exact pathfinder, doors/walls, offscreen approximation, or the later
+deterministic phase scheduler.
+
 ## Trust, Privacy, And Safety Boundaries
 
 Sensitive data / boundaries:
@@ -670,6 +678,7 @@ decisions and the full pre-v2 verification history are preserved in
 | Spectator navigation + day/night + KPI strip shipped | Held-key WASD pan, clickable roster + alerts, a follow camera, a day/night light overlay, and a top KPI strip make the civilization watchable as a spectator experience, not only a debug view | 2026-07-02 spectator UI batch |
 | Adopt LLM Workbench v2.1 harness (four control docs) via the Adoption protocol | Replace the pre-v2 doc set (AGENTS/ROADMAP/BOOTSTRAP_CHECKLIST/UNATTENDED_WORK_POLICY) with AGENTS/BLUEPRINT/TASKBOARD/RUNBOOK; retire old docs to `archive/`; preserve all content; `BRANCHING.md` and `VISUAL_DESIGN.md` stay as project-local "keep" docs | 2026-07-03 harness adoption (redone against current `integration`, superseding the stale PR #40 draft forked before physical sourcing shipped) |
 | The trader ships buildingless, with `buy_good` as a plain `GovernorAction(kind="buy_good", good=..., amount=...)` rather than a new `core.py` classmethod/constant | `GovernorAction`'s existing generic `good`/`amount` fields already cover the payload, so the frozen contract needs no change and the one-file-PR process is avoided entirely rather than triggered for an additive, low-risk field-reuse; a trade depot/caravan building is deferred (research paper 4's fuller vision, see Known Risks) so the relief valve stays reachable without a construction prerequisite during a crisis | 2026-07-03 the trader (crisis-line Slice 3) |
+| Paper 7 reachability-region precheck ships before exact pathfinding | `world.reachability_regions` derives cached eight-way connected components from immutable `GridMap`; `work.assign_jobs` uses it to reject unreachable jobs early while keeping all current 12-pawn behavior exact | 2026-07-03 T-103 reachability regions |
 
 ## Health Criteria
 
