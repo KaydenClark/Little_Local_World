@@ -1,7 +1,7 @@
 import unittest
 
 from agent_town import buildings, engine, work
-from agent_town.core import FactionState, Good, JobRef, Pawn
+from agent_town.core import ConstructionSite, FactionState, Good, JobRef, Pawn
 from agent_town import pawns
 
 
@@ -56,6 +56,57 @@ class EngineConstructionTests(unittest.TestCase):
 
         self.assertEqual(state.construction_sites, {})
         self.assertEqual(state.buildings, {})
+
+    def test_construction_phase_uses_stable_site_order(self):
+        class NoOpGovernor:
+            def decide(self, context):
+                return []
+
+        def state_with_sites(site_ids):
+            state = FactionState()
+            state.stockpile.add(Good.PLANKS, 1)
+            for site_id in site_ids:
+                state.construction_sites[site_id] = ConstructionSite(
+                    id=site_id,
+                    building_kind="Forester",
+                    x=0,
+                    y=0,
+                    required={Good.PLANKS: 1},
+                    work_remaining=1.0,
+                )
+            return state
+
+        first = state_with_sites(("site-a", "site-b"))
+        second = state_with_sites(("site-b", "site-a"))
+
+        first_result = engine.step_hour(first, NoOpGovernor())
+        second_result = engine.step_hour(second, NoOpGovernor())
+
+        self.assertEqual(first_result.buildings_completed, second_result.buildings_completed)
+        self.assertEqual(tuple(first.buildings), tuple(second.buildings))
+        self.assertEqual(
+            {site_id: site.delivered for site_id, site in first.construction_sites.items()},
+            {site_id: site.delivered for site_id, site in second.construction_sites.items()},
+        )
+
+
+class EnginePhaseOrderTests(unittest.TestCase):
+    def test_step_hour_phase_order_is_explicit(self):
+        self.assertEqual(
+            engine.STEP_HOUR_PHASES,
+            (
+                "policy",
+                "construction",
+                "needs",
+                "world",
+                "work",
+                "movement",
+                "production",
+                "research",
+                "clock",
+                "daily_economy",
+            ),
+        )
 
 
 class EngineArbiterTests(unittest.TestCase):

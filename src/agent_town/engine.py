@@ -40,6 +40,7 @@ from dataclasses import dataclass
 from . import buildings, construction, economy, governor as governor_mod, mood, pawns, schedule, work, world
 from .core import (
     ACTION_PLACE_BUILDING,
+    ConstructionSite,
     FactionState,
     GovernorAction,
     Pawn,
@@ -58,6 +59,19 @@ CONSTRUCTION_WORK_PER_HOUR = 1.0
 PAWN_MOVE_TILES_PER_HOUR = 2
 BUILDING_FRONT_OFFSET = 2
 
+STEP_HOUR_PHASES = (
+    "policy",
+    "construction",
+    "needs",
+    "world",
+    "work",
+    "movement",
+    "production",
+    "research",
+    "clock",
+    "daily_economy",
+)
+
 
 @dataclass(frozen=True)
 class StepResult:
@@ -73,6 +87,8 @@ class StepResult:
     household_spending: int = 0
     sales_tax_collected: int = 0
     unmet_market_demand: int = 0
+    buildings_degraded: tuple[str, ...] = ()
+    buildings_repaired: tuple[str, ...] = ()
 
 
 def step_hour(state: FactionState, gov: governor_mod.Governor | None = None) -> StepResult:
@@ -91,7 +107,9 @@ def step_hour(state: FactionState, gov: governor_mod.Governor | None = None) -> 
     world.advance_nodes(state)
     work.assign_jobs(state)
     _advance_pawn_activity(state)
-    economy.production_tick(state)
+    buildings_degraded = economy.decay_buildings(state)
+    buildings_repaired = economy.repair_tick(state)
+    economy.production_tick(state, skip_building_ids=set(buildings_repaired))
     research_completed = economy.research_tick(state)
 
     days_rolled = schedule.advance_clock(state, 1)
@@ -121,6 +139,8 @@ def step_hour(state: FactionState, gov: governor_mod.Governor | None = None) -> 
         household_spending=household_spending,
         sales_tax_collected=sales_tax_collected,
         unmet_market_demand=unmet_market_demand,
+        buildings_degraded=buildings_degraded,
+        buildings_repaired=buildings_repaired,
     )
 
 
@@ -165,7 +185,7 @@ def _realize_placements(state: FactionState, applied: list[GovernorAction]) -> l
 def _advance_construction(state: FactionState) -> list[str]:
     """Haul goods to each pending site, spend build work, complete what is ready."""
     completed: list[str] = []
-    for site in list(state.construction_sites.values()):
+    for site in _ordered_construction_sites(state):
         for good, amount in site.required.items():
             missing = amount - site.delivered.get(good, 0)
             if missing > 0 and state.stockpile.counts.get(good, 0) > 0:
@@ -186,7 +206,7 @@ def _advance_pawn_needs(state: FactionState) -> None:
     job. Activity state and movement are deferred to :func:`_advance_pawn_activity`
     so they read the arbiter's fresh assignment.
     """
-    for pawn in state.pawns.values():
+    for pawn in _ordered_pawns(state):
         block = schedule.block_for(pawn.schedule, state.time_of_day)
         asleep = block == SCHEDULE_SLEEP
         pawns.decay_needs(pawn, 1.0)
@@ -204,7 +224,7 @@ def _advance_pawn_needs(state: FactionState) -> None:
 
 def _advance_pawn_activity(state: FactionState) -> None:
     """Set each pawn's activity state from its fresh assignment, then step movement."""
-    for pawn in state.pawns.values():
+    for pawn in _ordered_pawns(state):
         block = schedule.block_for(pawn.schedule, state.time_of_day)
         broken = pawn.state in (pawns.STATE_SLACKING, pawns.STATE_WANDERING)
         if not broken:
@@ -268,3 +288,11 @@ def _unique_site_id(state: FactionState, kind: str) -> str:
         if candidate not in state.construction_sites and candidate not in state.buildings:
             return candidate
         index += 1
+
+
+def _ordered_pawns(state: FactionState) -> list[Pawn]:
+    return [state.pawns[pawn_id] for pawn_id in sorted(state.pawns)]
+
+
+def _ordered_construction_sites(state: FactionState) -> list[ConstructionSite]:
+    return [state.construction_sites[site_id] for site_id in sorted(state.construction_sites)]
