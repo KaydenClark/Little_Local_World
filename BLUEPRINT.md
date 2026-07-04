@@ -213,13 +213,12 @@ in `TASKBOARD.md`, not here.
 **Current phase:** prototype, finishing build 1 and deep into build 2. Build 1's
 engine, both governors, the viewer, mood/hunger, work-priority arbiter, water,
 storage caps, the first wage/market money loop, physical resource sourcing (real
-fields/nodes with growth time and depletion), visible storage, save/load, and
-the UI navigation/spectator baseline are shipped. A 2026-07-01 peer review
-(Fable 5) found P0/P1 harness gaps; all five confirmed findings (one-pawn-one-job,
-default-deny model safety, executable conservation, analyzer honesty, watchability
-refresh) are fixed. The next code task is **the trader** (crisis-line Slice 3),
-now genuinely unblocked since grain has a real growing season to price against;
-repair debt and the Paper 7 scale foundations follow.
+fields/nodes with growth time and depletion), visible storage, save/load, the UI
+navigation/spectator baseline, the trader (crisis-line Slice 3), and repair debt
+are shipped. A 2026-07-01 peer review (Fable 5) found P0/P1 harness gaps; all
+five confirmed findings (one-pawn-one-job, default-deny model safety, executable
+conservation, analyzer honesty, watchability refresh) are fixed. The next code
+tasks are the Paper 7 scale foundations.
 
 Build arc (each gated on the prior; conservation governs every system):
 
@@ -229,11 +228,11 @@ Build arc (each gated on the prior; conservation governs every system):
 2. **Build 2 - depth and the spectator (in progress).** Water (done), physical
    sourcing (done), save/load (done), spectator navigation/day-night/KPI strip
    (done); clothes/beauty chain remains; full needs set; building quality to
-   happiness; decay + repair as a material/coin sink (next); the wage money loop
+   happiness; decay + repair as a material sink (done); the wage money loop
    (started) and Storehouse/storage caps (done); RimWorld work priorities (done)
    and the per-civilization spectator view (done); skill-based healthcare; the
    Church; operator-triggered disasters; the revolution meter + keep + fail
-   state; pets; the trader (next); an era ladder (stone -> farming (current) ->
+   state; pets; the trader (done); an era ladder (stone -> farming (current) ->
    castle -> city-state -> full civilization, gated by upgrading old buildings,
    not just unlocking new ones - owner is researching the specifics before this
    is scoped).
@@ -431,6 +430,7 @@ nothing regardless of `effective_work`.
 | Pawns | `assign_pawn(pawn_id, building_id, role)` (forced override), `set_schedule(pawn_id_or_group, template)`, `set_work_priority(pawn_id_or_group, work_type, level)` |
 | Town | `place_building(kind, x, y)`, `set_production_target(building_id, good, amount)` |
 | Progression | `set_research(tech)` |
+| Trade | `buy_good(good, amount)` (coin -> goods from the external trader; bread only for now, deterministic price/cap - see "Crisis, response, consequence") |
 
 Actions are validated against state before they mutate it. Pawns have
 RimWorld-style free will; the Governor's main lever is tuning priorities and
@@ -445,15 +445,17 @@ Two governors share one `decide(context)` interface returning a list of
   (if a town survives N days under the fallback, the economy is winnable). On a
   `low_food` exception it grows food capacity front-of-chain first
   (`governor.food_expansion_action`: Farm -> Mill -> Bakery toward a 4:2:1
-  ratio), one building at a time.
+  ratio), one building at a time, and buys immediate relief bread from the
+  trader alongside it (`governor.trader_relief_action`).
 - `LLMGovernor`: same signature, OpenAI-compatible endpoint via `llm.py` with
   JSON-schema output and a hard fallback to `FallbackGovernor` on any error.
   Model-originated actions pass an explicit **default-deny allowlist**: unlisted
   action kinds are rejected. The model may rest a flagged pawn, raise essential
-  priorities, place known buildings, pick research, and retarget non-essential
-  goods; it may **not** force `assign_pawn` or cap a survival good
-  (grain/flour/bread/water). LLM-origin `set_work_priority` must target named
-  pawns, not `group="all"`, and stay at safe essential levels.
+  priorities, place known buildings, pick research, retarget non-essential
+  goods, and buy bread from the trader; it may **not** force `assign_pawn`, cap
+  a survival good (grain/flour/bread/water), or buy anything but bread.
+  LLM-origin `set_work_priority` must target named pawns, not `group="all"`,
+  and stay at safe essential levels.
 
 What the Governor reads (`governor.build_context`): faction summary, roster
 summary (grouped by assignment, standout skills/traits only), and the exception
@@ -525,14 +527,37 @@ Deferred.
 
 ### Crisis, response, consequence
 
-When a civ hits a food crisis the Governor tries to fix it (re-tasking pawns to
-grow more wheat -> flour -> bread, and eventually buying from a trader); if it
-cannot, the design intends the civ to die, the run to end, and the failure to be
-documented (starvation death itself is deferred - see above). Escape design: a
-starving-productivity floor *plus* an early governor response - death loops must
-be escapable with good governance, fatal without. The trader (not yet built) is
-a second, external escape valve (coin -> food) reusing the **local**
-`LocalLLMClient`, not a cloud API, behind a deterministic trade core.
+When a civ hits a food crisis the Governor tries to fix it on two fronts at once:
+re-tasking pawns to grow more wheat -> flour -> bread (`food_expansion_action`,
+a season away) and buying immediate relief bread from the trader
+(`trader_relief_action`, instant but coin-limited) - both fire on the same
+`low_food` exception, the trade covers today, the new farm covers next week. If
+neither is enough, the design intends the civ to die, the run to end, and the
+failure to be documented (starvation death itself is deferred - see above).
+Escape design: a starving-productivity floor *plus* an early governor response -
+death loops must be escapable with good governance, fatal without.
+
+**The trader (crisis-line Slice 3, SHIPPED 2026-07-03).** A second, external
+escape valve (coin -> bread), deliberately buildingless (no trade depot/caravan
+yet - see Known Risks) so the relief valve is always reachable, not gated behind
+another construction cost during a crisis. `economy.buy_good(state, good,
+amount)` is the deterministic trade core: coin leaves circulation and bread
+enters the stockpile as a located external source (BLUEPRINT "Design North
+Star" - "the only external coin source/sink is trade"), clamped by price
+(`economy.TRADER_PRICES`, bread at a premium over the internal Market price), a
+hard per-transaction cap (`economy.TRADER_MAX_PURCHASE`), and storage headroom.
+`buy_good` is a `GovernorAction` like any other (validated in
+`governor.validate_action`, applied in `governor.apply_actions`, and both
+governors can propose it); the fallback's `trader_relief_action` self-limits by
+recomputing the shortfall fresh each hour (tops bread to one day of cover, never
+a fixed increment), so no persistent daily-limit counter is needed. The optional
+local-LLM trader personality (`governor.trader_quip`) reuses the same
+`LocalLLMClient` for a cosmetic merchant line with a hard fallback to a default
+line on any error - proven in tests via an injected fake client, not yet
+exercised against a live loaded model, and deliberately **not** wired into the
+live viewer loop (would need its own non-blocking scheduler like
+`CivilizationDecisionScheduler` to honor "the LLM never blocks the sim loop";
+disproportionate for a cosmetic flourish in this slice).
 
 A 2026-06-30 audit found the 12-pawn loop was not yet truthful (dead governor
 levers, an autopilot that halted, a one-way economy); the truth-loop chain
@@ -563,6 +588,18 @@ storage cap and crowd out food. The default civ now seeds each surplus producer
 a starting `production_target` (water 48, logs 24, planks 40, stone 40), leaving
 food headroom, and research is unavailable while bread cover is under a day so a
 farmer never idles on the Laboratory during a shortage.
+
+### Repair debt (T-102)
+
+Built production/service buildings now carry a 0-100% maintenance condition
+without changing the frozen `core.py` contract. Minor wear is cosmetic; below
+75% condition it becomes a visible efficiency penalty before catastrophic
+failure. Staffed damaged production buildings spend their hour on repair before
+normal production, consume one plank and one stone per completed repair packet,
+and recover condition. Storehouse capacity is also condition-scaled, so service
+debt is real rather than only decorative. Telemetry snapshots record per-building
+condition/efficiency/repair progress, and the viewer surfaces damaged buildings
+through the exception stack, map badge, and building inspector.
 
 ### Scale architecture (Paper 7)
 
@@ -606,8 +643,10 @@ Immediate blockers belong in `TASKBOARD.md` -> Blocked. Stable risks:
 | Determinism regressions | Break the winnability oracle and replayability | Seeded PRNG keyed to `FactionState.seed`; determinism tests; the LLM is the only nondeterministic layer |
 | Frozen-contract drift | Two-track collisions / silent breakage | `core.py` changes go through the one-file-PR process, not unilateral edits |
 | Research papers treated as code truth | Silent design drift | Papers are inputs; conflicts become `TASKBOARD.md` tasks, not doc edits |
-| Trader economics not yet balanced against real grain lead time | Physical sourcing gave grain a 24h growing season; trader pricing (coin -> bread) must account for that lead time or the crisis line's "escapable" claim could silently stop being true | Land the trader (crisis-line Slice 3) with the real growth-time delay already in play, not against the old instant-mint assumption |
-| The sim can still starve even with the money loop live | Balance is not fully proven under all governor/crisis combinations | Tracked in `docs/run_reports/` observation notes; governor/balance tuning is prioritized over new surface area |
+| Repair tuning is first-pass | Decay rate, repair threshold, and material packet are deliberately conservative and not playtested against long watched runs | Revisit if run reports show repair never matters or drains planks/stone too aggressively |
+| Trader price/cap constants are a first pass, not playtested | The bread trade price (2 coin/unit) and `TRADER_MAX_PURCHASE` (8) were chosen for a sane relief valve, not tuned against real crisis runs | Revisit if `docs/run_reports/` observation shows the trader trivializes crises (too cheap/generous) or fails to matter (too expensive/small) |
+| The trader is buildingless; research paper 4's richer trade-depot/caravan vision (arrival cadence, reserve-aware export, price bands) is not built | Kept the crisis-line slice small and always-reachable during a shortage | Deferred (`TASKBOARD.md` DEF-12) until a presentation-layer trade pass is scoped |
+| The sim can still starve even with the money loop and trader live | Balance is not fully proven under all governor/crisis combinations | Tracked in `docs/run_reports/` observation notes; governor/balance tuning is prioritized over new surface area |
 
 ## Design Decisions
 
@@ -632,11 +671,13 @@ decisions and the full pre-v2 verification history are preserved in
 | Escape design for the crisis line: a starving-productivity floor plus an early governor response, not one or the other | Death loops must be escapable with good governance, fatal without; the fallback grows food capacity front-of-chain on `low_food` | 2026-07-01 owner direction |
 | Critical review findings become harness inputs before feature work; all five confirmed P0/P1s fixed (one-pawn-one-job, default-deny model safety, executable conservation, analyzer honesty, watchability refresh) | Confirmed findings from `docs/reviews/` block new roadmap features until reproduced and fixed or explicitly downgraded with evidence | 2026-07-01 Fable 5 peer review |
 | Physical sourcing shipped: every Tier 0 faucet draws from a located, gated node | Farms plant/grow/harvest owned field nodes (24h season, seed reserve), Foresters deplete regrowing tree stands, Quarries mine finite outcrops, the Well stays a named aquifer. The crisis line was re-verified after (marginal civ recovers by day 4; fail state proven under an inert governor). Closes review E-9 | 2026-07-02 physical sourcing |
+| Repair debt shipped as dynamic building condition outside the frozen core contract | Keeps `core.py` unchanged while making building wear visible, persisted, logged, and consequential: damaged buildings lose efficiency, staffed repair consumes planks/stone plus the production hour, and Storehouse service capacity scales with condition | 2026-07-03 T-102 repair debt |
 | Surplus producers get a starting production ceiling so food survives the storage cap | Unifying the crisis line (sustain floor) with the truth loop (finite storage) exposed a latent starvation: uncapped water/logs/planks/stone flood the 240-cap stockpile and crowd out grain/flour/bread | 2026-07-01 crisis+truth-loop merge |
 | Viewer P2 batch: derived attention label, shared idle definition, decodable mood dots, per-decision pressures, visible storage, building inspection | The Governor card/macro/menu drop the invented confidence %; pawn sheets say "off shift" vs "idle (no job)"; hovering decodes the mood dot; decision records carry live exception kinds; the Storehouse names real held stock; clicking a building opens a derived "why is this (not) producing" card | 2026-07-02 review P-5/P-8/P-9/P-10 + Slice 5 |
 | Save/load shipped: the civilization persists across sessions | `save.py` round-trips the full `FactionState` as JSON; the viewer autosaves daily and on exit and resumes on boot. Supersedes the earlier "wake the dormant SQLite scaffold" plan | 2026-07-02 owner direction |
 | Spectator navigation + day/night + KPI strip shipped | Held-key WASD pan, clickable roster + alerts, a follow camera, a day/night light overlay, and a top KPI strip make the civilization watchable as a spectator experience, not only a debug view | 2026-07-02 spectator UI batch |
 | Adopt LLM Workbench v2.1 harness (four control docs) via the Adoption protocol | Replace the pre-v2 doc set (AGENTS/ROADMAP/BOOTSTRAP_CHECKLIST/UNATTENDED_WORK_POLICY) with AGENTS/BLUEPRINT/TASKBOARD/RUNBOOK; retire old docs to `archive/`; preserve all content; `BRANCHING.md` and `VISUAL_DESIGN.md` stay as project-local "keep" docs | 2026-07-03 harness adoption (redone against current `integration`, superseding the stale PR #40 draft forked before physical sourcing shipped) |
+| The trader ships buildingless, with `buy_good` as a plain `GovernorAction(kind="buy_good", good=..., amount=...)` rather than a new `core.py` classmethod/constant | `GovernorAction`'s existing generic `good`/`amount` fields already cover the payload, so the frozen contract needs no change and the one-file-PR process is avoided entirely rather than triggered for an additive, low-risk field-reuse; a trade depot/caravan building is deferred (research paper 4's fuller vision, see Known Risks) so the relief valve stays reachable without a construction prerequisite during a crisis | 2026-07-03 the trader (crisis-line Slice 3) |
 | Paper 7 reachability-region precheck ships before exact pathfinding | `world.reachability_regions` derives cached eight-way connected components from immutable `GridMap`; `work.assign_jobs` uses it to reject unreachable jobs early while keeping all current 12-pawn behavior exact | 2026-07-03 T-103 reachability regions |
 
 ## Health Criteria
