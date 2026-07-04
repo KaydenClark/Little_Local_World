@@ -32,7 +32,7 @@ skill so a fresh civilization staffs itself sensibly with zero micro.
 
 from __future__ import annotations
 
-from . import economy, pawns, schedule
+from . import economy, pawns, schedule, world
 from .core import (
     Building,
     FactionState,
@@ -264,6 +264,15 @@ def _source_block_reason(state: FactionState, building: Building) -> str | None:
     return None
 
 
+def _reachability_block_reason(state: FactionState, pawn: Pawn, building: Building) -> str | None:
+    """Why ``pawn`` cannot reach ``building`` under the current coarse topology."""
+    if state.grid is None:
+        return None
+    if world.same_reachability_region(state.grid, (pawn.x, pawn.y), (building.x, building.y)):
+        return None
+    return "unreachable region"
+
+
 def _scan_candidates(
     state: FactionState, pawn: Pawn, reserved: dict[str, int], *, exclude_id: str | None = None
 ) -> tuple[list[tuple[Building, str, int]], list[RejectedJob]]:
@@ -281,6 +290,10 @@ def _scan_candidates(
             continue
         work_type = building_work_type(building)
         if work_type is None:
+            continue
+        reachability_block = _reachability_block_reason(state, pawn, building)
+        if reachability_block is not None:
+            illegal.append(RejectedJob(building.id, work_type, reachability_block))
             continue
         if work_type == RESEARCH_WORK_TYPE:
             block = _research_block_reason(state)
@@ -345,7 +358,12 @@ def _forced_building_ok(state: FactionState, pawn: Pawn) -> bool:
     if forced is None:
         return False
     building = state.buildings.get(forced.building_id)
-    return building is not None and building.built and building.recipe is not None
+    return (
+        building is not None
+        and building.built
+        and building.recipe is not None
+        and _reachability_block_reason(state, pawn, building) is None
+    )
 
 
 def _assignment_legal(state: FactionState, pawn: Pawn) -> bool:
@@ -360,6 +378,8 @@ def _assignment_legal(state: FactionState, pawn: Pawn) -> bool:
         return False
     work_type = building_work_type(building)
     if work_type is None:
+        return False
+    if _reachability_block_reason(state, pawn, building) is not None:
         return False
     # Research that is no longer real work (no target, or a food crisis) releases
     # the pawn so it can rejoin the survival chain instead of idling on the Lab.
@@ -399,6 +419,8 @@ def _upgrade_available(state: FactionState, pawn: Pawn) -> bool:
             continue
         priority = default_priority(pawn, work_type)
         if priority <= WORK_PRIORITY_DISABLED or priority >= current_priority:
+            continue
+        if _reachability_block_reason(state, pawn, building) is not None:
             continue
         if len(building.staffed_by) >= building.job_slots:
             continue

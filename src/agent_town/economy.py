@@ -57,6 +57,16 @@ PRODUCTION_PHASE_ORDER: dict[str, int] = {
 }
 DEFAULT_PRODUCTION_PHASE_ORDER = 30
 
+# --- External trade (crisis-line Slice 3: the trader) ------------------------
+# "The only external coin source/sink is trade" (BLUEPRINT "Design North
+# Star"): coin leaves circulation and a good enters the stockpile as a located
+# external source, the same conservation shape as a Farm's harvest. Buildingless
+# by design (no trade depot/caravan yet - research paper 4's richer vision is a
+# documented future slice, see BLUEPRINT) so a struggling civ can always reach
+# this relief valve without first having to afford and build a trade post.
+TRADER_PRICES: dict[Good, int] = {Good.BREAD: 2}  # coin/unit; a premium over the internal Market price (1)
+TRADER_MAX_PURCHASE = 8  # hard per-transaction cap so one buy_good cannot drain the treasury in one shot
+
 # --- Physical sourcing (BLUEPRINT "Physical sourcing" refinement) -------------
 # Tier 0 faucets that must draw from a located map node instead of minting their
 # output from labor alone. The Water Well is deliberately absent: its source is
@@ -88,6 +98,13 @@ FIELD_UNCLAIMED = "unclaimed"  # farm has not broken ground yet (will on first w
 # the nutrition one loaf restores. Powers ``food_days_of_cover`` (the food twin
 # of ``water_days_of_cover``) and the governor's ``low_food`` early warning.
 BREAD_UNITS_PER_PAWN_DAY = (pawns.NEED_DECAY_PER_HOUR[NEED_FOOD] * 24.0) / pawns.BREAD_NUTRITION
+BUILDING_DECAY_PER_HOUR = 0.0005
+BUILDING_REPAIR_THRESHOLD = 0.75
+BUILDING_REPAIR_GAIN = 0.25
+BUILDING_REPAIR_WORK_UNITS = 1.0
+BUILDING_REPAIR_COST = {Good.PLANKS: 1, Good.STONE: 1}
+_BUILDING_CONDITION_ATTR = "_condition"
+_BUILDING_REPAIR_PROGRESS_ATTR = "_repair_progress"
 
 WorkFn = Callable[[Pawn, Recipe, int], float]
 
@@ -112,6 +129,15 @@ class MarketBreadDemand:
     unmet_buyers: int = 0
 
 
+@dataclass(frozen=True)
+class TradeResult:
+    """What :func:`buy_good` actually did (the requested amount may be clamped)."""
+
+    good: Good | None = None
+    units: int = 0
+    coin_spent: int = 0
+
+
 def stockpile_add(stockpile: Stockpile, good: Good, amount: int) -> None:
     """Add ``amount`` of ``good`` (delegates to Stockpile.add)."""
     stockpile.add(good, amount)
@@ -127,10 +153,97 @@ def building_output_rate(state: FactionState, building_id: str, work_fn: WorkFn)
         pawn = state.pawns.get(pawn_id)
         if pawn is not None:
             total_work += work_fn(pawn, building.recipe, state.time_of_day)
-    return BASE_RATE * total_work
+    return BASE_RATE * total_work * building_efficiency(building)
 
 
-def production_tick(state: FactionState, *, work_fn: WorkFn = mood.effective_work) -> None:
+def building_condition(building: Building) -> float:
+    """A built building's 0..1 maintenance condition, defaulting to perfect."""
+    return _clamp_unit(getattr(building, _BUILDING_CONDITION_ATTR, 1.0))
+
+
+def set_building_condition(building: Building, value: float) -> None:
+    """Set a building's maintenance condition with boundary validation."""
+    setattr(building, _BUILDING_CONDITION_ATTR, _clamp_unit(value))
+
+
+def building_repair_progress(building: Building) -> float:
+    """Banked repair labour toward the next material spend."""
+    return max(0.0, float(getattr(building, _BUILDING_REPAIR_PROGRESS_ATTR, 0.0)))
+
+
+def set_building_repair_progress(building: Building, value: float) -> None:
+    """Set banked repair labour, clamped to non-negative values."""
+    setattr(building, _BUILDING_REPAIR_PROGRESS_ATTR, max(0.0, float(value)))
+
+
+def building_efficiency(building: Building) -> float:
+    """Work/service multiplier from condition.
+
+    Minor wear is cosmetic; below the repair threshold it becomes visible debt
+    before total failure. The floor keeps damaged buildings limpable.
+    """
+    condition = building_condition(building)
+    if condition >= BUILDING_REPAIR_THRESHOLD:
+        return 1.0
+    return max(0.25, condition)
+
+
+def decay_buildings(state: FactionState, *, amount: float = BUILDING_DECAY_PER_HOUR) -> tuple[str, ...]:
+    """Apply hourly wear to built buildings that provide production or services."""
+    if amount < 0:
+        raise ValueError("decay amount must be non-negative")
+    if amount == 0:
+        return ()
+    degraded: list[str] = []
+    for building in sorted(state.buildings.values(), key=lambda b: b.id):
+        if not building.built or not _condition_applies(building):
+            continue
+        before = building_condition(building)
+        after = max(0.0, before - amount)
+        if after != before:
+            set_building_condition(building, after)
+            degraded.append(building.id)
+    return tuple(degraded)
+
+
+def repair_tick(state: FactionState, *, work_fn: WorkFn = mood.effective_work) -> tuple[str, ...]:
+    """Spend staffed labour and repair materials on damaged buildings.
+
+    A repaired building's staffed pawn spends the hour on maintenance; callers
+    should skip normal production for returned building ids.
+    """
+    repaired: list[str] = []
+    for building in sorted(state.buildings.values(), key=lambda b: b.id):
+        if (
+            not building.built
+            or building.recipe is None
+            or not building.staffed_by
+            or building_condition(building) >= BUILDING_REPAIR_THRESHOLD
+        ):
+            continue
+        if not can_afford(state, BUILDING_REPAIR_COST):
+            continue
+        progress = building_repair_progress(building) + building_output_rate(state, building.id, work_fn)
+        if progress < BUILDING_REPAIR_WORK_UNITS:
+            set_building_repair_progress(building, progress)
+            continue
+        for good, amount in BUILDING_REPAIR_COST.items():
+            state.stockpile.remove(good, amount)
+        set_building_condition(
+            building,
+            min(1.0, building_condition(building) + BUILDING_REPAIR_GAIN),
+        )
+        set_building_repair_progress(building, progress - BUILDING_REPAIR_WORK_UNITS)
+        repaired.append(building.id)
+    return tuple(repaired)
+
+
+def production_tick(
+    state: FactionState,
+    *,
+    work_fn: WorkFn = mood.effective_work,
+    skip_building_ids: set[str] | None = None,
+) -> None:
     """Advance every staffed, built, input-satisfied building by one tick.
 
     A building's ``production_target`` (set by the governor's
@@ -153,8 +266,11 @@ def production_tick(state: FactionState, *, work_fn: WorkFn = mood.effective_wor
     """
     refresh_storage_capacity(state)
     world.normalize_nodes(state.resource_nodes)
+    skip_building_ids = skip_building_ids or set()
     for building in sorted(state.buildings.values(), key=_production_phase_key):
         building_id = building.id
+        if building_id in skip_building_ids:
+            continue
         recipe = building.recipe
         if not building.built or recipe is None or not building.staffed_by:
             continue
@@ -433,12 +549,12 @@ def refresh_storage_capacity(state: FactionState) -> int | None:
     if base is None:
         base = state.stockpile.capacity or 0
         state.stockpile.base_capacity = base
-    storehouses = sum(
-        1
+    storehouse_bonus = sum(
+        int(STOREHOUSE_CAPACITY_BONUS * building_efficiency(building))
         for building in state.buildings.values()
         if building.kind == STOREHOUSE_KIND and building.built
     )
-    state.stockpile.capacity = base + storehouses * STOREHOUSE_CAPACITY_BONUS
+    state.stockpile.capacity = base + storehouse_bonus
     return state.stockpile.capacity
 
 
@@ -548,6 +664,31 @@ def market_bread_demand(state: FactionState) -> MarketBreadDemand:
     )
 
 
+def buy_good(state: FactionState, good: Good, amount: int) -> TradeResult:
+    """Spend treasury coin to import ``good`` from the external trader.
+
+    ``amount`` is a request, clamped by price affordability, a hard per-
+    transaction cap (:data:`TRADER_MAX_PURCHASE`), and stockpile headroom -
+    never negative coin, never an over-capacity stockpile. Returns a zero
+    :class:`TradeResult` for an untradeable good, a non-positive amount, or
+    when nothing can be afforded/held (a no-op, not an error - mirrors how a
+    production tick silently does nothing when a limit binds at zero).
+    """
+    price = TRADER_PRICES.get(good)
+    if price is None or amount <= 0:
+        return TradeResult()
+    units = min(amount, TRADER_MAX_PURCHASE, state.coin // price)
+    available = state.stockpile.available_capacity()
+    if available is not None:
+        units = min(units, available)
+    if units <= 0:
+        return TradeResult()
+    cost = units * price
+    state.coin -= cost
+    state.stockpile.add(good, units)
+    return TradeResult(good=good, units=units, coin_spent=cost)
+
+
 def apply_daily_tax(state: FactionState) -> int:
     """Add the day's tax income to ``state.coin``; return the amount added."""
     income = daily_tax_income(state) + _collect_income_tax(state)
@@ -565,6 +706,16 @@ def can_afford(state: FactionState, cost: dict[Good, int], *, coin_cost: int = 0
         if not state.stockpile.has(good, amount):
             return False
     return True
+
+
+def repair_materials_available(state: FactionState) -> bool:
+    """Whether the stockpile can pay one repair material packet."""
+    return can_afford(state, BUILDING_REPAIR_COST)
+
+
+def repair_cost_label() -> str:
+    """Human-readable repair cost for viewer rows."""
+    return " + ".join(f"{amount} {good.value}" for good, amount in BUILDING_REPAIR_COST.items())
 
 
 def _input_limited_cycles(stockpile: Stockpile, inputs: dict[Good, int]) -> int | None:
@@ -689,3 +840,16 @@ def _validate_recipe_amount(good: Good, amount: int) -> None:
         raise TypeError("Recipe goods must use Good enum values")
     if amount <= 0:
         raise ValueError("Recipe amounts must be positive")
+
+
+def _condition_applies(building: Building) -> bool:
+    return building.recipe is not None or building.kind == STOREHOUSE_KIND
+
+
+def _clamp_unit(value: float) -> float:
+    value = float(value)
+    if value < 0.0:
+        return 0.0
+    if value > 1.0:
+        return 1.0
+    return value

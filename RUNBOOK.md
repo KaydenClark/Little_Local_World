@@ -235,6 +235,11 @@ Run the viewer and confirm:
   a Work grid type. Headless proof: `unittest tests.test_water`.
 - **Storage caps:** the goods panel/Storehouse badge turn amber at >=80% full,
   red at >=95%. Headless proof: `unittest tests.test_storage_caps`.
+- **Repair debt:** damaged buildings show a warning badge and a building-card
+  condition row; below 75% condition they lose efficiency, and a staffed damaged
+  building spends repair labour plus 1 plank + 1 stone before producing again.
+  Storehouse service capacity scales with condition. Headless proof:
+  `unittest tests.test_repair`. Proof frame: `docs/proof/repair_debt/`.
 - **Money loop:** day rollover pays assigned pawns from treasury; a staffed
   Market sells bread to pawn wallets above reserve, records sales tax, and
   exports only the remaining surplus; unmet buyers surface as
@@ -259,6 +264,17 @@ Run the viewer and confirm:
 - **Analyzer honesty:** a healthy-pipeline run with zero model-origin actions
   applied reports AMBER ("pipeline-only"), never GREEN. Headless proof:
   `unittest tests.test_analyzer_honesty`.
+- **The trader (crisis-line Slice 3):** during a `low_food` exception the
+  fallback governor's decision includes a `buy_good` action alongside the
+  dig-out's `place_building`; the `History` panel's decision detail shows
+  "buy bread xN from the trader" under Applied, with coin dropping by the
+  bought amount times the bread trade price in the after-state; the `Research` panel's Trade
+  row reads "Live" instead of "Not implemented yet". Headless proof:
+  `unittest tests.test_trader` (31 tests). Proof frames:
+  `docs/proof/trader/`. The optional local-LLM trader personality
+  (`governor.trader_quip`) is tested via an injected fake client only - it has
+  not been exercised against a live loaded model and is not wired into the
+  live viewer loop (see `BLUEPRINT.md` "Crisis, response, consequence").
 
 Starvation-escapability manual check (crisis/response Slice 0):
 

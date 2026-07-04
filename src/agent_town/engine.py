@@ -87,6 +87,8 @@ class StepResult:
     household_spending: int = 0
     sales_tax_collected: int = 0
     unmet_market_demand: int = 0
+    buildings_degraded: tuple[str, ...] = ()
+    buildings_repaired: tuple[str, ...] = ()
 
 
 def step_hour(state: FactionState, gov: governor_mod.Governor | None = None) -> StepResult:
@@ -105,7 +107,9 @@ def step_hour(state: FactionState, gov: governor_mod.Governor | None = None) -> 
     world.advance_nodes(state)
     work.assign_jobs(state)
     _advance_pawn_activity(state)
-    economy.production_tick(state)
+    buildings_degraded = economy.decay_buildings(state)
+    buildings_repaired = economy.repair_tick(state)
+    economy.production_tick(state, skip_building_ids=set(buildings_repaired))
     research_completed = economy.research_tick(state)
 
     days_rolled = schedule.advance_clock(state, 1)
@@ -135,6 +139,8 @@ def step_hour(state: FactionState, gov: governor_mod.Governor | None = None) -> 
         household_spending=household_spending,
         sales_tax_collected=sales_tax_collected,
         unmet_market_demand=unmet_market_demand,
+        buildings_degraded=buildings_degraded,
+        buildings_repaired=buildings_repaired,
     )
 
 
