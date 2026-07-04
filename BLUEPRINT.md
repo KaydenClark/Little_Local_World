@@ -214,11 +214,11 @@ in `TASKBOARD.md`, not here.
 engine, both governors, the viewer, mood/hunger, work-priority arbiter, water,
 storage caps, the first wage/market money loop, physical resource sourcing (real
 fields/nodes with growth time and depletion), visible storage, save/load, the UI
-navigation/spectator baseline, and the trader (crisis-line Slice 3) are shipped.
-A 2026-07-01 peer review (Fable 5) found P0/P1 harness gaps; all five confirmed
-findings (one-pawn-one-job, default-deny model safety, executable conservation,
-analyzer honesty, watchability refresh) are fixed. The next code task is
-**repair debt**; the Paper 7 scale foundations follow.
+navigation/spectator baseline, the trader (crisis-line Slice 3), and repair debt
+are shipped. A 2026-07-01 peer review (Fable 5) found P0/P1 harness gaps; all
+five confirmed findings (one-pawn-one-job, default-deny model safety, executable
+conservation, analyzer honesty, watchability refresh) are fixed. The next code
+tasks are the Paper 7 scale foundations.
 
 Build arc (each gated on the prior; conservation governs every system):
 
@@ -228,7 +228,7 @@ Build arc (each gated on the prior; conservation governs every system):
 2. **Build 2 - depth and the spectator (in progress).** Water (done), physical
    sourcing (done), save/load (done), spectator navigation/day-night/KPI strip
    (done); clothes/beauty chain remains; full needs set; building quality to
-   happiness; decay + repair as a material/coin sink (next); the wage money loop
+   happiness; decay + repair as a material sink (done); the wage money loop
    (started) and Storehouse/storage caps (done); RimWorld work priorities (done)
    and the per-civilization spectator view (done); skill-based healthcare; the
    Church; operator-triggered disasters; the revolution meter + keep + fail
@@ -589,6 +589,18 @@ a starting `production_target` (water 48, logs 24, planks 40, stone 40), leaving
 food headroom, and research is unavailable while bread cover is under a day so a
 farmer never idles on the Laboratory during a shortage.
 
+### Repair debt (T-102)
+
+Built production/service buildings now carry a 0-100% maintenance condition
+without changing the frozen `core.py` contract. Minor wear is cosmetic; below
+75% condition it becomes a visible efficiency penalty before catastrophic
+failure. Staffed damaged production buildings spend their hour on repair before
+normal production, consume one plank and one stone per completed repair packet,
+and recover condition. Storehouse capacity is also condition-scaled, so service
+debt is real rather than only decorative. Telemetry snapshots record per-building
+condition/efficiency/repair progress, and the viewer surfaces damaged buildings
+through the exception stack, map badge, and building inspector.
+
 ### Scale architecture (Paper 7)
 
 At ~12 pawns, keep visible truth exact. Two low-cost foundations come first:
@@ -623,6 +635,7 @@ Immediate blockers belong in `TASKBOARD.md` -> Blocked. Stable risks:
 | Determinism regressions | Break the winnability oracle and replayability | Seeded PRNG keyed to `FactionState.seed`; determinism tests; the LLM is the only nondeterministic layer |
 | Frozen-contract drift | Two-track collisions / silent breakage | `core.py` changes go through the one-file-PR process, not unilateral edits |
 | Research papers treated as code truth | Silent design drift | Papers are inputs; conflicts become `TASKBOARD.md` tasks, not doc edits |
+| Repair tuning is first-pass | Decay rate, repair threshold, and material packet are deliberately conservative and not playtested against long watched runs | Revisit if run reports show repair never matters or drains planks/stone too aggressively |
 | Trader price/cap constants are a first pass, not playtested | The bread trade price (2 coin/unit) and `TRADER_MAX_PURCHASE` (8) were chosen for a sane relief valve, not tuned against real crisis runs | Revisit if `docs/run_reports/` observation shows the trader trivializes crises (too cheap/generous) or fails to matter (too expensive/small) |
 | The trader is buildingless; research paper 4's richer trade-depot/caravan vision (arrival cadence, reserve-aware export, price bands) is not built | Kept the crisis-line slice small and always-reachable during a shortage | Deferred (`TASKBOARD.md` DEF-12) until a presentation-layer trade pass is scoped |
 | The sim can still starve even with the money loop and trader live | Balance is not fully proven under all governor/crisis combinations | Tracked in `docs/run_reports/` observation notes; governor/balance tuning is prioritized over new surface area |
@@ -650,6 +663,7 @@ decisions and the full pre-v2 verification history are preserved in
 | Escape design for the crisis line: a starving-productivity floor plus an early governor response, not one or the other | Death loops must be escapable with good governance, fatal without; the fallback grows food capacity front-of-chain on `low_food` | 2026-07-01 owner direction |
 | Critical review findings become harness inputs before feature work; all five confirmed P0/P1s fixed (one-pawn-one-job, default-deny model safety, executable conservation, analyzer honesty, watchability refresh) | Confirmed findings from `docs/reviews/` block new roadmap features until reproduced and fixed or explicitly downgraded with evidence | 2026-07-01 Fable 5 peer review |
 | Physical sourcing shipped: every Tier 0 faucet draws from a located, gated node | Farms plant/grow/harvest owned field nodes (24h season, seed reserve), Foresters deplete regrowing tree stands, Quarries mine finite outcrops, the Well stays a named aquifer. The crisis line was re-verified after (marginal civ recovers by day 4; fail state proven under an inert governor). Closes review E-9 | 2026-07-02 physical sourcing |
+| Repair debt shipped as dynamic building condition outside the frozen core contract | Keeps `core.py` unchanged while making building wear visible, persisted, logged, and consequential: damaged buildings lose efficiency, staffed repair consumes planks/stone plus the production hour, and Storehouse service capacity scales with condition | 2026-07-03 T-102 repair debt |
 | Surplus producers get a starting production ceiling so food survives the storage cap | Unifying the crisis line (sustain floor) with the truth loop (finite storage) exposed a latent starvation: uncapped water/logs/planks/stone flood the 240-cap stockpile and crowd out grain/flour/bread | 2026-07-01 crisis+truth-loop merge |
 | Viewer P2 batch: derived attention label, shared idle definition, decodable mood dots, per-decision pressures, visible storage, building inspection | The Governor card/macro/menu drop the invented confidence %; pawn sheets say "off shift" vs "idle (no job)"; hovering decodes the mood dot; decision records carry live exception kinds; the Storehouse names real held stock; clicking a building opens a derived "why is this (not) producing" card | 2026-07-02 review P-5/P-8/P-9/P-10 + Slice 5 |
 | Save/load shipped: the civilization persists across sessions | `save.py` round-trips the full `FactionState` as JSON; the viewer autosaves daily and on exit and resumes on boot. Supersedes the earlier "wake the dormant SQLite scaffold" plan | 2026-07-02 owner direction |

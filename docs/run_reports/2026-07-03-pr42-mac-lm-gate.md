@@ -1,10 +1,10 @@
 # PR #42 Mac LM Gate
 
-**PR:** #42, `claude/trader-crisis-slice-3` -> `integration`  
-**Title:** The trader: coin -> bread crisis relief (T-101, crisis-line Slice 3)  
-**Tested source SHA:** `476663f9603d2b2377f4eca171cc4cccd66ab01a`  
-**Run time:** 2026-07-03 08:18-08:28 UTC on Apple Silicon Mac mini  
-**Endpoint/model:** `http://192.168.1.131:1234/v1`, `google/gemma-4-e4b`  
+**PR:** #42, `claude/trader-crisis-slice-3` -> `integration`
+**Title:** The trader: coin -> bread crisis relief (T-101, crisis-line Slice 3)
+**Tested source SHA:** `476663f9603d2b2377f4eca171cc4cccd66ab01a`
+**Run time:** 2026-07-03 08:18-08:28 UTC on Apple Silicon Mac mini
+**Endpoint/model:** `http://192.168.1.131:1234/v1`, `google/gemma-4-e4b`
 **Detailed local log:** `/Users/kayden/GPT_OS/Projects/Little_Local_World/logs/run-20260703-081813-pr42.log`
 
 ## Commands

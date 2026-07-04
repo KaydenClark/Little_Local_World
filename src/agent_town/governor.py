@@ -176,6 +176,8 @@ def build_buildings_summary(state: FactionState) -> list[dict[str, Any]]:
                 "staffed": staffed,
                 "open_slots": max(0, building.job_slots - staffed),
                 "built": building.built,
+                "condition": round(economy.building_condition(building), 3),
+                "efficiency": round(economy.building_efficiency(building), 3),
             }
         )
     return summary
@@ -205,6 +207,17 @@ def build_exception_queue(state: FactionState) -> list[CivilizationException]:
     for building in sorted(state.buildings.values(), key=lambda b: b.id):
         if not building.built or building.recipe is None:
             continue
+        if economy.building_condition(building) < economy.BUILDING_REPAIR_THRESHOLD:
+            exceptions.append(
+                CivilizationException(
+                    "building_damaged",
+                    building_id=building.id,
+                    detail=(
+                        f"{round(economy.building_condition(building) * 100)}% condition, "
+                        f"{round(economy.building_efficiency(building) * 100)}% efficiency"
+                    ),
+                )
+            )
         # Physical sourcing: a Farm's field and an extractor's nodes gate work.
         # A growing field is informational (staffed or not, it is genuinely
         # waiting on time - by design the arbiter frees the farmer meanwhile),
