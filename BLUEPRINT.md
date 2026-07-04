@@ -217,8 +217,9 @@ fields/nodes with growth time and depletion), visible storage, save/load, the UI
 navigation/spectator baseline, the trader (crisis-line Slice 3), and repair debt
 are shipped. A 2026-07-01 peer review (Fable 5) found P0/P1 harness gaps; all
 five confirmed findings (one-pawn-one-job, default-deny model safety, executable
-conservation, analyzer honesty, watchability refresh) are fixed. The next code
-tasks are the Paper 7 scale foundations.
+conservation, analyzer honesty, watchability refresh) are fixed. The first Paper
+7 scale foundations, reachability-region rejection and deterministic phases, are
+shipped; the next work item is chosen from `TASKBOARD.md`.
 
 Build arc (each gated on the prior; conservation governs every system):
 
@@ -612,13 +613,20 @@ simulation; approximation is only for opportunity search and offscreen movement.
 Population growth (build 3) is what makes the real scale need appear; there is
 no in-play way to reach large populations yet.
 
-The first foundation is implemented as a coarse, cached topology layer in
+The deterministic phase foundation is implemented in `engine.STEP_HOUR_PHASES`:
+policy, construction, needs, world, work, movement, production, research, clock,
+and daily economy. Order-sensitive loops now use stable ids for construction
+sites, pawns, staffed slots, research buildings, and the staffed Market choice;
+production uses a stable dependency-aware order (for example Farm -> Mill ->
+Bakery) with building id as its tie-breaker, so equivalent states do not diverge
+because dictionaries were populated in a different order.
+
+The reachability foundation is implemented as a coarse, cached topology layer in
 `world.py`: `reachability_regions(grid)` labels every walkable tile with a
 region id and treats water as blocked terrain. `work.py` uses that derived map
 to reject, release, or skip jobs whose pawn and building are in different
 regions before exact pathfinding exists. This is only a precheck; it does not
-add an exact pathfinder, doors/walls, offscreen approximation, or the later
-deterministic phase scheduler.
+add an exact pathfinder, doors/walls, or offscreen approximation.
 
 ## Trust, Privacy, And Safety Boundaries
 
@@ -679,6 +687,7 @@ decisions and the full pre-v2 verification history are preserved in
 | Adopt LLM Workbench v2.1 harness (four control docs) via the Adoption protocol | Replace the pre-v2 doc set (AGENTS/ROADMAP/BOOTSTRAP_CHECKLIST/UNATTENDED_WORK_POLICY) with AGENTS/BLUEPRINT/TASKBOARD/RUNBOOK; retire old docs to `archive/`; preserve all content; `BRANCHING.md` and `VISUAL_DESIGN.md` stay as project-local "keep" docs | 2026-07-03 harness adoption (redone against current `integration`, superseding the stale PR #40 draft forked before physical sourcing shipped) |
 | The trader ships buildingless, with `buy_good` as a plain `GovernorAction(kind="buy_good", good=..., amount=...)` rather than a new `core.py` classmethod/constant | `GovernorAction`'s existing generic `good`/`amount` fields already cover the payload, so the frozen contract needs no change and the one-file-PR process is avoided entirely rather than triggered for an additive, low-risk field-reuse; a trade depot/caravan building is deferred (research paper 4's fuller vision, see Known Risks) so the relief valve stays reachable without a construction prerequisite during a crisis | 2026-07-03 the trader (crisis-line Slice 3) |
 | Paper 7 reachability-region precheck ships before exact pathfinding | `world.reachability_regions` derives cached eight-way connected components from immutable `GridMap`; `work.assign_jobs` uses it to reject unreachable jobs early while keeping all current 12-pawn behavior exact | 2026-07-03 T-103 reachability regions |
+| Paper 7 deterministic phase contract ships before population growth | `engine.STEP_HOUR_PHASES` names the per-hour command/update order, and order-sensitive mutation loops use stable ids or dependency-aware production ordering so construction, pawn needs/movement, work reservations, production, research, and market selection do not depend on dictionary insertion order | 2026-07-03 T-104 deterministic phases |
 
 ## Health Criteria
 

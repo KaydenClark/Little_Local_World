@@ -44,6 +44,18 @@ MARKET_BREAD_PRICE = 1
 TECH_EFFICIENT_BAKING = "efficient_baking"
 RESEARCH_COSTS = {TECH_EFFICIENT_BAKING: 4}
 LABORATORY_KIND = "Laboratory"
+PRODUCTION_PHASE_ORDER: dict[str, int] = {
+    "water": 75,
+    "farming": 70,
+    "milling": 65,
+    "baking": 60,
+    "forestry": 50,
+    "woodworking": 45,
+    "mining": 40,
+    "research": 35,
+    "commerce": 34,
+}
+DEFAULT_PRODUCTION_PHASE_ORDER = 30
 
 # --- External trade (crisis-line Slice 3: the trader) ------------------------
 # "The only external coin source/sink is trade" (BLUEPRINT "Design North
@@ -137,7 +149,7 @@ def building_output_rate(state: FactionState, building_id: str, work_fn: WorkFn)
     if building is None or not building.built or building.recipe is None:
         return 0.0
     total_work = 0.0
-    for pawn_id in building.staffed_by:
+    for pawn_id in sorted(building.staffed_by):
         pawn = state.pawns.get(pawn_id)
         if pawn is not None:
             total_work += work_fn(pawn, building.recipe, state.time_of_day)
@@ -255,7 +267,8 @@ def production_tick(
     refresh_storage_capacity(state)
     world.normalize_nodes(state.resource_nodes)
     skip_building_ids = skip_building_ids or set()
-    for building_id, building in state.buildings.items():
+    for building in sorted(state.buildings.values(), key=_production_phase_key):
+        building_id = building.id
         if building_id in skip_building_ids:
             continue
         recipe = building.recipe
@@ -451,7 +464,8 @@ def research_tick(state: FactionState, *, work_fn: WorkFn = mood.effective_work)
         return ()
 
     gained = 0
-    for building_id, building in state.buildings.items():
+    for building_id in sorted(state.buildings):
+        building = state.buildings[building_id]
         recipe = building.recipe
         if (
             building.kind != LABORATORY_KIND
@@ -480,7 +494,7 @@ def average_mood(state: FactionState) -> float:
     """Mean pawn mood across the civilization on the 0-100 scale (0.0 if empty)."""
     if not state.pawns:
         return 0.0
-    return sum(pawn.mood for pawn in state.pawns.values()) / len(state.pawns)
+    return sum(state.pawns[pawn_id].mood for pawn_id in sorted(state.pawns)) / len(state.pawns)
 
 
 def average_need(state: FactionState, need: str) -> float:
@@ -493,7 +507,9 @@ def average_need(state: FactionState, need: str) -> float:
         raise ValueError(f"unknown tracked need: {need!r}")
     if not state.pawns:
         return 0.0
-    total = sum(max(0.0, min(1.0, pawn.needs.get(need, 1.0))) for pawn in state.pawns.values())
+    total = sum(
+        max(0.0, min(1.0, state.pawns[pawn_id].needs.get(need, 1.0))) for pawn_id in sorted(state.pawns)
+    )
     return total / len(state.pawns)
 
 
@@ -775,11 +791,17 @@ def _staffed_market(state: FactionState):
     return next(
         (
             building
-            for building in state.buildings.values()
+            for building in sorted(state.buildings.values(), key=lambda b: b.id)
             if building.kind == MARKET_KIND and building.built and bool(building.staffed_by)
         ),
         None,
     )
+
+
+def _production_phase_key(building: Building) -> tuple[int, str]:
+    recipe = building.recipe
+    work_type = recipe.skill if recipe is not None else ""
+    return (-PRODUCTION_PHASE_ORDER.get(work_type, DEFAULT_PRODUCTION_PHASE_ORDER), building.id)
 
 
 def _collect_income_tax(state: FactionState) -> int:
