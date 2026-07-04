@@ -655,6 +655,7 @@ Immediate blockers belong in `TASKBOARD.md` -> Blocked. Stable risks:
 | Trader price/cap constants are a first pass, not playtested | The bread trade price (2 coin/unit) and `TRADER_MAX_PURCHASE` (8) were chosen for a sane relief valve, not tuned against real crisis runs | Revisit if `docs/run_reports/` observation shows the trader trivializes crises (too cheap/generous) or fails to matter (too expensive/small) |
 | The trader is buildingless; research paper 4's richer trade-depot/caravan vision (arrival cadence, reserve-aware export, price bands) is not built | Kept the crisis-line slice small and always-reachable during a shortage | Deferred (`TASKBOARD.md` DEF-12) until a presentation-layer trade pass is scoped |
 | The sim can still starve even with the money loop and trader live | Balance is not fully proven under all governor/crisis combinations | Tracked in `docs/run_reports/` observation notes; governor/balance tuning is prioritized over new surface area |
+| Pawn roster strip has no scroll/paging past a full population | `roster_chip_rects` (`civilization_view.py`) lays out chips left to right and stops once the next one would overflow the rect's pixel width; pawns past that point get no chip at all, so they are neither visible nor clickable in the roster. The "clickable roster" spectator-UI decision below (2026-07-02) does not hold once population outgrows one screen width at the player's window size | Tracked as `TASKBOARD.md` T-106; fix is a scroll/paging/overflow affordance, not a rendering tweak |
 
 ## Design Decisions
 

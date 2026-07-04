@@ -2,9 +2,9 @@
 
 > Generated from LLM Workbench v2.1. See `RUNBOOK.md` -> Upgrading The Harness.
 
-**Current focus:** Manual LM Studio/Ollama model tuning (Kayden-owned) and
-choosing the next agent-ready slice. The trader (crisis-line Slice 3), repair
-debt, reachability-region precheck, and deterministic phases shipped 2026-07-03.
+**Current focus:** Pawn roster overflow (T-106) so every pawn remains reachable
+by click at full population. Manual LM Studio/Ollama model tuning remains
+Kayden-owned.
 **Owner:** Kayden and local coding agents
 **Last updated:** 2026-07-03
 
@@ -30,7 +30,8 @@ commands and verification procedures in `RUNBOOK.md`.
   non-blocking LICENSE question).
 - **Blocked on:** nothing (hosted AI, multiplayer, engine migration are
   intentionally gated, not blocked).
-- **Next milestone:** model tuning, then choose the next build-2 depth slice.
+- **Next milestone:** fix roster overflow, then model tuning / next build-2
+  depth slice.
 
 ## Pending Decisions
 
@@ -72,6 +73,7 @@ reclaimed per `AGENTS.md` -> Long Session Control.
 
 | ID | Priority | Task | Source / why now | Touches | Proof required | Docs impact | Owner | Status | Last update |
 |---|---:|---|---|---|---|---|---|---|---|
+| T-106 | 2 | Pawn roster overflow: pawns beyond however many chips fit the roster strip's width have no scroll/pagination and cannot be selected by click | Owner watched a pawn oscillate between two tiles with no way to click it (Pop 12, only ~9 chips fit at their window size); `roster_chip_rects` (`civilization_view.py`) stops (`break`) the moment the next chip would overflow `rect`, and `roster_chip_at` (click hit-testing) shares that same truncated list, so an overflowed pawn is not just visually cropped but structurally unclickable - confirmed a known limit, not a glitch: `test_roster_chip_rects_cover_the_visible_roster` (`tests/test_civilization_view.py:774`) already asserts the truncation (`chips == list(state.pawns)[:len(chips)]`). `BLUEPRINT.md`'s "clickable roster" shipped note (2026-07-02 spectator UI batch) does not carry this population-capacity caveat. Reported 2026-07-03. | `src/agent_town/civilization_view.py` (`roster_chip_rects`, `_draw_pawn_roster`, `roster_chip_at`), `tests/test_civilization_view.py` | red/green: a population large enough to overflow one screen must still have every pawn id reachable through `roster_chip_rects`/`roster_chip_at` (scroll, paging, or an explicit overflow control) instead of only the pawns that fit the first screen; update `test_roster_chip_rects_cover_the_visible_roster` accordingly; full suite + smoke; watchable proof screenshot of the overflow affordance selecting a previously-hidden pawn | `BLUEPRINT.md` (qualify/update the "clickable roster" shipped note) | agent | ready | 2026-07-03 |
 | T-105 | 4 | Manual LM Studio/Ollama model tuning pass: run Gemma 4 E4B-it, Qwen3.5-4B, Phi-4-mini-instruct locally; record best speed/personality balance | Never completed; operator task carried since the I2 bridge milestone | `docs/run_reports/` | run report per model with analyzer verdict + timing | `RUNBOOK.md` (record chosen default) | Kayden | ready | 2026-07-02 |
 
 ## In Progress
