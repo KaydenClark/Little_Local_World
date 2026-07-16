@@ -261,8 +261,7 @@ These control docs were generated from LLM Workbench v2.1 (see the stamp at the
 top of each doc). To upgrade: check the LLM Workbench repo changelog for changes
 since v2.1; re-copy only the changed template sections, keeping this project's
 filled-in specifics (never let bracketed template placeholders leak back in);
-update
-each doc's version stamp; re-run the full verification suite and record the
+update each doc's version stamp; re-run the full verification suite and record the
 upgrade as a `TASKBOARD.md` proof-log row. Treat it like any other change:
 smallest correct diff, verified, with proof. Lessons that should flow back to the
 harness go in `HARNESS_FEEDBACK.md`.
