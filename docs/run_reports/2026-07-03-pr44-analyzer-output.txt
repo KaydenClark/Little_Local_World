@@ -1,0 +1,49 @@
+Run log: /tmp/little-local-world-pr44-gate-20260703-031728/logs/run-20260703-031800.jsonl
+  run_id=9d285a0025f3 schema=3
+  governor=CivilizationDecisionScheduler model=google/gemma-4-e4b seed=0 population=12 started=2026-07-03T03:18:00
+
+Health summary:
+  hours          : 1046
+  mood           : start 85.8 -> min 54.4 -> end 72.0 (down)
+  idle peak      : 3
+  breaks         : 0 (peak concurrent 0)
+  food depletions: 0   supply stalls: 29
+  LLM hours      : 1046 with a model in play (pipeline uptime 58%, dropped 0 = 0%)
+  model emissions: 57 hour(s) actually driven by the model
+  model applied  : {'place_building': 27, 'set_production_target': 2, 'set_research': 5, 'set_work_priority': 22}
+  applied actions: {'place_building': 52, 'set_production_target': 2, 'set_research': 6, 'set_work_priority': 22} (all sources incl. fallback)
+  events         : {'building_completed': 54, 'good_stalled': 29}
+
+Flagged events:
+  [WARN    ] day12 21:00  good_stalled: Water empty 12h - supply chain stalled
+  [WARN    ] day13 21:00  good_stalled: Water empty 12h - supply chain stalled
+  [WARN    ] day14 21:00  good_stalled: Water empty 12h - supply chain stalled
+  [WARN    ] day15 21:00  good_stalled: Water empty 12h - supply chain stalled
+  [WARN    ] day16 21:00  good_stalled: Water empty 12h - supply chain stalled
+  [WARN    ] day17 21:00  good_stalled: Water empty 12h - supply chain stalled
+  [WARN    ] day18 21:00  good_stalled: Water empty 12h - supply chain stalled
+  [WARN    ] day19 21:00  good_stalled: Water empty 12h - supply chain stalled
+  [WARN    ] day20 21:00  good_stalled: Water empty 12h - supply chain stalled
+  [WARN    ] day21 21:00  good_stalled: Water empty 12h - supply chain stalled
+  [WARN    ] day22 21:00  good_stalled: Water empty 12h - supply chain stalled
+  [WARN    ] day23 21:00  good_stalled: Water empty 12h - supply chain stalled
+  [WARN    ] day24 21:00  good_stalled: Water empty 12h - supply chain stalled
+  [WARN    ] day25 21:00  good_stalled: Water empty 12h - supply chain stalled
+  [WARN    ] day26 21:00  good_stalled: Water empty 12h - supply chain stalled
+  [WARN    ] day28 21:00  good_stalled: Water empty 12h - supply chain stalled
+  [WARN    ] day29 21:00  good_stalled: Water empty 12h - supply chain stalled
+  [WARN    ] day30 21:00  good_stalled: Water empty 12h - supply chain stalled
+  [WARN    ] day32 21:00  good_stalled: Water empty 12h - supply chain stalled
+  [WARN    ] day33 21:00  good_stalled: Water empty 12h - supply chain stalled
+  [WARN    ] day35 21:00  good_stalled: Water empty 12h - supply chain stalled
+  [WARN    ] day36 21:00  good_stalled: Water empty 12h - supply chain stalled
+  [WARN    ] day37 21:00  good_stalled: Water empty 12h - supply chain stalled
+  [WARN    ] day38 21:00  good_stalled: Water empty 12h - supply chain stalled
+  [WARN    ] day39 21:00  good_stalled: Water empty 12h - supply chain stalled
+  [WARN    ] day40 21:00  good_stalled: Water empty 12h - supply chain stalled
+  [WARN    ] day41 21:00  good_stalled: Water empty 12h - supply chain stalled
+  [WARN    ] day42 21:00  good_stalled: Water empty 12h - supply chain stalled
+  [WARN    ] day43 21:00  good_stalled: Water empty 12h - supply chain stalled
+
+RESULT: AMBER
+  - 29 warn event(s)

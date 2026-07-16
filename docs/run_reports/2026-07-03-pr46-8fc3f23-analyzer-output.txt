@@ -1,0 +1,27 @@
+Run log: logs/run-20260703-071828.jsonl
+  run_id=24f6b8548526 schema=3
+  governor=CivilizationDecisionScheduler model=google/gemma-4-e4b seed=0 population=12 started=2026-07-03T07:18:28
+
+Health summary:
+  hours          : 1060
+  mood           : start 85.8 -> min 58.9 -> end 77.6 (down)
+  idle peak      : 3
+  breaks         : 0 (peak concurrent 0)
+  food depletions: 0   supply stalls: 7
+  LLM hours      : 1060 with a model in play (pipeline uptime 57%, dropped 0 = 0%)
+  model emissions: 58 hour(s) actually driven by the model
+  model applied  : {'place_building': 37, 'set_production_target': 1, 'set_research': 10, 'set_work_priority': 54}
+  applied actions: {'place_building': 48, 'set_production_target': 1, 'set_research': 11, 'set_work_priority': 54} (all sources incl. fallback)
+  events         : {'building_completed': 64, 'good_stalled': 7}
+
+Flagged events:
+  [WARN    ] day1  6:00  good_stalled: Logs empty 12h - supply chain stalled
+  [WARN    ] day1  6:00  good_stalled: Planks empty 12h - supply chain stalled
+  [WARN    ] day39 21:00  good_stalled: Water empty 12h - supply chain stalled
+  [WARN    ] day40 21:00  good_stalled: Water empty 12h - supply chain stalled
+  [WARN    ] day41 21:00  good_stalled: Water empty 12h - supply chain stalled
+  [WARN    ] day42 21:00  good_stalled: Water empty 12h - supply chain stalled
+  [WARN    ] day43 20:00  good_stalled: Water empty 12h - supply chain stalled
+
+RESULT: AMBER
+  - 7 warn event(s)

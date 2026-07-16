@@ -35,12 +35,14 @@ class LocalLLMClient:
         base_url: str = DEFAULT_BASE_URL,
         timeout: float = DEFAULT_TIMEOUT,
         max_tokens: int = DEFAULT_MAX_TOKENS,
+        api_key: str | None = None,
         http_post: HttpPost | None = None,
     ) -> None:
         self.model = (model or "").strip()
         self.base_url = base_url.rstrip("/")
         self.timeout = max(0.1, float(timeout))
         self.max_tokens = max(32, min(int(max_tokens), 400))
+        self.api_key = (api_key or "").strip()
         self._http_post = http_post or self._default_http_post
 
     @classmethod
@@ -49,13 +51,14 @@ class LocalLLMClient:
         base_url = os.environ.get("AGENT_TOWN_LLM_BASE_URL", DEFAULT_BASE_URL).strip() or DEFAULT_BASE_URL
         timeout = _float_env("AGENT_TOWN_LLM_TIMEOUT", DEFAULT_TIMEOUT)
         max_tokens = _int_env("AGENT_TOWN_LLM_MAX_TOKENS", DEFAULT_MAX_TOKENS)
+        api_key = os.environ.get("OPENAI_API_KEY", "").strip()
         if not model and _bool_env("AGENT_TOWN_LLM_AUTO_DISCOVER", True):
             discovery = model_discovery or discover_local_model
             try:
                 model = discovery(base_url, min(timeout, DEFAULT_DISCOVERY_TIMEOUT)).strip()
             except LLMClientError:
                 model = ""
-        return cls(model=model or None, base_url=base_url, timeout=timeout, max_tokens=max_tokens)
+        return cls(model=model or None, base_url=base_url, timeout=timeout, max_tokens=max_tokens, api_key=api_key)
 
     @property
     def enabled(self) -> bool:
@@ -96,9 +99,12 @@ class LocalLLMClient:
                 "messages": list(messages),
                 "temperature": temperature,
                 "top_p": 0.9,
-                "max_tokens": self.max_tokens,
                 "stream": False,
             }
+            if _uses_completion_token_limit(self.model, self.base_url):
+                payload["max_completion_tokens"] = self.max_tokens
+            else:
+                payload["max_tokens"] = self.max_tokens
             if schema is not None:
                 payload["response_format"] = {
                     "type": "json_schema",
@@ -124,10 +130,13 @@ class LocalLLMClient:
 
     def _default_http_post(self, payload: dict[str, Any], timeout: float) -> dict[str, Any]:
         data = json.dumps(payload).encode("utf-8")
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
         request = urllib.request.Request(
             f"{self.base_url}/chat/completions",
             data=data,
-            headers={"Content-Type": "application/json"},
+            headers=headers,
             method="POST",
         )
         try:
@@ -238,6 +247,10 @@ def _http_error_detail(exc: urllib.error.HTTPError) -> str:
         if message:
             return str(message)[:240]
     return raw[:240]
+
+
+def _uses_completion_token_limit(model: str, base_url: str) -> bool:
+    return base_url.rstrip("/").lower() == "https://api.openai.com/v1" and model.lower().startswith("gpt-5")
 
 
 def _bool_env(name: str, default: bool) -> bool:

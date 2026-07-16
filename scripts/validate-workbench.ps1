@@ -6,13 +6,12 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+# LLM Workbench v2.1 control-doc set (post-adoption 2026-07-02).
 $requiredFiles = @(
     'AGENTS.md',
     'BLUEPRINT.md',
-    'ROADMAP.md',
-    'RUNBOOK.md',
-    'BOOTSTRAP_CHECKLIST.md',
-    'UNATTENDED_WORK_POLICY.md'
+    'TASKBOARD.md',
+    'RUNBOOK.md'
 )
 
 $requiredHeadings = @{
@@ -27,26 +26,15 @@ $requiredHeadings = @{
         '## Architecture',
         '## Health Criteria'
     )
-    'ROADMAP.md' = @(
-        '## Current State',
-        '## Current Goal',
-        '## Verification Log'
+    'TASKBOARD.md' = @(
+        '## Executive Brief',
+        '## Ready',
+        '## Proof Log'
     )
     'RUNBOOK.md' = @(
         '## Prerequisites',
         '## Run Locally',
         '## Test And Build'
-    )
-    'BOOTSTRAP_CHECKLIST.md' = @(
-        '## Existing Project Path',
-        '## New Project Path',
-        '## Completion Gate'
-    )
-    'UNATTENDED_WORK_POLICY.md' = @(
-        '## Runtime Limits',
-        '## Branch Rules',
-        '## Stop Conditions',
-        '## Final Audit'
     )
 }
 
@@ -91,9 +79,9 @@ if (-not $TemplateMode) {
         $failures.Add('AGENTS.md edit scope still contains template placeholders.')
     }
 
-    $roadmap = Get-Content -LiteralPath (Join-Path $Root 'ROADMAP.md') -Raw
-    if ($roadmap -notmatch '(?m)^\| \d{4}-\d{2}-\d{2} \|') {
-        $failures.Add('ROADMAP.md Verification Log needs at least one dated project-specific row.')
+    $taskboard = Get-Content -LiteralPath (Join-Path $Root 'TASKBOARD.md') -Raw
+    if ($taskboard -notmatch '(?m)^\| \d{4}-\d{2}-\d{2} \|') {
+        $failures.Add('TASKBOARD.md Proof Log needs at least one dated project-specific row.')
     }
 }
 

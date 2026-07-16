@@ -116,6 +116,56 @@ class LocalLLMClientTests(unittest.TestCase):
 
         self.assertFalse(client.enabled)
 
+    def test_from_env_uses_openai_api_key_as_bearer_auth(self):
+        captured = []
+
+        class FakeResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return b'{"choices":[{"message":{"content":"{\\"actions\\":[]}"}}]}'
+
+        def fake_urlopen(request, timeout):
+            captured.append(request)
+            return FakeResponse()
+
+        with patch.dict(
+            os.environ,
+            {
+                "AGENT_TOWN_LLM_MODEL": "gpt-5.4-mini",
+                "AGENT_TOWN_LLM_BASE_URL": "https://api.openai.com/v1",
+                "OPENAI_API_KEY": "test-secret",
+            },
+            clear=True,
+        ), patch("urllib.request.urlopen", fake_urlopen):
+            client = LocalLLMClient.from_env()
+            result = client.complete_json("system", {})
+
+        self.assertEqual(result, {"actions": []})
+        self.assertEqual(captured[0].get_header("Authorization"), "Bearer test-secret")
+
+    def test_openai_gpt5_chat_payload_uses_completion_token_limit(self):
+        calls = []
+
+        def fake_post(payload, timeout):
+            calls.append(payload)
+            return {"choices": [{"message": {"content": '{"actions":[]}'}}]}
+
+        client = LocalLLMClient(
+            model="gpt-5.4-mini",
+            base_url="https://api.openai.com/v1",
+            http_post=fake_post,
+        )
+
+        client.complete_json("system", {})
+
+        self.assertEqual(calls[0]["max_completion_tokens"], client.max_tokens)
+        self.assertNotIn("max_tokens", calls[0])
+
 
 class DefaultsTests(unittest.TestCase):
     def test_loosened_defaults_for_local_4b_models(self):
